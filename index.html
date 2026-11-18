@@ -1,128 +1,270 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تسجيل الدخول - تسيير مخزون الأسمدة (CCLS ADRAR)</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <style>
-        :root {
-            --primary: #1b5e20;
-            --secondary: #2e7d32;
-            --bg: #f4f6f8;
-            --border: #cfd8dc;
-        }
-        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { margin: 0; background-color: var(--bg); display: flex; justify-content: center; align-items: center; height: 100vh; }
-        .login-card {
-            background: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-            width: 100%;
-            max-width: 400px;
-            text-align: center;
-        }
-        .logo-container img {
-            width: 100px;
-            height: 100px;
-            object-fit: contain;
-            margin-bottom: 10px;
-            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));
-        }
-        .login-card h2 { margin: 5px 0 20px 0; color: var(--primary); font-size: 1.2rem; }
-        .form-group { margin-bottom: 15px; text-align: right; }
-        label { font-weight: 600; margin-bottom: 5px; font-size: 0.9rem; display: block; }
-        input { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 1rem; }
-        .login-btn {
-            background: var(--primary);
-            color: white;
-            border: none;
-            width: 100%;
-            padding: 12px;
-            border-radius: 6px;
-            font-size: 1rem;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        .login-btn:hover { background: var(--secondary); }
-        #login-error { color: #d32f2f; margin-top: 10px; font-size: 0.85rem; display: none; background: #ffebee; padding: 8px; border-radius: 4px; }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تسيير مخزون الأسمدة</title>
+<style>
+:root{--bg:#f4f5f1;--card:#fff;--tx:#1d2b22;--mu:#66736a;--bd:#d9dfd4;--pr:#1f5a3d;--pt:#fff;--ac:#c28a2b;--bad:#b3261e}
+@media(prefers-color-scheme:dark){:root{--bg:#141914;--card:#1d241d;--tx:#e6ece4;--mu:#9bab9d;--bd:#313d33;--pr:#6cbf86;--pt:#0e1c12;--ac:#e0b04f;--bad:#ff8a80}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.6 "Segoe UI",Tahoma,Arial,sans-serif}
+header{background:var(--pr);color:var(--pt);padding:14px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid var(--ac)}
+header h1{margin:0;font-size:1.15rem}
+main{max-width:1000px;margin:0 auto;padding:16px}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+nav button{flex:1;min-width:110px;background:var(--card);color:var(--tx);border:1px solid var(--bd);padding:10px;border-radius:8px;cursor:pointer;font:inherit}
+nav button[aria-current=true]{background:var(--pr);color:var(--pt);border-color:var(--pr)}
+section,.box{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:14px}
+h2{margin:0 0 12px;font-size:1.05rem}
+form{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;align-items:end}
+label{display:flex;flex-direction:column;font-size:.88rem;color:var(--mu);gap:3px}
+input,select{font:inherit;padding:8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--tx)}
+button.p{background:var(--pr);color:var(--pt);border:0;padding:10px 16px;border-radius:6px;cursor:pointer;font:inherit}
+:focus-visible{outline:3px solid var(--ac);outline-offset:1px}
+.w{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+th,td{padding:8px;border-bottom:1px solid var(--bd);text-align:right;white-space:nowrap}
+th{color:var(--mu);font-weight:600}
+.bad{color:var(--bad);font-weight:700}
+.info{background:var(--bg);border-radius:8px;padding:10px;margin-bottom:10px}
+#toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:10px 18px;border-radius:8px;display:none;max-width:90%}
+#login{max-width:360px;margin:60px auto}
+#login form{grid-template-columns:1fr}
+[hidden]{display:none!important}
+</style>
 </head>
 <body>
+<header><h1>تسيير مخزون الأسمدة الفلاحية</h1><button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button></header>
+<main>
+<div id="cfg" class="box" hidden>أدخل رابط مشروع Supabase والمفتاح العمومي (anon key) في أعلى كود الصفحة.</div>
 
-    <div class="login-card">
-        <div class="logo-container">
-            <img src="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif" alt="CCLS Adrar Logo" onerror="this.src='https://i.ibb.co/5W8g47v/ccls-logo.png'">
-        </div>
-        <h2>تعاونية الحبوب والبقول الجافة - أدرار</h2>
-        <form id="form-login">
-            <div class="form-group">
-                <label>اسم المستخدم</label>
-                <input type="text" id="login-user" placeholder="أدخل اسم المستخدم..." required>
-            </div>
-            <div class="form-group">
-                <label>كلمة المرور</label>
-                <input type="password" id="login-pass" placeholder="أدخل كلمة المرور..." required>
-            </div>
-            <button type="submit" class="login-btn">تسجيل الدخول</button>
-            <div id="login-error"></div>
-        </form>
-    </div>
+<div id="login" class="box" hidden>
+  <h2>تسجيل الدخول</h2>
+  <form id="lf">
+    <label>البريد الإلكتروني<input name="email" type="email" required></label>
+    <label>كلمة المرور<input name="password" type="password" required></label>
+    <button class="p">دخول</button>
+  </form>
+</div>
 
+<div id="app" hidden>
+<nav>
+  <button data-t="stock">المخزون</button>
+  <button data-t="invoices">الفواتير</button>
+  <button data-t="pickup">تسليم السماد</button>
+  <button data-t="receipts">وارد المخزن</button>
+</nav>
+
+<section id="stock" hidden>
+  <h2>حالة المخزون (بالقنطار)</h2>
+  <div class="w" id="stockT"></div>
+</section>
+
+<section id="invoices" hidden>
+  <h2>تسجيل فاتورة</h2>
+  <form id="fi">
+    <label>رقم الفاتورة<input name="invoice_no" required></label>
+    <label>السنة<input name="invoice_year" type="number" required></label>
+    <label>تاريخ الفاتورة<input name="invoice_date" type="date"></label>
+    <label>رقم الملف (Dossier)<input name="dossier_no"></label>
+    <label>الاسم (Nom)<input name="client_name"></label>
+    <label>اللقب / الاسم الشخصي (Prénom)<input name="farmer_name" required></label>
+    <label>المنطقة (Région)<input name="region"></label>
+    <label>السماد<input name="product" list="pl" required autocomplete="off" placeholder="اختر أو اكتب سمادا جديدا"></label>
+    <label>الكمية (QTX)<input name="qty" type="number" step="any" min="0" required></label>
+    <label>السعر لكل قنطار<input name="unit_price" type="number" step="any" min="0"></label>
+    <label>المخزن (Magasin)<input name="warehouse"></label>
+    <button class="p">حفظ الفاتورة</button>
+  </form>
+</section>
+<section id="invList" hidden>
+  <h2>الفواتير</h2>
+  <label style="margin-bottom:10px">بحث<input id="q" placeholder="رقم الفاتورة أو الاسم"></label>
+  <div class="w" id="invT"></div>
+</section>
+
+<section id="pickup" hidden>
+  <h2>تسجيل استلام (Bon d'enlèvement)</h2>
+  <label style="margin-bottom:10px">الفاتورة<select id="pi"></select></label>
+  <div class="info" id="pinfo"></div>
+  <form id="fp">
+    <label>الكمية المستلمة (QTX)<input name="qty" type="number" step="any" min="0" required></label>
+    <label>التاريخ<input name="w_date" type="date" required></label>
+    <label>رقم الهيكل أو الرقم التسلسلي للبطاقة الرمادية<input name="vehicle_ref" required></label>
+    <label>رقم إذن الخروج (Bon de sortie)<input name="bon_no"></label>
+    <button class="p">تسجيل الاستلام</button>
+  </form>
+  <div class="w" id="pT" style="margin-top:12px"></div>
+</section>
+
+<section id="receipts" hidden>
+  <h2>تسجيل وارد إلى المخزن</h2>
+  <form id="fr">
+    <label>السماد<input name="product" list="pl" required autocomplete="off"></label>
+    <label>الكمية (QTX)<input name="qty" type="number" step="any" min="0" required></label>
+    <label>التاريخ<input name="entry_date" type="date" required></label>
+    <label>ملاحظة<input name="note"></label>
+    <button class="p">حفظ</button>
+  </form>
+  <div class="w" id="rT" style="margin-top:12px"></div>
+</section>
+<datalist id="pl"></datalist>
+</div>
+</main>
+<div id="toast" role="status"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
-    const SUPABASE_URL = 'https://ibznldpkdrqgcdnrxwnj.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imliem5sZHBrZHJxZ2NkbnJ4d25qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5OTUwODUsImV4cCI6MjExMDU3MTA4NX0.LUyefDjCMWnac-cytLMkmOOLIPtgr0GdsPTWAqewJfw';
-    
-    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// ===== أدخل بيانات مشروعك هنا (Project Settings > API) =====
+const SUPABASE_URL = "https://YOUR-PROJECT.supabase.co";
+const SUPABASE_KEY = "YOUR-ANON-PUBLIC-KEY";
+// ===========================================================
 
-    window.addEventListener('DOMContentLoaded', () => {
-        if (localStorage.getItem('ccls_logged') === 'true') {
-            window.location.href = './dashboard.html';
-        }
-    });
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const today = () => new Date().toISOString().slice(0, 10);
+const n = v => Number(v).toLocaleString("fr-FR", {maximumFractionDigits: 2});
+const tbl = (h, rows) => rows.length
+  ? `<table><thead><tr>${h.map(x => `<th>${x}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`
+  : `<p style="color:var(--mu)">لا توجد بيانات بعد.</p>`;
+let tt;
+function toast(m, bad) {
+  const t = $("#toast"); t.textContent = m; t.style.background = bad ? "var(--bad)" : "var(--tx)";
+  t.style.display = "block"; clearTimeout(tt); tt = setTimeout(() => t.style.display = "none", 3500);
+}
 
-    document.getElementById('form-login').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const user = document.getElementById('login-user').value.trim();
-        const pass = document.getElementById('login-pass').value.trim();
-        const errDiv = document.getElementById('login-error');
-        errDiv.style.display = 'none';
+if (SUPABASE_URL.includes("YOUR-PROJECT")) { $("#cfg").hidden = false; throw new Error("Supabase non configuré"); }
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        try {
-            // محاولة جلب المستخدم من قاعدة البيانات
-            const { data, error } = await db
-                .from('users')
-                .select('*')
-                .eq('username', user)
-                .eq('password', pass);
+// ----- الدخول -----
+$("#lf").onsubmit = async e => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const { error } = await sb.auth.signInWithPassword({ email: f.get("email"), password: f.get("password") });
+  if (error) toast("تعذّر الدخول: " + error.message, 1);
+};
+$("#out").onclick = () => sb.auth.signOut();
+sb.auth.onAuthStateChange((_, s) => {
+  $("#login").hidden = !!s; $("#app").hidden = !s; $("#out").hidden = !s;
+  if (s) init();
+});
 
-            if (error) {
-                // عرض خطأ Supabase الحقيقي لنعرف المشكلة بدقة
-                errDiv.innerText = 'خطأ من قاعدة البيانات: ' + error.message;
-                errDiv.style.display = 'block';
-                return;
-            }
+// ----- التبويبات -----
+const tabs = { stock: ["stock"], invoices: ["invoices", "invList"], pickup: ["pickup"], receipts: ["receipts"] };
+const load = { stock: loadStock, invoices: loadInvoices, pickup: loadPickup, receipts: loadReceipts };
+function show(t) {
+  document.querySelectorAll("main section").forEach(s => s.hidden = true);
+  tabs[t].forEach(id => $("#" + id).hidden = false);
+  document.querySelectorAll("nav button").forEach(b => b.setAttribute("aria-current", b.dataset.t === t));
+  loadProducts(); load[t]();
+}
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.dataset.t));
+function init() {
+  $("#fi [name=invoice_year]").value = new Date().getFullYear();
+  $("#fi [name=invoice_date]").value = today();
+  $("#fp [name=w_date]").value = today();
+  $("#fr [name=entry_date]").value = today();
+  show("stock");
+}
 
-            if (data && data.length > 0) {
-                localStorage.setItem('ccls_logged', 'true');
-                window.location.href = './dashboard.html';
-            } else {
-                // حل مؤقت مباشر لتسجيل الدخول في حال كانت الصلاحيات تغلق الجدول
-                if (user === 'admin' && pass === 'ccls2026') {
-                    localStorage.setItem('ccls_logged', 'true');
-                    window.location.href = './dashboard.html';
-                } else {
-                    errDiv.innerText = 'اسم المستخدم أو كلمة المرور غير صحيحة!';
-                    errDiv.style.display = 'block';
-                }
-            }
-        } catch (err) {
-            errDiv.innerText = 'خطأ في الاتصال: ' + err.message;
-            errDiv.style.display = 'block';
-        }
-    });
+// ----- الأسمدة (قائمة تلقائية) -----
+async function loadProducts() {
+  const { data } = await sb.from("products").select("name").order("name");
+  $("#pl").innerHTML = (data || []).map(p => `<option value="${esc(p.name)}">`).join("");
+}
+async function productId(name) {
+  const { data, error } = await sb.from("products").upsert({ name: name.trim() }, { onConflict: "name" }).select("id").single();
+  if (error) throw error;
+  return data.id;
+}
+
+// ----- المخزون -----
+async function loadStock() {
+  const { data, error } = await sb.from("stock_status").select("*").order("name");
+  if (error) return toast(error.message, 1);
+  $("#stockT").innerHTML = tbl(["السماد", "الوارد", "المستلم", "الرصيد"],
+    data.map(r => [esc(r.name), n(r.received), n(r.withdrawn), `<span class="${r.balance < 0 ? "bad" : ""}">${n(r.balance)}</span>`]));
+}
+
+// ----- وارد المخزن -----
+$("#fr").onsubmit = async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  try {
+    const product_id = await productId(f.product);
+    const { error } = await sb.from("stock_in").insert({ product_id, qty: f.qty, entry_date: f.entry_date, note: f.note || null });
+    if (error) throw error;
+    toast("تم حفظ الوارد"); e.target.reset(); $("#fr [name=entry_date]").value = today();
+    loadProducts(); loadReceipts();
+  } catch (x) { toast(x.message, 1); }
+};
+async function loadReceipts() {
+  const { data } = await sb.from("stock_in").select("*, products(name)").order("id", { ascending: false }).limit(50);
+  $("#rT").innerHTML = tbl(["التاريخ", "السماد", "الكمية", "ملاحظة"],
+    (data || []).map(r => [r.entry_date, esc(r.products?.name), n(r.qty), esc(r.note)]));
+}
+
+// ----- الفواتير -----
+let invoices = [];
+$("#fi").onsubmit = async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  try {
+    const product_id = await productId(f.product);
+    delete f.product;
+    for (const k in f) if (f[k] === "") f[k] = null;
+    const { error } = await sb.from("invoices").insert({ ...f, product_id });
+    if (error) throw error;
+    toast("تم حفظ الفاتورة"); e.target.reset(); init2();
+    loadProducts(); loadInvoices();
+  } catch (x) { toast(x.code === "23505" ? "رقم الفاتورة مسجّل من قبل في هذه السنة" : x.message, 1); }
+};
+function init2() { $("#fi [name=invoice_year]").value = new Date().getFullYear(); $("#fi [name=invoice_date]").value = today(); }
+async function loadInvoices() {
+  const { data, error } = await sb.from("invoice_balance").select("*").order("id", { ascending: false }).limit(300);
+  if (error) return toast(error.message, 1);
+  invoices = data; drawInvoices();
+}
+function drawInvoices() {
+  const q = $("#q").value.trim().toLowerCase();
+  const rows = invoices.filter(i => !q || `${i.invoice_no} ${i.client_name} ${i.farmer_name}`.toLowerCase().includes(q));
+  $("#invT").innerHTML = tbl(["الفاتورة", "التاريخ", "الفلاح", "السماد", "الكمية", "المستلم", "المتبقي"],
+    rows.map(i => [`${esc(i.invoice_no)}/${i.invoice_year}`, i.invoice_date || "", esc(`${i.client_name || ""} ${i.farmer_name || ""}`),
+      esc(i.product_name), n(i.qty), n(i.taken), `<b>${n(i.remaining)}</b>`]));
+}
+$("#q").oninput = drawInvoices;
+
+// ----- التسليم -----
+let open = [];
+async function loadPickup() {
+  const { data, error } = await sb.from("invoice_balance").select("*").gt("remaining", 0).order("id", { ascending: false });
+  if (error) return toast(error.message, 1);
+  open = data;
+  $("#pi").innerHTML = data.length
+    ? data.map(i => `<option value="${i.id}">${esc(i.invoice_no)}/${i.invoice_year} - ${esc(i.farmer_name)} - ${esc(i.product_name)}</option>`).join("")
+    : `<option value="">لا توجد فواتير بها كمية متبقية</option>`;
+  drawPickup();
+}
+async function drawPickup() {
+  const i = open.find(x => x.id == $("#pi").value);
+  $("#pinfo").textContent = i ? `${i.client_name || ""} ${i.farmer_name || ""} | ${i.product_name} | الكمية: ${n(i.qty)} | المستلم: ${n(i.taken)} | المتبقي: ${n(i.remaining)}` : "";
+  if (!i) { $("#pT").innerHTML = ""; return; }
+  const { data } = await sb.from("withdrawals").select("*").eq("invoice_id", i.id).order("id", { ascending: false });
+  $("#pT").innerHTML = tbl(["التاريخ", "الكمية", "المركبة", "إذن الخروج"],
+    (data || []).map(w => [w.w_date, n(w.qty), esc(w.vehicle_ref), esc(w.bon_no)]));
+}
+$("#pi").onchange = drawPickup;
+$("#fp").onsubmit = async e => {
+  e.preventDefault();
+  const id = $("#pi").value; if (!id) return;
+  const f = Object.fromEntries(new FormData(e.target));
+  if (f.bon_no === "") f.bon_no = null;
+  const { error } = await sb.from("withdrawals").insert({ ...f, invoice_id: id });
+  if (error) return toast(error.message, 1);
+  toast("تم تسجيل الاستلام"); e.target.reset(); $("#fp [name=w_date]").value = today();
+  const keep = id; await loadPickup(); $("#pi").value = keep; drawPickup();
+};
 </script>
 </body>
 </html>
