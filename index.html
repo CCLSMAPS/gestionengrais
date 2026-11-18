@@ -3,74 +3,240 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تسجيل الدخول - تسيير مخزون الأسمدة (CCLS ADRAR)</title>
+    <title>تسيير مخزون الأسمدة - تعاونية الحبوب والبقول الجافة أدرار (CCLS)</title>
     <!-- مكتبة Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
             --primary: #1b5e20;
             --secondary: #2e7d32;
+            --accent: #f57f17;
             --bg: #f4f6f8;
+            --card: #ffffff;
+            --text: #263238;
             --border: #cfd8dc;
         }
         * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { margin: 0; background-color: var(--bg); display: flex; justify-content: center; align-items: center; height: 100vh; }
-        .login-card {
-            background: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-            width: 100%;
-            max-width: 400px;
-            text-align: center;
+        body { margin: 0; background-color: var(--bg); color: var(--text); }
+        header {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.15);
         }
-        .logo-container img {
-            width: 100px;
-            height: 100px;
-            object-fit: contain;
-            margin-bottom: 10px;
-            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));
+        header h1 { margin: 0; font-size: 1.3rem; }
+        header span { font-size: 0.9rem; opacity: 0.9; }
+        .container { max-width: 1200px; margin: 20px auto; padding: 0 15px; }
+        
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .tab-btn {
+            padding: 12px 20px;
+            border: none;
+            background: var(--card);
+            color: var(--text);
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
-        .login-card h2 { margin: 5px 0 20px 0; color: var(--primary); font-size: 1.2rem; }
-        .form-group { margin-bottom: 15px; text-align: right; }
-        label { font-weight: 600; margin-bottom: 5px; font-size: 0.9rem; display: block; }
-        input { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 1rem; }
-        .login-btn {
+        .tab-btn.active { background: var(--primary); color: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .card {
+            background: var(--card);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }
+        .card h2 { margin-top: 0; color: var(--primary); border-bottom: 2px solid var(--bg); padding-bottom: 10px; font-size: 1.15rem; }
+        .grid-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; }
+        .form-group { display: flex; flex-direction: column; }
+        label { font-weight: 600; margin-bottom: 5px; font-size: 0.9rem; }
+        input, select { padding: 10px; border: 1px solid var(--border); border-radius: 5px; font-size: 0.95rem; }
+        button.btn-submit {
             background: var(--primary);
             color: white;
             border: none;
-            width: 100%;
-            padding: 12px;
-            border-radius: 6px;
-            font-size: 1rem;
+            padding: 12px 25px;
+            border-radius: 5px;
             font-weight: bold;
             cursor: pointer;
-            margin-top: 10px;
+            margin-top: 15px;
         }
-        .login-btn:hover { background: var(--secondary); }
-        #login-error { color: #d32f2f; margin-top: 10px; font-size: 0.9rem; display: none; }
+        button.btn-submit:hover { background: var(--secondary); }
+        button.btn-action {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .table-responsive { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; }
+        th, td { padding: 10px 12px; border: 1px solid var(--border); text-align: right; }
+        th { background-color: #e8f5e9; color: var(--primary); }
+        tr:nth-child(even) { background-color: #fafafa; }
+        .badge { padding: 4px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; }
+        .badge-pending { background: #fff3e0; color: #e65100; }
+        .badge-done { background: #e8f5e9; color: #2e7d32; }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content { background: white; padding: 25px; border-radius: 8px; width: 90%; max-width: 550px; position: relative; }
+        .close-btn { position: absolute; top: 15px; left: 15px; font-size: 1.5rem; cursor: pointer; color: #666; }
+        .stock-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stock-box { background: white; border-right: 5px solid var(--primary); padding: 15px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
+        .stock-box h3 { margin: 0 0 5px 0; font-size: 1rem; color: #555; }
+        .stock-box .qty { font-size: 1.5rem; font-weight: bold; color: var(--primary); }
     </style>
 </head>
 <body>
 
-    <div class="login-card">
-        <div class="logo-container">
-            <!-- الشعار -->
-            <img src="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif" alt="CCLS Adrar Logo" onerror="this.src='https://i.ibb.co/5W8g47v/ccls-logo.png'">
+    <header>
+        <div>
+            <h1>تعاونية الحبوب والبقول الجافة لولاية أدرار (CCLS ADRAR)</h1>
+            <span>نظام تسيير مخزون الأسمدة الفلاحية وأذون التسليم (Bon d'Enlèvement)</span>
         </div>
-        <h2>تعاونية الحبوب والبقول الجافة - أدرار</h2>
-        <form id="form-login">
-            <div class="form-group">
-                <label>اسم المستخدم</label>
-                <input type="text" id="login-user" placeholder="أدخل اسم المستخدم..." required>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <span id="connection-status" style="font-size: 0.8rem; background: rgba(255,255,255,0.2); padding: 4px 8px; border-radius: 4px;">متصل ✓</span>
+            <button onclick="logout()" style="background: #d32f2f; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">تسجيل الخروج</button>
+        </div>
+    </header>
+
+    <div class="container">
+        <div id="stock-summary" class="stock-cards"></div>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('tab-factures')">1. تسجيل فاتورة / إذن تسليم (Bon d'Enlèvement)</button>
+            <button class="tab-btn" onclick="switchTab('tab-sorties')">2. سجل خروج الشاحنات (Bons de Sortie)</button>
+            <button class="tab-btn" onclick="switchTab('tab-stock')">3. تموين المخزن (Entrée Stock)</button>
+        </div>
+
+        <!-- القسم 1 -->
+        <div id="tab-factures" class="tab-content active">
+            <div class="card">
+                <h2>تسجيل فاتورة جديدة واردة من المصلحة التجارية</h2>
+                <form id="form-facture">
+                    <div class="grid-form">
+                        <div class="form-group"><label>رقم الفاتورة*</label><input type="text" id="num_facture" placeholder="مثال: 21/2026" required></div>
+                        <div class="form-group"><label>رقم الملف / الترقيم</label><input type="text" id="dossier_matricule" placeholder="مثال: 0642068"></div>
+                        <div class="form-group"><label>اسم الفلاح أو المؤسسة*</label><input type="text" id="nom_client" placeholder="مثال: SARL DUNAYSIR" required></div>
+                        <div class="form-group"><label>اللقب / الاسم الأول</label><input type="text" id="prenom_client" placeholder="مثال: TEBBAL MOHAMMED"></div>
+                        <div class="form-group"><label>المنطقة</label><input type="text" id="region" placeholder="مثال: AOULEF"></div>
+                        <div class="form-group"><label>كود السماد</label><input type="text" id="code_produit" placeholder="مثال: 01"></div>
+                        <div class="form-group">
+                            <label>تعيين السماد (اختر أو اكتب جديداً)*</label>
+                            <input list="liste-engrais" id="designation_engrais" placeholder="اختر السماد..." required>
+                            <datalist id="liste-engrais"></datalist>
+                        </div>
+                        <div class="form-group"><label>الكمية الإجمالية (قنطار QTX)*</label><input type="number" step="0.01" id="quantite_totale" placeholder="1000.00" required></div>
+                    </div>
+                    <button type="submit" class="btn-submit">حفظ الفاتورة وإذن التسليم</button>
+                </form>
             </div>
-            <div class="form-group">
-                <label>كلمة المرور</label>
-                <input type="password" id="login-pass" placeholder="أدخل كلمة المرور..." required>
+
+            <div class="card">
+                <h2>قائمة الفواتير والأرصدة المتبقية للفلاحين في المخزن</h2>
+                <input type="text" id="search-facture" onkeyup="filterFactures()" placeholder="بحث برقم الفاتورة، اسم الفلاح، أو المنطقة..." style="width: 100%; margin-bottom: 10px;">
+                <div class="table-responsive">
+                    <table id="table-factures">
+                        <thead>
+                            <tr>
+                                <th>رقم الفاتورة</th>
+                                <th>رقم الملف</th>
+                                <th>الفلاح / المؤسسة</th>
+                                <th>المنطقة</th>
+                                <th>نوع السماد</th>
+                                <th>الكمية الإجمالية</th>
+                                <th>الكمية المسحوبة</th>
+                                <th>الباقي في المخزن</th>
+                                <th>الحالة</th>
+                                <th>إجراء</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
             </div>
-            <button type="submit" class="login-btn">تسجيل الدخول</button>
-            <div id="login-error">اسم المستخدم أو كلمة المرور غير صحيحة!</div>
-        </form>
+        </div>
+
+        <!-- القسم 2 -->
+        <div id="tab-sorties" class="tab-content">
+            <div class="card">
+                <h2>سجل حركة خروج الشاحنات (Cadre réservé au magasinier)</h2>
+                <div class="table-responsive">
+                    <table id="table-sorties">
+                        <thead>
+                            <tr>
+                                <th>تاريخ التسليم</th>
+                                <th>رقم وصل الخروج</th>
+                                <th>رقم الفاتورة</th>
+                                <th>الفلاح المستفيد</th>
+                                <th>هوية المستلم</th>
+                                <th>رقم بطاقة التعريف</th>
+                                <th>ترقيم الشاحنة / الهيكل</th>
+                                <th>نوع السماد</th>
+                                <th>الكمية المحملة (قنطار)</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- القسم 3 -->
+        <div id="tab-stock" class="tab-content">
+            <div class="card">
+                <h2>إضافة كمية جديدة للمخزن (تموين التعاونية)</h2>
+                <form id="form-entree">
+                    <div class="grid-form">
+                        <div class="form-group"><label>كود السماد</label><input type="text" id="entree_code" placeholder="01"></div>
+                        <div class="form-group"><label>اسم السماد*</label><input list="liste-engrais" id="entree_designation" placeholder="اختر أو اكتب السماد..." required></div>
+                        <div class="form-group"><label>الكمية الداخلة (قنطار)*</label><input type="number" step="0.01" id="entree_quantite" required></div>
+                        <div class="form-group"><label>مرجع وثيقة الدخول</label><input type="text" id="entree_ref" placeholder="رقم وصل الاستلام"></div>
+                    </div>
+                    <button type="submit" class="btn-submit">إضافة إلى رصيد المخزن</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- نافذة تسجيل شاحنة -->
+    <div id="modal-sortie" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeModal()">&times;</span>
+            <h2 style="color: var(--primary); margin-top: 0;">تسجيل خروج شاحنة (Bon de Sortie)</h2>
+            <p id="modal-info" style="background: #f1f8e9; padding: 10px; border-radius: 5px; font-size: 0.9rem;"></p>
+            <form id="form-sortie">
+                <input type="hidden" id="sortie_facture_id">
+                <input type="hidden" id="sortie_produit_id">
+                <input type="hidden" id="sortie_max_qty">
+                <div class="grid-form">
+                    <div class="form-group"><label>تاريخ التسليم*</label><input type="date" id="date_livraison" required></div>
+                    <div class="form-group"><label>رقم وصل الخروج*</label><input type="text" id="num_bon_sortie" required></div>
+                    <div class="form-group"><label>هوية المستلم / السائق*</label><input type="text" id="identite_preneur" required></div>
+                    <div class="form-group"><label>رقم بطاقة التعريف*</label><input type="text" id="num_piece_identite" required></div>
+                    <div class="form-group"><label>ترقيم الشاحنة / الهيكل*</label><input type="text" id="matricule_transport" placeholder="مثال: 00123-118-01" required></div>
+                    <div class="form-group"><label>الكمية المحملة (قنطار)*</label><input type="number" step="0.01" id="quantite_chargee" required></div>
+                </div>
+                <button type="submit" class="btn-submit" style="width: 100%;">تأكيد الشحن وخصم الكمية</button>
+            </form>
+        </div>
     </div>
 
 <script>
@@ -79,38 +245,260 @@
     
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // إذا كان المستخدم مسجلاً من قبل، يتم توجيهه مباشرة لصفحة التسيير
+    let produitsList = [];
+    let facturesList = [];
+
+    // التحقق من الحماية: إذا لم يكن مسجلاً للدخول، يتم إرجاعه لصفحة login.html
     window.addEventListener('DOMContentLoaded', () => {
-        if (localStorage.getItem('ccls_logged') === 'true') {
-            window.location.href = 'index.html';
+        if (localStorage.getItem('ccls_logged') !== 'true') {
+            window.location.href = 'login.html';
+        } else {
+            init();
         }
     });
 
-    document.getElementById('form-login').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const user = document.getElementById('login-user').value.trim();
-        const pass = document.getElementById('login-pass').value.trim();
-        const errDiv = document.getElementById('login-error');
-        errDiv.style.display = 'none';
+    function logout() {
+        localStorage.removeItem('ccls_logged');
+        window.location.href = 'login.html';
+    }
 
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById(tabId).classList.add('active');
+        event.target.classList.add('active');
+    }
+
+    async function init() {
+        document.getElementById('date_livraison').valueAsDate = new Date();
         try {
-            const { data, error } = await db
-                .from('users')
-                .select('*')
-                .eq('username', user)
-                .eq('password', pass);
-
-            if (error || !data || data.length === 0) {
-                errDiv.innerText = 'اسم المستخدم أو كلمة المرور غير صحيحة!';
-                errDiv.style.display = 'block';
-            } else {
-                localStorage.setItem('ccls_logged', 'true');
-                window.location.href = 'index.html'; // الانتقال لصفحة المخزن
-            }
+            await loadProduits();
+            await loadFactures();
+            await loadSorties();
         } catch (err) {
-            errDiv.innerText = 'حدث خطأ في الاتصال!';
-            errDiv.style.display = 'block';
+            console.error(err);
         }
+    }
+
+    async function loadProduits() {
+        const { data, error } = await db.from('produits_engrais').select('*').order('id');
+        if (error) throw error;
+        produitsList = data;
+
+        const datalist = document.getElementById('liste-engrais');
+        const summary = document.getElementById('stock-summary');
+        datalist.innerHTML = '';
+        summary.innerHTML = '';
+
+        data.forEach(p => {
+            const option = document.createElement('option');
+            option.value = p.designation;
+            datalist.appendChild(option);
+
+            summary.innerHTML += `
+                <div class="stock-box">
+                    <h3>[${p.code_produit || '-'}] ${p.designation}</h3>
+                    <div class="qty">${Number(p.stock_actuel).toLocaleString('fr-FR')} <span style="font-size:0.9rem; font-weight:normal;">قنطار</span></div>
+                </div>
+            `;
+        });
+    }
+
+    async function getOrCreateProduit(designation, code) {
+        const cleanName = designation.trim().toUpperCase();
+        let existing = produitsList.find(p => p.designation.toUpperCase() === cleanName);
+        if (existing) return existing;
+
+        const { data, error } = await db
+            .from('produits_engrais')
+            .insert([{ designation: cleanName, code_produit: code || null, stock_actuel: 0 }])
+            .select()
+            .single();
+        if (error) throw error;
+        await loadProduits();
+        return data;
+    }
+
+    document.getElementById('form-facture').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const designation = document.getElementById('designation_engrais').value;
+        const code = document.getElementById('code_produit').value;
+        const produit = await getOrCreateProduit(designation, code);
+
+        const newFacture = {
+            num_facture: document.getElementById('num_facture').value,
+            dossier_matricule: document.getElementById('dossier_matricule').value,
+            nom_client: document.getElementById('nom_client').value,
+            prenom_client: document.getElementById('prenom_client').value,
+            region: document.getElementById('region').value,
+            produit_id: produit.id,
+            quantite_totale: parseFloat(document.getElementById('quantite_totale').value),
+            quantite_retiree: 0
+        };
+
+        const { error } = await db.from('factures_enl').insert([newFacture]);
+        if (error) {
+            alert('خطأ: ' + error.message);
+        } else {
+            alert('تم حفظ الفاتورة وإذن التسليم بنجاح!');
+            e.target.reset();
+            await loadFactures();
+        }
+    });
+
+    async function loadFactures() {
+        const { data, error } = await db
+            .from('factures_enl')
+            .select('*, produits_engrais(designation, code_produit)')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        facturesList = data;
+        renderFactures(data);
+    }
+
+    function renderFactures(list) {
+        const tbody = document.querySelector('#table-factures tbody');
+        tbody.innerHTML = '';
+        list.forEach(f => {
+            const reste = (Number(f.quantite_totale) - Number(f.quantite_retiree)).toFixed(2);
+            const isDone = reste <= 0;
+            tbody.innerHTML += `
+                <tr>
+                    <td><strong>${f.num_facture}</strong></td>
+                    <td>${f.dossier_matricule || '-'}</td>
+                    <td>${f.nom_client} ${f.prenom_client || ''}</td>
+                    <td>${f.region || '-'}</td>
+                    <td>${f.produits_engrais?.designation || '-'}</td>
+                    <td>${Number(f.quantite_totale).toFixed(2)}</td>
+                    <td>${Number(f.quantite_retiree).toFixed(2)}</td>
+                    <td style="font-weight:bold; color:${isDone ? 'green' : '#d84315'}">${reste}</td>
+                    <td><span class="badge ${isDone ? 'badge-done' : 'badge-pending'}">${isDone ? 'مكتمل' : 'قيد السحب'}</span></td>
+                    <td>
+                        ${!isDone ? `<button class="btn-action" onclick="openSortieModal(${f.id})">شحن / خروج</button>` : '✓'}
+                    </td>
+                </tr>
+            `;
+        });
+    }
+
+    function filterFactures() {
+        const q = document.getElementById('search-facture').value.toLowerCase();
+        const filtered = facturesList.filter(f => 
+            f.num_facture.toLowerCase().includes(q) ||
+            f.nom_client.toLowerCase().includes(q) ||
+            (f.region && f.region.toLowerCase().includes(q)) ||
+            (f.dossier_matricule && f.dossier_matricule.toLowerCase().includes(q))
+        );
+        renderFactures(filtered);
+    }
+
+    function openSortieModal(factureId) {
+        const f = facturesList.find(item => item.id === factureId);
+        const reste = (Number(f.quantite_totale) - Number(f.quantite_retiree)).toFixed(2);
+
+        document.getElementById('sortie_facture_id').value = f.id;
+        document.getElementById('sortie_produit_id').value = f.produit_id;
+        document.getElementById('sortie_max_qty').value = reste;
+        document.getElementById('quantite_chargee').max = reste;
+        document.getElementById('quantite_chargee').value = reste;
+        
+        document.getElementById('modal-info').innerHTML = `
+            <strong>الفاتورة رقم:</strong> ${f.num_facture} | <strong>المستفيد:</strong> ${f.nom_client}<br>
+            <strong>السماد:</strong> ${f.produits_engrais.designation} | <strong>الكمية المتبقية:</strong> ${reste} قنطار
+        `;
+        document.getElementById('modal-sortie').style.display = 'flex';
+    }
+
+    function closeModal() {
+        document.getElementById('modal-sortie').style.display = 'none';
+    }
+
+    document.getElementById('form-sortie').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const factureId = parseInt(document.getElementById('sortie_facture_id').value);
+        const produitId = parseInt(document.getElementById('sortie_produit_id').value);
+        const maxQty = parseFloat(document.getElementById('sortie_max_qty').value);
+        const qtyChargee = parseFloat(document.getElementById('quantite_chargee').value);
+
+        if (qtyChargee <= 0 || qtyChargee > maxQty) {
+            alert('الكمية المحملة يجب ألا تتجاوز الكمية المتبقية (' + maxQty + ')');
+            return;
+        }
+
+        const sortieData = {
+            facture_id: factureId,
+            date_livraison: document.getElementById('date_livraison').value,
+            num_bon_sortie: document.getElementById('num_bon_sortie').value,
+            identite_preneur: document.getElementById('identite_preneur').value,
+            num_piece_identite: document.getElementById('num_piece_identite').value,
+            matricule_transport: document.getElementById('matricule_transport').value,
+            quantite_chargee: qtyChargee
+        };
+
+        const { error: errSortie } = await db.from('sorties_livraisons').insert([sortieData]);
+        if (errSortie) return alert('خطأ: ' + errSortie.message);
+
+        const f = facturesList.find(item => item.id === factureId);
+        const nouvelleQtyRetiree = Number(f.quantite_retiree) + qtyChargee;
+        await db.from('factures_enl').update({ quantite_retiree: nouvelleQtyRetiree }).eq('id', factureId);
+
+        const p = produitsList.find(item => item.id === produitId);
+        const nouveauStock = Number(p.stock_actuel) - qtyChargee;
+        await db.from('produits_engrais').update({ stock_actuel: nouveauStock }).eq('id', produitId);
+
+        alert('تم تسجيل خروج الشاحنة وتحديث الأرصدة بنجاح!');
+        closeModal();
+        e.target.reset();
+        document.getElementById('date_livraison').valueAsDate = new Date();
+        await init();
+    });
+
+    async function loadSorties() {
+        const { data, error } = await db
+            .from('sorties_livraisons')
+            .select('*, factures_enl(num_facture, nom_client, produits_engrais(designation))')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+
+        const tbody = document.querySelector('#table-sorties tbody');
+        tbody.innerHTML = '';
+        data.forEach(s => {
+            tbody.innerHTML += `
+                <tr>
+                    <td>${s.date_livraison}</td>
+                    <td><strong>${s.num_bon_sortie || '-'}</strong></td>
+                    <td>${s.factures_enl?.num_facture || '-'}</td>
+                    <td>${s.factures_enl?.nom_client || '-'}</td>
+                    <td>${s.identite_preneur || '-'}</td>
+                    <td>${s.num_piece_identite || '-'}</td>
+                    <td><span style="background:#eceff1; padding:2px 6px; border-radius:4px; font-family:monospace;">${s.matricule_transport}</span></td>
+                    <td>${s.factures_enl?.produits_engrais?.designation || '-'}</td>
+                    <td><strong>${Number(s.quantite_chargee).toFixed(2)}</strong></td>
+                </tr>
+            `;
+        });
+    }
+
+    document.getElementById('form-entree').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const designation = document.getElementById('entree_designation').value;
+        const code = document.getElementById('entree_code').value;
+        const val_qty = parseFloat(document.getElementById('entree_quantite').value);
+
+        const produit = await getOrCreateProduit(designation, code);
+
+        await db.from('entrees_stock').insert([{
+            produit_id: produit.id,
+            quantite: val_qty,
+            reference_bon: document.getElementById('entree_ref').value
+        }]);
+
+        const nouveauStock = Number(produit.stock_actuel) + val_qty;
+        await db.from('produits_engrais').update({ stock_actuel: nouveauStock }).eq('id', produit.id);
+
+        alert('تمت إضافة الكمية إلى المخزن بنجاح!');
+        e.target.reset();
+        await init();
     });
 </script>
 </body>

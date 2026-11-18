@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تسجيل الدخول - تسيير مخزون الأسمدة (CCLS ADRAR)</title>
+    <!-- مكتبة Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --primary: #1b5e20;
+            --secondary: #2e7d32;
+            --bg: #f4f6f8;
+            --border: #cfd8dc;
+        }
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { margin: 0; background-color: var(--bg); display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .login-card {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+        .logo-container img {
+            width: 100px;
+            height: 100px;
+            object-fit: contain;
+            margin-bottom: 10px;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));
+        }
+        .login-card h2 { margin: 5px 0 20px 0; color: var(--primary); font-size: 1.2rem; }
+        .form-group { margin-bottom: 15px; text-align: right; }
+        label { font-weight: 600; margin-bottom: 5px; font-size: 0.9rem; display: block; }
+        input { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 1rem; }
+        .login-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            width: 100%;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .login-btn:hover { background: var(--secondary); }
+        #login-error { color: #d32f2f; margin-top: 10px; font-size: 0.9rem; display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="login-card">
+        <div class="logo-container">
+            <!-- الشعار -->
+            <img src="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif" alt="CCLS Adrar Logo" onerror="this.src='https://i.ibb.co/5W8g47v/ccls-logo.png'">
+        </div>
+        <h2>تعاونية الحبوب والبقول الجافة - أدرار</h2>
+        <form id="form-login">
+            <div class="form-group">
+                <label>اسم المستخدم</label>
+                <input type="text" id="login-user" placeholder="أدخل اسم المستخدم..." required>
+            </div>
+            <div class="form-group">
+                <label>كلمة المرور</label>
+                <input type="password" id="login-pass" placeholder="أدخل كلمة المرور..." required>
+            </div>
+            <button type="submit" class="login-btn">تسجيل الدخول</button>
+            <div id="login-error">اسم المستخدم أو كلمة المرور غير صحيحة!</div>
+        </form>
+    </div>
+
+<script>
+    const SUPABASE_URL = 'https://ibznldpkdrqgcdnrxwnj.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlibmtkbHBrZHJxZ2NkbnJ4d25qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5OTUwODUsImV4cCI6MjExMDU3MTA4NX0.LUyefDjCMWnac-cytLMkmOOLIPtgr0GdsPTWAqewJfw';
+    
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // إذا كان المستخدم مسجلاً من قبل، يتم توجيهه مباشرة لصفحة التسيير
+    window.addEventListener('DOMContentLoaded', () => {
+        if (localStorage.getItem('ccls_logged') === 'true') {
+            window.location.href = 'index.html';
+        }
+    });
+
+    document.getElementById('form-login').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const user = document.getElementById('login-user').value.trim();
+        const pass = document.getElementById('login-pass').value.trim();
+        const errDiv = document.getElementById('login-error');
+        errDiv.style.display = 'none';
+
+        try {
+            const { data, error } = await db
+                .from('users')
+                .select('*')
+                .eq('username', user)
+                .eq('password', pass);
+
+            if (error || !data || data.length === 0) {
+                errDiv.innerText = 'اسم المستخدم أو كلمة المرور غير صحيحة!';
+                errDiv.style.display = 'block';
+            } else {
+                localStorage.setItem('ccls_logged', 'true');
+                window.location.href = 'index.html'; // الانتقال لصفحة المخزن
+            }
+        } catch (err) {
+            errDiv.innerText = 'حدث خطأ في الاتصال!';
+            errDiv.style.display = 'block';
+        }
+    });
+</script>
+</body>
+</html>
