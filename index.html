@@ -35,7 +35,7 @@ th{color:var(--mu);font-weight:600}
 </style>
 </head>
 <body>
-<header><h1>تسيير مخزون الأسمدة الفلاحية</h1><button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button></header>
+<header><h1>تسيير مخزون الأسمدة الفلاحية</h1><div style="display:flex;gap:8px"><button class="p" id="pwb" hidden style="background:var(--ac);color:#1d2b22">كلمة المرور</button><button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button></div></header>
 <main>
 <div id="cfg" class="box" hidden>أدخل رابط مشروع Supabase والمفتاح العمومي (anon key) في أعلى كود الصفحة.</div>
 
@@ -109,6 +109,14 @@ th{color:var(--mu);font-weight:600}
   </form>
   <div class="w" id="rT" style="margin-top:12px"></div>
 </section>
+<section id="account" hidden>
+  <h2>تغيير كلمة المرور</h2>
+  <form id="fa">
+    <label>كلمة المرور الجديدة<input name="p1" type="password" minlength="6" required autocomplete="new-password"></label>
+    <label>تأكيد كلمة المرور<input name="p2" type="password" minlength="6" required autocomplete="new-password"></label>
+    <button class="p">حفظ كلمة المرور</button>
+  </form>
+</section>
 <datalist id="pl"></datalist>
 </div>
 </main>
@@ -149,14 +157,23 @@ $("#lf").onsubmit = async e => {
   if (error) toast("تعذّر الدخول: " + error.message, 1);
 };
 $("#out").onclick = () => sb.auth.signOut();
+$("#pwb").onclick = () => show("account");
+$("#fa").onsubmit = async e => {
+  e.preventDefault();
+  const f = new FormData(e.target), p = f.get("p1");
+  if (p !== f.get("p2")) return toast("كلمتا المرور غير متطابقتين", 1);
+  const { error } = await sb.auth.updateUser({ password: p });
+  if (error) return toast(error.message, 1);
+  toast("تم تغيير كلمة المرور"); e.target.reset();
+};
 sb.auth.onAuthStateChange((_, s) => {
-  $("#login").hidden = !!s; $("#app").hidden = !s; $("#out").hidden = !s;
+  $("#login").hidden = !!s; $("#app").hidden = !s; $("#out").hidden = !s; $("#pwb").hidden = !s;
   if (s) init();
 });
 
 // ----- التبويبات -----
-const tabs = { stock: ["stock"], invoices: ["invoices", "invList"], pickup: ["pickup"], receipts: ["receipts"] };
-const load = { stock: loadStock, invoices: loadInvoices, pickup: loadPickup, receipts: loadReceipts };
+const tabs = { stock: ["stock"], invoices: ["invoices", "invList"], pickup: ["pickup"], receipts: ["receipts"], account: ["account"] };
+const load = { stock: loadStock, invoices: loadInvoices, pickup: loadPickup, receipts: loadReceipts, account: () => {} };
 function show(t) {
   document.querySelectorAll("main section").forEach(s => s.hidden = true);
   tabs[t].forEach(id => $("#" + id).hidden = false);
