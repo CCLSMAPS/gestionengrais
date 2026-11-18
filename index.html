@@ -155,7 +155,6 @@
     <div id="login-container">
         <div class="login-card">
             <div class="logo-container">
-                <!-- استخدام الشعار المطلوب -->
                 <img src="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif" alt="CCLS Adrar Logo" onerror="this.src='https://i.ibb.co/5W8g47v/ccls-logo.png'">
             </div>
             <h2>تعاونية الحبوب والبقول الجافة - أدرار</h2>
@@ -326,29 +325,36 @@
         }
     });
 
-    // معالجة نموذج تسجيل الدخول
+    // معالجة نموذج تسجيل الدخول (محدثة ومضمونة)
     document.getElementById('form-login').addEventListener('submit', async (e) => {
         e.preventDefault();
         const user = document.getElementById('login-user').value.trim();
         const pass = document.getElementById('login-pass').value.trim();
         const errDiv = document.getElementById('login-error');
+        errDiv.style.display = 'none';
 
         try {
             const { data, error } = await db
                 .from('users')
                 .select('*')
                 .eq('username', user)
-                .eq('password', pass)
-                .single();
+                .eq('password', pass);
 
-            if (error || !data) {
+            if (error) {
+                errDiv.innerText = 'خطأ في الاتصال بقاعدة البيانات: ' + error.message;
                 errDiv.style.display = 'block';
-            } else {
-                errDiv.style.display = 'none';
+                return;
+            }
+
+            if (data && data.length > 0) {
                 localStorage.setItem('ccls_logged', 'true');
                 showApp();
+            } else {
+                errDiv.innerText = 'اسم المستخدم أو كلمة المرور غير صحيحة!';
+                errDiv.style.display = 'block';
             }
         } catch (err) {
+            errDiv.innerText = 'حدث خطأ غير متوقع: ' + err.message;
             errDiv.style.display = 'block';
         }
     });
@@ -585,7 +591,7 @@
         e.preventDefault();
         const designation = document.getElementById('entree_designation').value;
         const code = document.getElementById('entree_code').value;
-        val_qty = parseFloat(document.getElementById('entree_quantite').value);
+        const val_qty = parseFloat(document.getElementById('entree_quantite').value);
 
         const produit = await getOrCreateProduit(designation, code);
 
