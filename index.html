@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>تسجيل الدخول - تسيير مخزون الأسمدة (CCLS ADRAR)</title>
-    <!-- مكتبة Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
@@ -55,7 +54,6 @@
 
     <div class="login-card">
         <div class="logo-container">
-            <!-- الشعار -->
             <img src="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif" alt="CCLS Adrar Logo" onerror="this.src='https://i.ibb.co/5W8g47v/ccls-logo.png'">
         </div>
         <h2>تعاونية الحبوب والبقول الجافة - أدرار</h2>
@@ -79,10 +77,9 @@
     
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // إذا كان المستخدم مسجلاً من قبل، يتم توجيهه مباشرة لصفحة التسيير
     window.addEventListener('DOMContentLoaded', () => {
         if (localStorage.getItem('ccls_logged') === 'true') {
-            window.location.href = 'index.html';
+            window.location.href = 'dashboard.html';
         }
     });
 
@@ -105,10 +102,10 @@
                 errDiv.style.display = 'block';
             } else {
                 localStorage.setItem('ccls_logged', 'true');
-                window.location.href = 'index.html'; // الانتقال لصفحة المخزن
+                window.location.href = 'dashboard.html';
             }
         } catch (err) {
-            errDiv.innerText = 'حدث خطأ في الاتصال!';
+            errDiv.innerText = 'خطأ في الاتصال بقاعدة البيانات!';
             errDiv.style.display = 'block';
         }
     });
