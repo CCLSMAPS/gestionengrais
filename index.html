@@ -31,6 +31,14 @@ th{color:var(--mu);font-weight:600}
 #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:10px 18px;border-radius:8px;display:none;max-width:90%}
 #login{max-width:360px;margin:60px auto}
 #login form{grid-template-columns:1fr}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.card{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:10px}
+.card b{display:block;font-size:1.3rem}.card span{font-size:.82rem;color:var(--mu)}
+.warn{color:#b45309;font-weight:700}
+@media(prefers-color-scheme:dark){.warn{color:var(--ac)}}
+.f{background:var(--card);color:var(--tx);border:1px solid var(--bd);padding:8px 12px;border-radius:6px;cursor:pointer;font:inherit}
+.f[aria-pressed=true]{background:var(--pr);color:var(--pt);border-color:var(--pr)}
+button:disabled{opacity:.6;cursor:wait}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -50,14 +58,17 @@ th{color:var(--mu);font-weight:600}
 
 <div id="app" hidden>
 <nav>
-  <button data-t="stock">المخزون</button>
+  <button data-t="stock">المخزون الكلي من الأسمدة</button>
   <button data-t="invoices">الفواتير</button>
-  <button data-t="pickup">تسليم السماد</button>
-  <button data-t="receipts">وارد المخزن</button>
+  <button data-t="pickup">تسليم السماد للفلاحين</button>
+  <button data-t="log">سجل التسليمات</button>
+  <button data-t="receipts">الأسمدة الواردة للمخزن</button>
 </nav>
 
 <section id="stock" hidden>
-  <h2>حالة المخزون (بالقنطار)</h2>
+  <h2>المخزون الكلي من الأسمدة (بالقنطار)</h2>
+  <div class="cards" id="cards"></div>
+  <label style="margin-bottom:10px">بحث عن سماد<input id="sq" placeholder="اسم السماد"></label>
   <div class="w" id="stockT"></div>
 </section>
 
@@ -75,17 +86,25 @@ th{color:var(--mu);font-weight:600}
     <label>الكمية (QTX)<input name="qty" type="number" step="any" min="0" required></label>
     <label>السعر لكل قنطار<input name="unit_price" type="number" step="any" min="0"></label>
     <label>المخزن (Magasin)<input name="warehouse"></label>
+    <label>هاتف الفلاح<input name="phone" type="tel"></label>
+    <label>ملاحظات<input name="notes"></label>
     <button class="p">حفظ الفاتورة</button>
   </form>
 </section>
 <section id="invList" hidden>
   <h2>الفواتير</h2>
-  <label style="margin-bottom:10px">بحث<input id="q" placeholder="رقم الفاتورة أو الاسم"></label>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:10px">
+    <label style="flex:1;min-width:200px">بحث<input id="q" placeholder="رقم الفاتورة أو الاسم"></label>
+    <button type="button" class="f" data-s="all" aria-pressed="true">الكل</button>
+    <button type="button" class="f" data-s="open" aria-pressed="false">قيد السحب</button>
+    <button type="button" class="f" data-s="done" aria-pressed="false">مكتملة بالكامل</button>
+    <button type="button" class="p" id="xi">تصدير CSV</button>
+  </div>
   <div class="w" id="invT"></div>
 </section>
 
 <section id="pickup" hidden>
-  <h2>تسجيل استلام (Bon d'enlèvement)</h2>
+  <h2>تسليم السماد للفلاحين (Bon d'enlèvement)</h2>
   <label style="margin-bottom:10px">الفاتورة<select id="pi"></select></label>
   <div class="info" id="pinfo"></div>
   <form id="fp">
@@ -93,13 +112,27 @@ th{color:var(--mu);font-weight:600}
     <label>التاريخ<input name="w_date" type="date" required></label>
     <label>رقم الهيكل أو الرقم التسلسلي للبطاقة الرمادية<input name="vehicle_ref" required></label>
     <label>رقم إذن الخروج (Bon de sortie)<input name="bon_no"></label>
+    <label>اسم السائق<input name="driver_name" required></label>
+    <label>رقم الشاحنة<input name="truck_no" required></label>
+    <label>ملاحظات<input name="note"></label>
     <button class="p">تسجيل الاستلام</button>
   </form>
   <div class="w" id="pT" style="margin-top:12px"></div>
 </section>
 
+<section id="log" hidden>
+  <h2>سجل التسليمات</h2>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end;margin-bottom:10px">
+    <label>بحث<input id="lq" placeholder="وصل الخروج، الهيكل، الفاتورة، الفلاح"></label>
+    <label>من تاريخ<input id="d1" type="date"></label>
+    <label>إلى تاريخ<input id="d2" type="date"></label>
+    <button type="button" class="p" id="xl">تصدير CSV</button>
+  </div>
+  <div class="w" id="logT"></div>
+</section>
+
 <section id="receipts" hidden>
-  <h2>تسجيل وارد إلى المخزن</h2>
+  <h2>تسجيل الأسمدة الواردة للمخزن</h2>
   <form id="fr">
     <label>السماد<input name="product" list="pl" required autocomplete="off"></label>
     <label>الكمية (QTX)<input name="qty" type="number" step="any" min="0" required></label>
@@ -129,6 +162,8 @@ const SUPABASE_URL = "https://ibznldpkdrqgcdnrxwnj.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imliem5sZHBrZHJxZ2NkbnJ4d25qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5OTUwODUsImV4cCI6MjExMDU3MTA4NX0.LUyefDjCMWnac-cytLMkmOOLIPtgr0GdsPTWAqewJfw";
 // النطاق الذي يُضاف تلقائيا لاسم المستخدم (admin تصبح admin@cclsadrar.com)
 const EMAIL_DOMAIN = "cclsadrar.com";
+// رصيد أقل من هذا الحد (بالقنطار) يظهر بلون تحذيري
+const LOW_STOCK = 100;
 // ===========================================================
 
 const $ = s => document.querySelector(s);
@@ -172,8 +207,8 @@ sb.auth.onAuthStateChange((_, s) => {
 });
 
 // ----- التبويبات -----
-const tabs = { stock: ["stock"], invoices: ["invoices", "invList"], pickup: ["pickup"], receipts: ["receipts"], account: ["account"] };
-const load = { stock: loadStock, invoices: loadInvoices, pickup: loadPickup, receipts: loadReceipts, account: () => {} };
+const tabs = { stock: ["stock"], invoices: ["invoices", "invList"], pickup: ["pickup"], receipts: ["receipts"], account: ["account"], log: ["log"] };
+const load = { stock: loadStock, invoices: loadInvoices, pickup: loadPickup, receipts: loadReceipts, account: () => {}, log: loadLog };
 function show(t) {
   document.querySelectorAll("main section").forEach(s => s.hidden = true);
   tabs[t].forEach(id => $("#" + id).hidden = false);
@@ -201,12 +236,29 @@ async function productId(name) {
 }
 
 // ----- المخزون -----
+let stockRows = [];
 async function loadStock() {
-  const { data, error } = await sb.from("stock_status").select("*").order("name");
-  if (error) return toast(error.message, 1);
-  $("#stockT").innerHTML = tbl(["السماد", "الوارد", "المستلم", "الرصيد"],
-    data.map(r => [esc(r.name), n(r.received), n(r.withdrawn), `<span class="${r.balance < 0 ? "bad" : ""}">${n(r.balance)}</span>`]));
+  const [s, iv, w] = await Promise.all([
+    sb.from("stock_status").select("*").order("name"),
+    sb.from("invoice_balance").select("remaining"),
+    sb.from("withdrawals").select("qty").gte("w_date", today().slice(0, 8) + "01")]);
+  if (s.error) return toast(s.error.message, 1);
+  stockRows = s.data;
+  const inv = iv.data || [], act = inv.filter(x => x.remaining > 0).length;
+  const sum = a => (a || []).reduce((t, x) => t + Number(x.qty ?? x.balance), 0);
+  $("#cards").innerHTML = [["إجمالي الرصيد (قنطار)", n(sum(stockRows))], ["فواتير نشطة", act],
+    ["فواتير مكتملة", inv.length - act], ["المسلَّم هذا الشهر (قنطار)", n(sum(w.data))]]
+    .map(([l, v]) => `<div class="card"><b>${v}</b><span>${l}</span></div>`).join("");
+  drawStock();
 }
+function drawStock() {
+  const q = $("#sq").value.trim().toLowerCase();
+  const cls = b => b < 0 ? "bad" : b < LOW_STOCK ? "warn" : "";
+  $("#stockT").innerHTML = tbl(["السماد", "الوارد", "المستلم", "الرصيد"],
+    stockRows.filter(r => r.name.toLowerCase().includes(q))
+      .map(r => [esc(r.name), n(r.received), n(r.withdrawn), `<span class="${cls(r.balance)}">${n(r.balance)}</span>`]));
+}
+$("#sq").oninput = drawStock;
 
 // ----- وارد المخزن -----
 $("#fr").onsubmit = async e => {
@@ -249,12 +301,54 @@ async function loadInvoices() {
 }
 function drawInvoices() {
   const q = $("#q").value.trim().toLowerCase();
-  const rows = invoices.filter(i => !q || `${i.invoice_no} ${i.client_name} ${i.farmer_name}`.toLowerCase().includes(q));
+  const rows = invView = invoices.filter(i =>
+    (st === "all" || (st === "open" ? i.remaining > 0 : i.remaining <= 0)) &&
+    (!q || `${i.invoice_no} ${i.client_name} ${i.farmer_name}`.toLowerCase().includes(q)));
   $("#invT").innerHTML = tbl(["الفاتورة", "التاريخ", "الفلاح", "السماد", "الكمية", "المستلم", "المتبقي"],
     rows.map(i => [`${esc(i.invoice_no)}/${i.invoice_year}`, i.invoice_date || "", esc(`${i.client_name || ""} ${i.farmer_name || ""}`),
       esc(i.product_name), n(i.qty), n(i.taken), `<b>${n(i.remaining)}</b>`]));
 }
 $("#q").oninput = drawInvoices;
+let st = "all", invView = [], logRows = [], logView = [];
+document.querySelectorAll(".f").forEach(b => b.onclick = () => {
+  st = b.dataset.s;
+  document.querySelectorAll(".f").forEach(x => x.setAttribute("aria-pressed", x === b));
+  drawInvoices();
+});
+
+// ----- تصدير CSV (يفتح في Excel) -----
+function csv(name, h, rows) {
+  const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+  const t = "\ufeff" + [h, ...rows].map(r => r.map(q).join(",")).join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([t], { type: "text/csv;charset=utf-8" }));
+  a.download = `${name}-${today()}.csv`; a.click();
+}
+$("#xi").onclick = () => csv("invoices",
+  ["الفاتورة", "التاريخ", "الفلاح", "السماد", "الكمية", "المستلم", "المتبقي", "الهاتف", "ملاحظات", "أُدخلت بواسطة"],
+  invView.map(i => [`${i.invoice_no}/${i.invoice_year}`, i.invoice_date, `${i.client_name || ""} ${i.farmer_name || ""}`.trim(),
+    i.product_name, i.qty, i.taken, i.remaining, i.phone, i.notes, i.created_by]));
+
+// ----- سجل التسليمات -----
+const LOGH = ["التاريخ", "الفاتورة", "الفلاح", "السماد", "الكمية", "الهيكل / البطاقة الرمادية", "السائق", "الشاحنة", "وصل الخروج", "أُدخل بواسطة", "وقت الإدخال"];
+async function loadLog() {
+  const { data, error } = await sb.from("withdrawals")
+    .select("*, invoices(invoice_no, invoice_year, client_name, farmer_name, products(name))")
+    .order("id", { ascending: false }).limit(300);
+  if (error) return toast(error.message, 1);
+  logRows = data; drawLog();
+}
+function drawLog() {
+  const q = $("#lq").value.trim().toLowerCase(), a = $("#d1").value, b = $("#d2").value;
+  logView = logRows.filter(w => (!a || w.w_date >= a) && (!b || w.w_date <= b) &&
+    (!q || Object.values({ ...w, ...w.invoices }).join(" ").toLowerCase().includes(q)))
+    .map(w => { const i = w.invoices || {};
+      return [w.w_date, `${i.invoice_no}/${i.invoice_year}`, `${i.client_name || ""} ${i.farmer_name || ""}`.trim(), i.products?.name,
+        w.qty, w.vehicle_ref, w.driver_name, w.truck_no, w.bon_no, w.created_by, (w.created_at || "").slice(0, 16).replace("T", " ")]; });
+  $("#logT").innerHTML = tbl(LOGH, logView.map(r => r.map(esc)));
+}
+["#lq", "#d1", "#d2"].forEach(s => $(s).oninput = drawLog);
+$("#xl").onclick = () => csv("deliveries", LOGH, logView);
 
 // ----- التسليم -----
 let open = [];
@@ -280,12 +374,26 @@ $("#fp").onsubmit = async e => {
   e.preventDefault();
   const id = $("#pi").value; if (!id) return;
   const f = Object.fromEntries(new FormData(e.target));
-  if (f.bon_no === "") f.bon_no = null;
+  for (const k in f) if (f[k] === "") f[k] = null;
+  const inv = open.find(x => x.id == id);
+  if (inv && Number(f.qty) > Number(inv.remaining))
+    return toast(`الكمية ${n(f.qty)} تتجاوز المتبقي في الفاتورة. أقصى كمية متاحة للاستلام الآن: ${n(inv.remaining)} قنطار`, 1);
   const { error } = await sb.from("withdrawals").insert({ ...f, invoice_id: id });
   if (error) return toast(error.message, 1);
   toast("تم تسجيل الاستلام"); e.target.reset(); $("#fp [name=w_date]").value = today();
   const keep = id; await loadPickup(); $("#pi").value = keep; drawPickup();
 };
+
+// ----- حالة الحفظ: تعطيل الزر أثناء الإرسال لمنع التكرار -----
+document.querySelectorAll("form").forEach(f => {
+  const h = f.onsubmit; if (!h) return;
+  f.onsubmit = async e => {
+    const b = f.querySelector("button.p");
+    if (b.disabled) { e.preventDefault(); return; }
+    const t = b.textContent; b.disabled = true; b.textContent = "جارٍ الحفظ...";
+    try { await h.call(f, e); } finally { b.disabled = false; b.textContent = t; }
+  };
+});
 </script>
 </body>
 </html>
