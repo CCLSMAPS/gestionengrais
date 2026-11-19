@@ -105,7 +105,11 @@ button:disabled{opacity:.6;cursor:wait}
 
 <section id="pickup" hidden>
   <h2>تسليم السماد للفلاحين (Bon d'enlèvement)</h2>
-  <label style="margin-bottom:10px">الفاتورة<select id="pi"></select></label>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:10px">
+    <label>رقم الفاتورة (مثال: 21 أو 21/2026)<input id="pn" autocomplete="off" inputmode="numeric"></label>
+    <label>بحث برقم المجلد (Dossier)<input id="pd" autocomplete="off"></label>
+    <label>الفاتورة<select id="pi"></select></label>
+  </div>
   <div class="info" id="pinfo"></div>
   <form id="fp">
     <label>الكمية المستلمة (QTX)<input name="qty" type="number" step="any" min="0" required></label>
@@ -359,6 +363,16 @@ async function loadPickup() {
   $("#pi").innerHTML = data.length
     ? data.map(i => `<option value="${i.id}">${esc(i.invoice_no)}/${i.invoice_year} - ${esc(i.farmer_name)} - ${esc(i.product_name)}</option>`).join("")
     : `<option value="">لا توجد فواتير بها كمية متبقية</option>`;
+  filterPick();
+}
+function filterPick() {
+  const a = $("#pn").value.trim().toLowerCase(), d = $("#pd").value.trim().toLowerCase();
+  const list = open.filter(i =>
+    (!a || String(i.invoice_no).toLowerCase() === a || `${i.invoice_no}/${i.invoice_year}`.toLowerCase() === a) &&
+    (!d || String(i.dossier_no || "").toLowerCase().includes(d)));
+  $("#pi").innerHTML = list.length
+    ? list.map(i => `<option value="${i.id}">${esc(i.invoice_no)}/${i.invoice_year} - ${esc(i.farmer_name)} - ${esc(i.product_name)}</option>`).join("")
+    : `<option value="">لا توجد فاتورة مطابقة بها كمية متبقية</option>`;
   drawPickup();
 }
 async function drawPickup() {
@@ -370,6 +384,7 @@ async function drawPickup() {
     (data || []).map(w => [w.w_date, n(w.qty), esc(w.vehicle_ref), esc(w.bon_no)]));
 }
 $("#pi").onchange = drawPickup;
+["#pn", "#pd"].forEach(s => $(s).oninput = filterPick);
 $("#fp").onsubmit = async e => {
   e.preventDefault();
   const id = $("#pi").value; if (!id) return;
