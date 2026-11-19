@@ -250,7 +250,7 @@ async function loadStock() {
   stockRows = s.data;
   const inv = iv.data || [], act = inv.filter(x => x.remaining > 0).length;
   const sum = a => (a || []).reduce((t, x) => t + Number(x.qty ?? x.balance), 0);
-  $("#cards").innerHTML = [["إجمالي الرصيد (قنطار)", n(sum(stockRows))], ["فواتير نشطة", act],
+  $("#cards").innerHTML = [["إجمالي الباقي في المخزن (قنطار)", n(sum(stockRows))], ["فواتير نشطة", act],
     ["فواتير مكتملة", inv.length - act], ["المسلَّم هذا الشهر (قنطار)", n(sum(w.data))]]
     .map(([l, v]) => `<div class="card"><b>${v}</b><span>${l}</span></div>`).join("");
   drawStock();
@@ -258,7 +258,7 @@ async function loadStock() {
 function drawStock() {
   const q = $("#sq").value.trim().toLowerCase();
   const cls = b => b < 0 ? "bad" : b < LOW_STOCK ? "warn" : "";
-  $("#stockT").innerHTML = tbl(["السماد", "الوارد", "المستلم", "الرصيد"],
+  $("#stockT").innerHTML = tbl(["السماد", "الوارد", "المستلم", "الباقي في المخزن"],
     stockRows.filter(r => r.name.toLowerCase().includes(q))
       .map(r => [esc(r.name), n(r.received), n(r.withdrawn), `<span class="${cls(r.balance)}">${n(r.balance)}</span>`]));
 }
