@@ -23,6 +23,18 @@
     <button class="p">إنشاء المستخدم</button>
   </form>
 </section>
+<section id="rolesSec" hidden>
+  <h2>إضافة منصب جديد</h2>
+  <form id="fro">
+    <label>اسم المنصب<input name="name" required></label>
+    <label>الرمز (حروف لاتينية صغيرة وأرقام و _)<input name="code" required autocomplete="off" pattern="[a-z0-9_]+" spellcheck="false"></label>
+    <label style="flex-direction:row;align-items:center;gap:6px;color:var(--tx)"><input type="checkbox" name="is_admin">مسؤول نظام (كل الصلاحيات)</label>
+    <div class="perms" id="rp" style="grid-column:1/-1"></div>
+    <button class="p">إضافة المنصب</button>
+  </form>
+  <h2 style="margin-top:16px">المناصب الحالية وصلاحياتها الافتراضية</h2>
+  <div class="w" id="roT"></div>
+</section>
 <section id="list" hidden>
   <h2>المستخدمون والصلاحيات الممنوحة لهم</h2>
   <div class="w" id="uT"></div>
@@ -33,12 +45,65 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="common.js"></script>
 <script>
+
+// ----- المناصب -----
+$("#fro").onsubmit = async e => {
+  e.preventDefault();
+  const f = new FormData(e.target), code = f.get("code").trim().toLowerCase(), is_admin = f.get("is_admin") === "on";
+  const { error } = await sb.from("roles").insert({ code, name: f.get("name").trim(), is_admin });
+  if (error) return toast(error.code === "23505" ? "الرمز مستعمل من قبل" : error.message, 1);
+  const perms = is_admin ? [] : [...$("#rp").querySelectorAll(".pc:checked")].map(c => c.value);
+  if (perms.length) {
+    const { error: e2 } = await sb.from("role_permissions").insert(perms.map(p => ({ role_code: code, perm_code: p })));
+    if (e2) return toast(e2.message, 1);
+  }
+  toast("تمت إضافة المنصب"); e.target.reset(); loadRoles();
+};
+async function loadRoles() {
+  await loadCatalog();
+  $("#rp").innerHTML = permBoxes([]);
+  const { data, error } = await sb.from("roles").select("*").order("sort_order").order("name");
+  if (error) return toast(error.message, 1);
+  $("#roT").innerHTML = tbl(["المنصب", "الرمز", "مسؤول", "الصلاحيات الافتراضية", ""], data.map(r => {
+    const self = r.code === ME.role;
+    return [
+      `<input data-n value="${esc(r.name)}">`,
+      `<small>${esc(r.code)}</small>`,
+      `<input type="checkbox" data-adm${r.is_admin ? " checked" : ""}${self ? " disabled" : ""}>`,
+      `<div class="perms">${permBoxes(r.is_admin ? Object.keys(PERMS) : DEFAULTS[r.code] || [], r.is_admin)}</div>`,
+      `<button class="p" data-code="${esc(r.code)}">حفظ</button>` + (self ? "" : ` <button class="p" data-act="del" data-code="${esc(r.code)}" style="background:var(--bad)">حذف</button>`)
+    ];
+  }));
+}
+$("#roT").onclick = async e => {
+  const b = e.target.closest("button[data-code]"); if (!b) return;
+  const tr = b.closest("tr"), code = b.dataset.code;
+  if (b.dataset.act === "del") {
+    if (!confirm("حذف هذا المنصب؟")) return;
+    const { error } = await sb.from("roles").delete().eq("code", code);
+    if (error) return toast(error.code === "23503" ? "لا يمكن الحذف: يوجد مستخدمون بهذا المنصب" : error.message, 1);
+    toast("تم الحذف"); return loadRoles();
+  }
+  const is_admin = tr.querySelector("[data-adm]").checked;
+  const { data, error } = await sb.from("roles").update({ name: tr.querySelector("[data-n]").value.trim(), is_admin }).eq("code", code).select();
+  if (error) return toast(error.message, 1);
+  if (!data.length) return toast("لم يُحفظ: تحقق من سياسات الأمان (supabase-setup.sql)", 1);
+  await sb.from("role_permissions").delete().eq("role_code", code);
+  const perms = is_admin ? [] : [...tr.querySelectorAll(".pc:checked")].map(c => c.value);
+  if (perms.length) {
+    const { error: e2 } = await sb.from("role_permissions").insert(perms.map(p => ({ role_code: code, perm_code: p })));
+    if (e2) return toast(e2.message, 1);
+  }
+  toast("تم الحفظ"); loadRoles();
+};
+
 const permBoxes = (sel, dis) => Object.entries(PERMS).map(([k, l]) =>
   `<label><input type="checkbox" class="pc" value="${k}"${sel.includes(k) ? " checked" : ""}${dis ? " disabled" : ""}>${l}</label>`).join("");
 const roleOpts = cur => Object.entries(ROLES).map(([k, v]) => `<option value="${k}"${cur === k ? " selected" : ""}>${v}</option>`).join("");
 function resetNew() {
-  $("#nr").innerHTML = roleOpts("keeper");
-  $("#np").innerHTML = permBoxes(DEFAULTS.keeper);
+  const first = Object.keys(ROLES).find(k => !ADMIN_ROLES.has(k)) || Object.keys(ROLES)[0];
+  $("#nr").innerHTML = roleOpts(first);
+  $("#np").innerHTML = permBoxes(DEFAULTS[first] || []);
 }
 $("#nr").onchange = e => {
   const d = DEFAULTS[e.target.value] || [];
@@ -96,10 +161,12 @@ $("#uT").onclick = async e => {
   toast("تم حفظ التعديلات");
 };
 
-resetNew();
 startApp({
   page: "users",
-  tabs: [["users", "المستخدمون والصلاحيات", ["create", "list"], loadUsers]]
+  tabs: [
+    ["users", "المستخدمون والصلاحيات", ["create", "list"], () => { resetNew(); loadUsers(); }],
+    ["roles", "المناصب", ["rolesSec"], loadRoles]
+  ]
 });
 </script>
 </body>

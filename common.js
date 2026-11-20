@@ -38,21 +38,31 @@ function csv(name, h, rows) {
 
 // ===== مشترك: الاتصال، الصلاحيات، الدخول، التنقل =====
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-const ROLES = { director: "مدير المؤسسة", keeper: "أمين المخزن", head: "رئيس أمين المخزن", admin: "مسؤول النظام" };
-const PERMS = { stock: "عرض المخزون", invoices: "الفواتير", pickup: "تسليم السماد", receipts: "الأسمدة الواردة", log: "سجل التسليمات", audit: "سجل التعديلات", users: "إدارة المستخدمين" };
-// الصلاحيات الافتراضية لكل دور (تُستعمل إن لم تُحدَّد صلاحيات خاصة للمستخدم)
-const DEFAULTS = {
-  director: ["stock"],
-  keeper: ["stock", "invoices", "pickup", "log", "receipts"],
-  head: ["stock", "invoices", "pickup", "log", "receipts", "audit"],
-  admin: Object.keys(PERMS)
-};
+// المناصب والصلاحيات تأتي من قاعدة البيانات (جداول roles و app_permissions و role_permissions)
+const ROLES = {}, PERMS = {}, DEFAULTS = {}, PERM_PAGES = {};
+let ADMIN_ROLES = new Set();
 const PAGES = [
-  ["index.html", "إدخال البيانات", ["invoices", "pickup", "receipts"]],
-  ["warehouse.html", "تسيير المخزن", ["stock", "invoices", "log", "audit"]],
-  ["users.html", "المستخدمون والصلاحيات", ["users"]]
+  ["index.html", "إدخال البيانات"],
+  ["warehouse.html", "تسيير المخزن"],
+  ["users.html", "المستخدمون والصلاحيات"]
 ];
-const permsOf = p => !p || p.is_blocked === true ? [] : (Array.isArray(p.permissions) ? p.permissions : DEFAULTS[p.role] || []);
+async function loadCatalog() {
+  const [r, p, rp] = await Promise.all([
+    sb.from("roles").select("*").order("sort_order").order("name"),
+    sb.from("app_permissions").select("*").order("sort_order"),
+    sb.from("role_permissions").select("*")]);
+  const err = r.error || p.error || rp.error; if (err) throw err;
+  [ROLES, PERMS, DEFAULTS, PERM_PAGES].forEach(o => { for (const k in o) delete o[k]; });
+  ADMIN_ROLES = new Set();
+  r.data.forEach(x => { ROLES[x.code] = x.name; DEFAULTS[x.code] = []; if (x.is_admin) ADMIN_ROLES.add(x.code); });
+  p.data.forEach(x => { PERMS[x.code] = x.label; PERM_PAGES[x.code] = x.pages || []; });
+  rp.data.forEach(x => { (DEFAULTS[x.role_code] ??= []).push(x.perm_code); });
+  ADMIN_ROLES.forEach(c => DEFAULTS[c] = Object.keys(PERMS));
+}
+// منصب مسؤول = كل الصلاحيات؛ قائمة في permissions = صلاحيات خاصة؛ غير ذلك = صلاحيات المنصب
+const permsOf = p => !p || p.is_blocked === true ? [] :
+  ADMIN_ROLES.has(p.role) ? Object.keys(PERMS) :
+  Array.isArray(p.permissions) ? p.permissions : DEFAULTS[p.role] || [];
 let ME = null;
 
 const LOGIN_HTML = `<div id="login" class="box" hidden>
@@ -122,11 +132,12 @@ function startApp({ page, tabs, ready }) {
   };
 
   async function enter(s) {
+    try { await loadCatalog(); } catch (x) { $("#app").hidden = true; $("#cfg").textContent = "تعذّر تحميل المناصب والصلاحيات: " + x.message + " (نفّذ supabase-setup.sql)"; $("#cfg").hidden = false; return; }
     const { data: me } = await sb.from("profiles").select("*").eq("user_id", s.user.id).maybeSingle();
     ME = me ? { ...me, id: s.user.id } : { id: s.user.id };
     const P = permsOf(me), ok = tabs.filter(t => P.includes(t[0]));
-    $("#who").textContent = me ? `${me.full_name} - ${ROLES[me.role] || ""}` : "";
-    $("#links").innerHTML = PAGES.filter(p => p[0] !== page + ".html" && p[2].some(k => P.includes(k)))
+    $("#who").textContent = me ? `${me.full_name} - ${ROLES[me.role] || me.role || ""}` : "";
+    $("#links").innerHTML = PAGES.filter(p => p[0] !== page + ".html" && Object.keys(PERMS).some(k => P.includes(k) && (PERM_PAGES[k] || []).includes(p[0])))
       .map(p => `<a class="lk" href="${p[0]}">${p[1]}</a>`).join("");
     nav.querySelectorAll("button").forEach(b => b.hidden = !ok.some(t => t[0] === b.dataset.t));
     if (!ok.length) {
