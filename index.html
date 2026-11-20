@@ -9,11 +9,14 @@
 @media(prefers-color-scheme:dark){:root{--bg:#141914;--card:#1d241d;--tx:#e6ece4;--mu:#9bab9d;--bd:#313d33;--pr:#6cbf86;--pt:#0e1c12;--ac:#e0b04f;--bad:#ff8a80}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.6 "Segoe UI",Tahoma,Arial,sans-serif}
-header{background:var(--pr);color:var(--pt);padding:14px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid var(--ac)}
+header{position:sticky;top:0;z-index:30;height:62px;background:var(--pr);color:var(--pt);padding:0 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid var(--ac)}
 header h1{margin:0;font-size:1.15rem}
 main{max-width:1000px;margin:0 auto;padding:16px}
-nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
-nav button{flex:1;min-width:110px;background:var(--card);color:var(--tx);border:1px solid var(--bd);padding:10px;border-radius:8px;cursor:pointer;font:inherit}
+nav{position:fixed;top:62px;right:0;bottom:0;width:240px;background:var(--card);border-left:1px solid var(--bd);padding:12px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;z-index:20;transition:transform .25s}
+nav button{text-align:right;background:var(--bg);color:var(--tx);border:1px solid var(--bd);padding:10px 12px;border-radius:8px;cursor:pointer;font:inherit}
+#menu{display:none}
+main:has(#app:not([hidden])){margin-right:240px;max-width:1100px}
+@media(max-width:899px){nav{transform:translateX(100%)}nav.open{transform:none;box-shadow:0 0 20px #0005}main:has(#app:not([hidden])){margin-right:0}#menu.on{display:inline-block}}
 nav button[aria-current=true]{background:var(--pr);color:var(--pt);border-color:var(--pr)}
 section,.box{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:14px}
 h2{margin:0 0 12px;font-size:1.05rem}
@@ -43,7 +46,7 @@ button:disabled{opacity:.6;cursor:wait}
 </style>
 </head>
 <body>
-<header><h1>تسيير مخزون الأسمدة الفلاحية</h1><div style="display:flex;gap:8px"><button class="p" id="pwb" hidden style="background:var(--ac);color:#1d2b22">كلمة المرور</button><button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button></div></header>
+<header><div style="display:flex;gap:10px;align-items:center"><button class="p" id="menu" aria-label="القائمة" style="background:var(--ac);color:#1d2b22">☰</button><h1>تسيير مخزون الأسمدة الفلاحية</h1></div><div style="display:flex;gap:8px;align-items:center"><span id="who" style="font-size:.85rem"></span><button class="p" id="pwb" hidden style="background:var(--ac);color:#1d2b22">كلمة المرور</button><button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button></div></header>
 <main>
 <div id="cfg" class="box" hidden>أدخل رابط مشروع Supabase والمفتاح العمومي (anon key) في أعلى كود الصفحة.</div>
 
@@ -63,6 +66,7 @@ button:disabled{opacity:.6;cursor:wait}
   <button data-t="pickup">تسليم السماد للفلاحين</button>
   <button data-t="log">سجل التسليمات</button>
   <button data-t="receipts">الأسمدة الواردة للمخزن</button>
+  <button data-t="audit">سجل التعديلات</button>
 </nav>
 
 <section id="stock" hidden>
@@ -146,6 +150,11 @@ button:disabled{opacity:.6;cursor:wait}
   </form>
   <div class="w" id="rT" style="margin-top:12px"></div>
 </section>
+<section id="audit" hidden>
+  <h2>سجل التعديلات (من غيّر ماذا ومتى)</h2>
+  <div class="w" id="auT"></div>
+</section>
+
 <section id="account" hidden>
   <h2>تغيير كلمة المرور</h2>
   <form id="fa">
@@ -211,8 +220,8 @@ sb.auth.onAuthStateChange((_, s) => {
 });
 
 // ----- التبويبات -----
-const tabs = { stock: ["stock"], invoices: ["invoices", "invList"], pickup: ["pickup"], receipts: ["receipts"], account: ["account"], log: ["log"] };
-const load = { stock: loadStock, invoices: loadInvoices, pickup: loadPickup, receipts: loadReceipts, account: () => {}, log: loadLog };
+const tabs = { stock: ["stock"], invoices: ["invoices", "invList"], pickup: ["pickup"], receipts: ["receipts"], account: ["account"], log: ["log"], audit: ["audit"] };
+const load = { stock: loadStock, invoices: loadInvoices, pickup: loadPickup, receipts: loadReceipts, account: () => {}, log: loadLog, audit: loadAudit };
 function show(t) {
   document.querySelectorAll("main section").forEach(s => s.hidden = true);
   tabs[t].forEach(id => $("#" + id).hidden = false);
@@ -220,12 +229,36 @@ function show(t) {
   loadProducts(); load[t]();
 }
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.dataset.t));
-function init() {
+async function init() {
   $("#fi [name=invoice_year]").value = new Date().getFullYear();
   $("#fi [name=invoice_date]").value = today();
   $("#fp [name=w_date]").value = today();
   $("#fr [name=entry_date]").value = today();
+  const { data: me } = await sb.from("profiles").select("full_name, role").maybeSingle();
+  const role = me?.role;
+  const ok = {
+    director: ["stock"],
+    keeper: ["stock", "invoices", "pickup", "log", "receipts"],
+    head: ["stock", "invoices", "pickup", "log", "receipts", "audit"]
+  }[role] || [];
+  document.querySelectorAll("nav button").forEach(b => b.hidden = !ok.includes(b.dataset.t));
+  $("#who").textContent = me ? `${me.full_name} - ${{ director: "مدير المؤسسة", keeper: "أمين المخزن", head: "رئيس أمين المخزن" }[role]}` : "";
+  if (!ok.length) {
+    $("#app").hidden = true;
+    $("#cfg").textContent = "حسابك لا يملك صلاحية بعد. راجع مسؤول النظام لتعيين دورك.";
+    $("#cfg").hidden = false;
+    return;
+  }
+  $("#cfg").hidden = true;
   show("stock");
+}
+async function loadAudit() {
+  const { data, error } = await sb.from("audit_log").select("*").order("id", { ascending: false }).limit(300);
+  if (error) return toast(error.message, 1);
+  const A = { INSERT: "إضافة", UPDATE: "تعديل", DELETE: "حذف" };
+  const T = { products: "الأسمدة", stock_in: "الوارد", invoices: "الفواتير", withdrawals: "التسليمات" };
+  $("#auT").innerHTML = tbl(["الوقت", "المستخدم", "العملية", "القسم", "رقم السجل"],
+    data.map(r => [r.changed_at.slice(0, 16).replace("T", " "), esc(r.user_name || r.user_email), A[r.action], T[r.table_name] || r.table_name, r.row_id]));
 }
 
 // ----- الأسمدة (قائمة تلقائية) -----
