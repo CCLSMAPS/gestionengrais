@@ -37,6 +37,7 @@
 </section>
 <section id="list" hidden>
   <h2>المستخدمون والصلاحيات الممنوحة لهم</h2>
+  <label style="margin-bottom:10px">بحث<input id="us" placeholder="الاسم أو اسم المستخدم أو المنصب"></label>
   <div class="w" id="uT"></div>
 </section>
 </div>
@@ -126,6 +127,14 @@ $("#fu").onsubmit = async e => {
   toast("تم إنشاء المستخدم"); e.target.reset(); resetNew(); loadUsers();
 };
 
+function filterUsers() {
+  const q = $("#us").value.trim().toLowerCase();
+  $("#uT").querySelectorAll("tbody tr").forEach(tr => {
+    const t = tr.cells[0].textContent + " " + tr.querySelector("[data-r]").selectedOptions[0].text;
+    tr.hidden = !t.toLowerCase().includes(q);
+  });
+}
+$("#us").oninput = filterUsers;
 async function loadUsers() {
   const { data, error } = await sb.from("profiles").select("*").order("full_name");
   if (error) return toast(error.message, 1);
@@ -139,6 +148,7 @@ async function loadUsers() {
       self ? "" : `<button class="p" data-id="${u.user_id}">حفظ</button>`
     ];
   }));
+  filterUsers();
 }
 $("#uT").onchange = e => {
   if (!e.target.matches("[data-r]")) return;

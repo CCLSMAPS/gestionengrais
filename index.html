@@ -25,7 +25,7 @@
     <label>السماد<input name="product" list="pl" required autocomplete="off" placeholder="اختر أو اكتب سمادا جديدا"></label>
     <label>الكمية (QTX)<input name="qty" type="number" step="any" min="0" required></label>
     <label>السعر لكل قنطار<input name="unit_price" type="number" step="any" min="0"></label>
-    <label>المخزن (Magasin)<input name="warehouse"></label>
+    <label>المخزن<select name="warehouse_id" id="iw"></select></label>
     <label>هاتف الفلاح<input name="phone" type="tel"></label>
     <label>ملاحظات<input name="notes"></label>
     <button class="p">حفظ الفاتورة</button>
@@ -55,6 +55,7 @@
   <h2>تسجيل الأسمدة الواردة للمخزن</h2>
   <form id="fr">
     <label>السماد<input name="product" list="pl" required autocomplete="off"></label>
+    <label>المخزن<select name="warehouse_id" id="rw"></select></label>
     <label>الكمية (QTX)<input name="qty" type="number" step="any" min="0" required></label>
     <label>التاريخ<input name="entry_date" type="date" required></label>
     <label>ملاحظة<input name="note"></label>
@@ -74,7 +75,7 @@ $("#fr").onsubmit = async e => {
   const f = Object.fromEntries(new FormData(e.target));
   try {
     const product_id = await productId(f.product);
-    const { error } = await sb.from("stock_in").insert({ product_id, qty: f.qty, entry_date: f.entry_date, note: f.note || null });
+    const { error } = await sb.from("stock_in").insert({ product_id, qty: f.qty, entry_date: f.entry_date, warehouse_id: f.warehouse_id || null, note: f.note || null });
     if (error) throw error;
     toast("تم حفظ الوارد"); e.target.reset(); $("#fr [name=entry_date]").value = today();
     loadProducts(); loadReceipts();
@@ -91,6 +92,7 @@ $("#fi").onsubmit = async e => {
   try {
     const product_id = await productId(f.product);
     delete f.product;
+    f.warehouse = f.warehouse_id ? $("#iw").selectedOptions[0].text : null;
     for (const k in f) if (f[k] === "") f[k] = null;
     const { error } = await sb.from("invoices").insert({ ...f, product_id });
     if (error) throw error;
@@ -143,12 +145,28 @@ $("#fp").onsubmit = async e => {
   const keep = id; await loadPickup(); $("#pi").value = keep; drawPickup();
 };
 
+// المخازن حسب نوع المنتج: المخزن بلا أنواع محددة يقبل كل الأنواع
+let WH = [], WC = [], PR = [];
+async function loadLookups() {
+  const [w, c, p] = await Promise.all([sb.from("warehouses").select("id,name").eq("active", true).order("name"),
+    sb.from("warehouse_categories").select("*"), sb.from("products").select("name,category_id")]);
+  WH = w.data || []; WC = c.data || []; PR = p.data || []; fillWh("#iw"); fillWh("#rw");
+}
+function fillWh(sel) {
+  const el = $(sel), cur = el.value, cat = PR.find(x => x.name === (el.form.product.value || "").trim())?.category_id;
+  const ok = WH.filter(w => { const a = WC.filter(x => x.warehouse_id === w.id); return !cat || !a.length || a.some(x => x.category_id === cat); });
+  el.innerHTML = '<option value="">— اختر المخزن —</option>' + ok.map(w => `<option value="${w.id}">${esc(w.name)}</option>`).join("");
+  el.value = cur;
+}
+$("#fi [name=product]").addEventListener("input", () => fillWh("#iw"));
+$("#fr [name=product]").addEventListener("input", () => fillWh("#rw"));
+
 startApp({
   page: "index",
   tabs: [
-    ["invoices", "تسجيل فاتورة", ["invoices"], () => {}],
+    ["invoices", "تسجيل فاتورة", ["invoices"], loadLookups],
     ["pickup", "تسليم السماد للفلاحين", ["pickup"], loadPickup],
-    ["receipts", "الأسمدة الواردة للمخزن", ["receipts"], loadReceipts]
+    ["receipts", "الأسمدة الواردة للمخزن", ["receipts"], () => { loadLookups(); loadReceipts(); }]
   ],
   ready() {
     $("#fi [name=invoice_year]").value = new Date().getFullYear();

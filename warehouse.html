@@ -13,9 +13,13 @@
 <div id="app" hidden>
 <nav></nav>
 <section id="stock" hidden>
-  <h2>المخزون الكلي من الأسمدة (بالقنطار)</h2>
+  <h2>المخزون حسب المخزن والمنتج (بالقنطار)</h2>
   <div class="cards" id="cards"></div>
-  <label style="margin-bottom:10px">بحث عن سماد<input id="sq" placeholder="اسم السماد"></label>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:10px">
+    <label>بحث<input id="sq" placeholder="اسم المنتج"></label>
+    <label>المخزن<select id="sw"></select></label>
+    <label>نوع المنتج<select id="sc"></select></label>
+  </div>
   <div class="w" id="stockT"></div>
 </section>
 <section id="invList" hidden>
@@ -39,6 +43,29 @@
   </div>
   <div class="w" id="logT"></div>
 </section>
+<section id="catalog" hidden>
+  <h2>المخازن</h2>
+  <form id="fw">
+    <label>اسم المخزن<input name="name" required></label>
+    <label>الموقع<input name="location"></label>
+    <div class="perms" id="wc" style="grid-column:1/-1"></div>
+    <button class="p">إضافة مخزن</button>
+  </form>
+  <p style="color:var(--mu);font-size:.85rem">الأنواع المؤشَّر عليها هي المسموحة في المخزن؛ بلا تأشير يقبل كل الأنواع.</p>
+  <div class="w" id="wT"></div>
+  <h2 style="margin-top:16px">أنواع المنتجات</h2>
+  <form id="fc"><label>اسم النوع<input name="name" required></label><button class="p">إضافة نوع</button></form>
+  <div class="w" id="cT"></div>
+  <h2 style="margin-top:16px">المنتجات (قمح، شعير، مبيدات، أسمدة...)</h2>
+  <form id="fpr">
+    <label>اسم المنتج<input name="name" required></label>
+    <label>النوع<select name="category_id" id="pc" required></select></label>
+    <label>مدة التوريد (أيام)<input name="lead_days" type="number" min="0" value="14"></label>
+    <label>مخزون احتياطي (أيام)<input name="safety_days" type="number" min="0" value="7"></label>
+    <button class="p">إضافة منتج</button>
+  </form>
+  <div class="w" id="prT"></div>
+</section>
 <section id="audit" hidden>
   <h2>سجل التعديلات (من غيّر ماذا ومتى)</h2>
   <div class="w" id="auT"></div>
@@ -51,27 +78,37 @@
 <script>
 let stockRows = [];
 async function loadStock() {
-  const [s, iv, w] = await Promise.all([
-    sb.from("stock_status").select("*").order("name"),
+  const [s, iv, w, wh, ct] = await Promise.all([
+    sb.from("stock_analysis").select("*").order("name"),
     sb.from("invoice_balance").select("remaining"),
-    sb.from("withdrawals").select("qty").gte("w_date", today().slice(0, 8) + "01")]);
-  if (s.error) return toast(s.error.message, 1);
+    sb.from("withdrawals").select("qty").gte("w_date", today().slice(0, 8) + "01"),
+    sb.from("warehouses").select("id,name").order("name"),
+    sb.from("product_categories").select("id,name").order("sort_order")]);
+  if (s.error) return toast(s.error.message + " (نفّذ supabase-warehouses.sql)", 1);
   stockRows = s.data;
+  fillSel("#sw", wh.data, "كل المخازن"); fillSel("#sc", ct.data, "كل الأنواع");
   const inv = iv.data || [], act = inv.filter(x => x.remaining > 0).length;
   const sum = a => (a || []).reduce((t, x) => t + Number(x.qty ?? x.balance), 0);
-  $("#cards").innerHTML = [["إجمالي الباقي في المخزن (قنطار)", n(sum(stockRows))], ["فواتير نشطة", act],
-    ["فواتير مكتملة", inv.length - act], ["المسلَّم هذا الشهر (قنطار)", n(sum(w.data))]]
+  const low = stockRows.filter(r => r.daily > 0 && r.balance <= r.reorder_point).length;
+  $("#cards").innerHTML = [["إجمالي الباقي في المخازن (قنطار)", n(sum(stockRows))], ["فواتير نشطة", act],
+    ["مواد تحت نقطة إعادة الطلب", low], ["المسلَّم هذا الشهر (قنطار)", n(sum(w.data))]]
     .map(([l, v]) => `<div class="card"><b>${v}</b><span>${l}</span></div>`).join("");
   drawStock();
 }
-function drawStock() {
-  const q = $("#sq").value.trim().toLowerCase();
-  const cls = b => b < 0 ? "bad" : b < LOW_STOCK ? "warn" : "";
-  $("#stockT").innerHTML = tbl(["السماد", "الوارد", "المستلم", "الباقي في المخزن"],
-    stockRows.filter(r => r.name.toLowerCase().includes(q))
-      .map(r => [esc(r.name), n(r.received), n(r.withdrawn), `<span class="${cls(r.balance)}">${n(r.balance)}</span>`]));
+function fillSel(sel, rows, all) {
+  const cur = $(sel).value;
+  $(sel).innerHTML = `<option value="">${all}</option>` + (rows || []).map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join("");
+  $(sel).value = cur;
 }
-$("#sq").oninput = drawStock;
+function drawStock() {
+  const q = $("#sq").value.trim().toLowerCase(), w = $("#sw").value, c = $("#sc").value;
+  const st = r => r.daily > 0 && r.balance <= r.reorder_point ? `<span class="${r.cover_days <= r.lead_days ? "bad" : "warn"}">اطلب الآن</span>` : "";
+  $("#stockT").innerHTML = tbl(["المنتج", "المخزن", "الوارد", "المستلم", "الباقي", "المعدل اليومي", "أيام التغطية", "نقطة إعادة الطلب", "ABC", "الحالة"],
+    stockRows.filter(r => r.name.toLowerCase().includes(q) && (!w || String(r.wid) === w) && (!c || String(r.category_id) === c))
+      .map(r => [esc(r.name), esc(r.warehouse), n(r.received), n(r.withdrawn), `<span class="${r.balance < 0 ? "bad" : ""}">${n(r.balance)}</span>`,
+        n(r.daily), r.cover_days ?? "-", n(r.reorder_point), r.abc, st(r)]));
+}
+["#sq", "#sw", "#sc"].forEach(x => $(x).oninput = drawStock);
 let invoices = [];
 async function loadInvoices() {
   const { data, error } = await sb.from("invoice_balance").select("*").order("id", { ascending: false }).limit(300);
@@ -126,13 +163,81 @@ async function loadAudit() {
     data.map(r => [r.changed_at.slice(0, 16).replace("T", " "), esc(r.user_name || r.user_email), A[r.action], T[r.table_name] || r.table_name, r.row_id]));
 }
 
+// ----- المخازن وأنواع المنتجات والمنتجات -----
+let CT = [];
+const catBoxes = sel => CT.map(c => `<label><input type="checkbox" class="pc" value="${c.id}"${sel.includes(c.id) ? " checked" : ""}>${esc(c.name)}</label>`).join("");
+const catOpts = cur => CT.map(c => `<option value="${c.id}"${c.id === cur ? " selected" : ""}>${esc(c.name)}</option>`).join("");
+const btns = id => `<button class="p" data-id="${id}">حفظ</button> <button class="p" data-id="${id}" data-act="del" style="background:var(--bad)">حذف</button>`;
+async function loadCatalogTab() {
+  const [w, c, wc, p] = await Promise.all([sb.from("warehouses").select("*").order("name"),
+    sb.from("product_categories").select("*").order("sort_order").order("name"),
+    sb.from("warehouse_categories").select("*"), sb.from("products").select("*").order("name")]);
+  const err = w.error || c.error || wc.error || p.error;
+  if (err) return toast(err.message + " (نفّذ supabase-warehouses.sql)", 1);
+  CT = c.data; $("#wc").innerHTML = catBoxes([]); $("#pc").innerHTML = catOpts();
+  $("#wT").innerHTML = tbl(["المخزن", "الموقع", "الأنواع المسموحة", "مفعّل", ""], w.data.map(x => [
+    `<input data-n value="${esc(x.name)}">`, `<input data-l value="${esc(x.location)}">`,
+    `<div class="perms">${catBoxes(wc.data.filter(k => k.warehouse_id === x.id).map(k => k.category_id))}</div>`,
+    `<input type="checkbox" data-a${x.active ? " checked" : ""}>`, btns(x.id)]));
+  $("#cT").innerHTML = tbl(["النوع", ""], c.data.map(x => [`<input data-n value="${esc(x.name)}">`, btns(x.id)]));
+  $("#prT").innerHTML = tbl(["المنتج", "النوع", "مدة التوريد (يوم)", "احتياطي (يوم)", ""], p.data.map(x => [esc(x.name),
+    `<select data-c><option value="">—</option>${catOpts(x.category_id)}</select>`,
+    `<input type="number" data-ld min="0" value="${x.lead_days}" style="width:80px">`,
+    `<input type="number" data-sd min="0" value="${x.safety_days}" style="width:80px">`,
+    `<button class="p" data-id="${x.id}">حفظ</button>`]));
+}
+async function run(q, ok) {
+  const { error } = await q;
+  if (error) return toast(error.code === "23503" ? "لا يمكن الحذف: توجد بيانات مرتبطة به" : error.code === "23505" ? "الاسم مستعمل من قبل" : error.message, 1);
+  toast(ok); loadCatalogTab();
+}
+$("#fw").onsubmit = async e => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const { data, error } = await sb.from("warehouses").insert({ name: f.get("name").trim(), location: f.get("location") || null }).select().single();
+  if (error) return toast(error.code === "23505" ? "الاسم مستعمل من قبل" : error.message, 1);
+  const cs = [...$("#wc").querySelectorAll(".pc:checked")].map(c => ({ warehouse_id: data.id, category_id: +c.value }));
+  if (cs.length) await sb.from("warehouse_categories").insert(cs);
+  e.target.reset(); toast("تمت الإضافة"); loadCatalogTab();
+};
+$("#fc").onsubmit = async e => { e.preventDefault(); await run(sb.from("product_categories").insert({ name: new FormData(e.target).get("name").trim() }), "تمت الإضافة"); e.target.reset(); };
+$("#fpr").onsubmit = async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  await run(sb.from("products").insert({ name: f.name.trim(), category_id: +f.category_id, lead_days: +f.lead_days, safety_days: +f.safety_days }), "تمت الإضافة");
+  e.target.reset();
+};
+$("#wT").onclick = async e => {
+  const b = e.target.closest("button[data-id]"); if (!b) return;
+  const tr = b.closest("tr"), id = +b.dataset.id;
+  if (b.dataset.act === "del") return confirm("حذف المخزن؟") && run(sb.from("warehouses").delete().eq("id", id), "تم الحذف");
+  const { error } = await sb.from("warehouses").update({ name: tr.querySelector("[data-n]").value.trim(), location: tr.querySelector("[data-l]").value || null, active: tr.querySelector("[data-a]").checked }).eq("id", id);
+  if (error) return toast(error.message, 1);
+  await sb.from("warehouse_categories").delete().eq("warehouse_id", id);
+  const cs = [...tr.querySelectorAll(".pc:checked")].map(c => ({ warehouse_id: id, category_id: +c.value }));
+  if (cs.length) await sb.from("warehouse_categories").insert(cs);
+  toast("تم الحفظ"); loadCatalogTab();
+};
+$("#cT").onclick = e => {
+  const b = e.target.closest("button[data-id]"); if (!b) return;
+  const id = +b.dataset.id;
+  if (b.dataset.act === "del") return confirm("حذف النوع؟") && run(sb.from("product_categories").delete().eq("id", id), "تم الحذف");
+  run(sb.from("product_categories").update({ name: b.closest("tr").querySelector("[data-n]").value.trim() }).eq("id", id), "تم الحفظ");
+};
+$("#prT").onclick = e => {
+  const b = e.target.closest("button[data-id]"); if (!b) return;
+  const tr = b.closest("tr");
+  run(sb.from("products").update({ category_id: tr.querySelector("[data-c]").value || null, lead_days: +tr.querySelector("[data-ld]").value, safety_days: +tr.querySelector("[data-sd]").value }).eq("id", +b.dataset.id), "تم الحفظ");
+};
+
 startApp({
   page: "warehouse",
   tabs: [
     ["stock", "المخزون الكلي من الأسمدة", ["stock"], loadStock],
     ["invoices", "الفواتير", ["invList"], loadInvoices],
     ["log", "سجل التسليمات", ["log"], loadLog],
-    ["audit", "سجل التعديلات", ["audit"], loadAudit]
+    ["audit", "سجل التعديلات", ["audit"], loadAudit],
+    ["catalog", "المخازن والمنتجات", ["catalog"], loadCatalogTab]
   ]
 });
 </script>
