@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تسيير المخزن - تسيير مخزون الأسمدة</title>
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<header><div style="display:flex;gap:10px;align-items:center"><button class="p" id="menu" aria-label="القائمة" style="background:var(--ac);color:#1d2b22">☰</button><h1>تسيير المخزن - تسيير مخزون الأسمدة</h1></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span id="links" style="display:flex;gap:6px;flex-wrap:wrap"></span><span id="who" style="font-size:.85rem"></span><button class="p" id="pwb" hidden style="background:var(--ac);color:#1d2b22">كلمة المرور</button><button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button></div></header>
+<main>
+<div id="cfg" class="box" hidden></div>
+<div id="app" hidden>
+<nav></nav>
+<section id="stock" hidden>
+  <h2>المخزون الكلي من الأسمدة (بالقنطار)</h2>
+  <div class="cards" id="cards"></div>
+  <label style="margin-bottom:10px">بحث عن سماد<input id="sq" placeholder="اسم السماد"></label>
+  <div class="w" id="stockT"></div>
+</section>
+<section id="invList" hidden>
+  <h2>الفواتير</h2>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:10px">
+    <label style="flex:1;min-width:200px">بحث<input id="q" placeholder="رقم الفاتورة أو الاسم"></label>
+    <button type="button" class="f" data-s="all" aria-pressed="true">الكل</button>
+    <button type="button" class="f" data-s="open" aria-pressed="false">قيد السحب</button>
+    <button type="button" class="f" data-s="done" aria-pressed="false">مكتملة بالكامل</button>
+    <button type="button" class="p" id="xi">تصدير CSV</button>
+  </div>
+  <div class="w" id="invT"></div>
+</section>
+<section id="log" hidden>
+  <h2>سجل التسليمات</h2>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end;margin-bottom:10px">
+    <label>بحث<input id="lq" placeholder="وصل الخروج، الهيكل، الفاتورة، الفلاح"></label>
+    <label>من تاريخ<input id="d1" type="date"></label>
+    <label>إلى تاريخ<input id="d2" type="date"></label>
+    <button type="button" class="p" id="xl">تصدير CSV</button>
+  </div>
+  <div class="w" id="logT"></div>
+</section>
+<section id="audit" hidden>
+  <h2>سجل التعديلات (من غيّر ماذا ومتى)</h2>
+  <div class="w" id="auT"></div>
+</section>
+</div>
+</main>
+<div id="toast" role="status"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="common.js"></script>
+<script>
+let stockRows = [];
+async function loadStock() {
+  const [s, iv, w] = await Promise.all([
+    sb.from("stock_status").select("*").order("name"),
+    sb.from("invoice_balance").select("remaining"),
+    sb.from("withdrawals").select("qty").gte("w_date", today().slice(0, 8) + "01")]);
+  if (s.error) return toast(s.error.message, 1);
+  stockRows = s.data;
+  const inv = iv.data || [], act = inv.filter(x => x.remaining > 0).length;
+  const sum = a => (a || []).reduce((t, x) => t + Number(x.qty ?? x.balance), 0);
+  $("#cards").innerHTML = [["إجمالي الباقي في المخزن (قنطار)", n(sum(stockRows))], ["فواتير نشطة", act],
+    ["فواتير مكتملة", inv.length - act], ["المسلَّم هذا الشهر (قنطار)", n(sum(w.data))]]
+    .map(([l, v]) => `<div class="card"><b>${v}</b><span>${l}</span></div>`).join("");
+  drawStock();
+}
+function drawStock() {
+  const q = $("#sq").value.trim().toLowerCase();
+  const cls = b => b < 0 ? "bad" : b < LOW_STOCK ? "warn" : "";
+  $("#stockT").innerHTML = tbl(["السماد", "الوارد", "المستلم", "الباقي في المخزن"],
+    stockRows.filter(r => r.name.toLowerCase().includes(q))
+      .map(r => [esc(r.name), n(r.received), n(r.withdrawn), `<span class="${cls(r.balance)}">${n(r.balance)}</span>`]));
+}
+$("#sq").oninput = drawStock;
+let invoices = [];
+async function loadInvoices() {
+  const { data, error } = await sb.from("invoice_balance").select("*").order("id", { ascending: false }).limit(300);
+  if (error) return toast(error.message, 1);
+  invoices = data; drawInvoices();
+}
+function drawInvoices() {
+  const q = $("#q").value.trim().toLowerCase();
+  const rows = invView = invoices.filter(i =>
+    (st === "all" || (st === "open" ? i.remaining > 0 : i.remaining <= 0)) &&
+    (!q || `${i.invoice_no} ${i.client_name} ${i.farmer_name}`.toLowerCase().includes(q)));
+  $("#invT").innerHTML = tbl(["الفاتورة", "التاريخ", "الفلاح", "السماد", "الكمية", "المستلم", "المتبقي"],
+    rows.map(i => [`${esc(i.invoice_no)}/${i.invoice_year}`, i.invoice_date || "", esc(`${i.client_name || ""} ${i.farmer_name || ""}`),
+      esc(i.product_name), n(i.qty), n(i.taken), `<b>${n(i.remaining)}</b>`]));
+}
+$("#q").oninput = drawInvoices;
+let st = "all", invView = [], logRows = [], logView = [];
+document.querySelectorAll(".f").forEach(b => b.onclick = () => {
+  st = b.dataset.s;
+  document.querySelectorAll(".f").forEach(x => x.setAttribute("aria-pressed", x === b));
+  drawInvoices();
+});
+$("#xi").onclick = () => csv("invoices",
+  ["الفاتورة", "التاريخ", "الفلاح", "السماد", "الكمية", "المستلم", "المتبقي", "الهاتف", "ملاحظات", "أُدخلت بواسطة"],
+  invView.map(i => [`${i.invoice_no}/${i.invoice_year}`, i.invoice_date, `${i.client_name || ""} ${i.farmer_name || ""}`.trim(),
+    i.product_name, i.qty, i.taken, i.remaining, i.phone, i.notes, i.created_by]));
+const LOGH = ["التاريخ", "الفاتورة", "الفلاح", "السماد", "الكمية", "الهيكل / البطاقة الرمادية", "السائق", "الشاحنة", "وصل الخروج", "أُدخل بواسطة", "وقت الإدخال"];
+async function loadLog() {
+  const { data, error } = await sb.from("withdrawals")
+    .select("*, invoices(invoice_no, invoice_year, client_name, farmer_name, products(name))")
+    .order("id", { ascending: false }).limit(300);
+  if (error) return toast(error.message, 1);
+  logRows = data; drawLog();
+}
+function drawLog() {
+  const q = $("#lq").value.trim().toLowerCase(), a = $("#d1").value, b = $("#d2").value;
+  logView = logRows.filter(w => (!a || w.w_date >= a) && (!b || w.w_date <= b) &&
+    (!q || Object.values({ ...w, ...w.invoices }).join(" ").toLowerCase().includes(q)))
+    .map(w => { const i = w.invoices || {};
+      return [w.w_date, `${i.invoice_no}/${i.invoice_year}`, `${i.client_name || ""} ${i.farmer_name || ""}`.trim(), i.products?.name,
+        w.qty, w.vehicle_ref, w.driver_name, w.truck_no, w.bon_no, w.created_by, (w.created_at || "").slice(0, 16).replace("T", " ")]; });
+  $("#logT").innerHTML = tbl(LOGH, logView.map(r => r.map(esc)));
+}
+["#lq", "#d1", "#d2"].forEach(s => $(s).oninput = drawLog);
+$("#xl").onclick = () => csv("deliveries", LOGH, logView);
+async function loadAudit() {
+  const { data, error } = await sb.from("audit_log").select("*").order("id", { ascending: false }).limit(300);
+  if (error) return toast(error.message, 1);
+  const A = { INSERT: "إضافة", UPDATE: "تعديل", DELETE: "حذف" };
+  const T = { products: "الأسمدة", stock_in: "الوارد", invoices: "الفواتير", withdrawals: "التسليمات" };
+  $("#auT").innerHTML = tbl(["الوقت", "المستخدم", "العملية", "القسم", "رقم السجل"],
+    data.map(r => [r.changed_at.slice(0, 16).replace("T", " "), esc(r.user_name || r.user_email), A[r.action], T[r.table_name] || r.table_name, r.row_id]));
+}
+
+startApp({
+  page: "warehouse",
+  tabs: [
+    ["stock", "المخزون الكلي من الأسمدة", ["stock"], loadStock],
+    ["invoices", "الفواتير", ["invList"], loadInvoices],
+    ["log", "سجل التسليمات", ["log"], loadLog],
+    ["audit", "سجل التعديلات", ["audit"], loadAudit]
+  ]
+});
+</script>
+</body>
+</html>

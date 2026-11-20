@@ -3,79 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>تسيير مخزون الأسمدة</title>
-<style>
-:root{--bg:#f4f5f1;--card:#fff;--tx:#1d2b22;--mu:#66736a;--bd:#d9dfd4;--pr:#1f5a3d;--pt:#fff;--ac:#c28a2b;--bad:#b3261e}
-@media(prefers-color-scheme:dark){:root{--bg:#141914;--card:#1d241d;--tx:#e6ece4;--mu:#9bab9d;--bd:#313d33;--pr:#6cbf86;--pt:#0e1c12;--ac:#e0b04f;--bad:#ff8a80}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.6 "Segoe UI",Tahoma,Arial,sans-serif}
-header{position:sticky;top:0;z-index:30;height:62px;background:var(--pr);color:var(--pt);padding:0 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid var(--ac)}
-header h1{margin:0;font-size:1.15rem}
-main{max-width:1000px;margin:0 auto;padding:16px}
-nav{position:fixed;top:62px;right:0;bottom:0;width:240px;background:var(--card);border-left:1px solid var(--bd);padding:12px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;z-index:20;transition:transform .25s}
-nav button{text-align:right;background:var(--bg);color:var(--tx);border:1px solid var(--bd);padding:10px 12px;border-radius:8px;cursor:pointer;font:inherit}
-#menu{display:none}
-main:has(#app:not([hidden])){margin-right:240px;max-width:1100px}
-@media(max-width:899px){nav{transform:translateX(100%)}nav.open{transform:none;box-shadow:0 0 20px #0005}main:has(#app:not([hidden])){margin-right:0}#menu.on{display:inline-block}}
-nav button[aria-current=true]{background:var(--pr);color:var(--pt);border-color:var(--pr)}
-section,.box{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:14px}
-h2{margin:0 0 12px;font-size:1.05rem}
-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;align-items:end}
-label{display:flex;flex-direction:column;font-size:.88rem;color:var(--mu);gap:3px}
-input,select{font:inherit;padding:8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--tx)}
-button.p{background:var(--pr);color:var(--pt);border:0;padding:10px 16px;border-radius:6px;cursor:pointer;font:inherit}
-:focus-visible{outline:3px solid var(--ac);outline-offset:1px}
-.w{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:.92rem}
-th,td{padding:8px;border-bottom:1px solid var(--bd);text-align:right;white-space:nowrap}
-th{color:var(--mu);font-weight:600}
-.bad{color:var(--bad);font-weight:700}
-.info{background:var(--bg);border-radius:8px;padding:10px;margin-bottom:10px}
-#toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:10px 18px;border-radius:8px;display:none;max-width:90%}
-#login{max-width:360px;margin:60px auto}
-#login form{grid-template-columns:1fr}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
-.card{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:10px}
-.card b{display:block;font-size:1.3rem}.card span{font-size:.82rem;color:var(--mu)}
-.warn{color:#b45309;font-weight:700}
-@media(prefers-color-scheme:dark){.warn{color:var(--ac)}}
-.f{background:var(--card);color:var(--tx);border:1px solid var(--bd);padding:8px 12px;border-radius:6px;cursor:pointer;font:inherit}
-.f[aria-pressed=true]{background:var(--pr);color:var(--pt);border-color:var(--pr)}
-button:disabled{opacity:.6;cursor:wait}
-[hidden]{display:none!important}
-</style>
+<title>إدخال البيانات - تسيير مخزون الأسمدة</title>
+<link rel="stylesheet" href="common.css">
 </head>
 <body>
-<header><div style="display:flex;gap:10px;align-items:center"><button class="p" id="menu" aria-label="القائمة" style="background:var(--ac);color:#1d2b22">☰</button><h1>تسيير مخزون الأسمدة الفلاحية</h1></div><div style="display:flex;gap:8px;align-items:center"><span id="who" style="font-size:.85rem"></span><button class="p" id="pwb" hidden style="background:var(--ac);color:#1d2b22">كلمة المرور</button><button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button></div></header>
+<header><div style="display:flex;gap:10px;align-items:center"><button class="p" id="menu" aria-label="القائمة" style="background:var(--ac);color:#1d2b22">☰</button><h1>إدخال البيانات - تسيير مخزون الأسمدة</h1></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span id="links" style="display:flex;gap:6px;flex-wrap:wrap"></span><span id="who" style="font-size:.85rem"></span><button class="p" id="pwb" hidden style="background:var(--ac);color:#1d2b22">كلمة المرور</button><button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button></div></header>
 <main>
-<div id="cfg" class="box" hidden>أدخل رابط مشروع Supabase والمفتاح العمومي (anon key) في أعلى كود الصفحة.</div>
-
-<div id="login" class="box" hidden>
-  <h2>تسجيل الدخول</h2>
-  <form id="lf">
-    <label>اسم المستخدم<input name="email" type="text" required autocomplete="username" autocapitalize="none" spellcheck="false"></label>
-    <label>كلمة المرور<input name="password" type="password" required></label>
-    <button class="p">دخول</button>
-  </form>
-</div>
-
+<div id="cfg" class="box" hidden></div>
 <div id="app" hidden>
-<nav>
-  <button data-t="stock">المخزون الكلي من الأسمدة</button>
-  <button data-t="invoices">الفواتير</button>
-  <button data-t="pickup">تسليم السماد للفلاحين</button>
-  <button data-t="log">سجل التسليمات</button>
-  <button data-t="receipts">الأسمدة الواردة للمخزن</button>
-  <button data-t="audit">سجل التعديلات</button>
-</nav>
-
-<section id="stock" hidden>
-  <h2>المخزون الكلي من الأسمدة (بالقنطار)</h2>
-  <div class="cards" id="cards"></div>
-  <label style="margin-bottom:10px">بحث عن سماد<input id="sq" placeholder="اسم السماد"></label>
-  <div class="w" id="stockT"></div>
-</section>
-
+<nav></nav>
 <section id="invoices" hidden>
   <h2>تسجيل فاتورة</h2>
   <form id="fi">
@@ -95,18 +31,6 @@ button:disabled{opacity:.6;cursor:wait}
     <button class="p">حفظ الفاتورة</button>
   </form>
 </section>
-<section id="invList" hidden>
-  <h2>الفواتير</h2>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:10px">
-    <label style="flex:1;min-width:200px">بحث<input id="q" placeholder="رقم الفاتورة أو الاسم"></label>
-    <button type="button" class="f" data-s="all" aria-pressed="true">الكل</button>
-    <button type="button" class="f" data-s="open" aria-pressed="false">قيد السحب</button>
-    <button type="button" class="f" data-s="done" aria-pressed="false">مكتملة بالكامل</button>
-    <button type="button" class="p" id="xi">تصدير CSV</button>
-  </div>
-  <div class="w" id="invT"></div>
-</section>
-
 <section id="pickup" hidden>
   <h2>تسليم السماد للفلاحين (Bon d'enlèvement)</h2>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:10px">
@@ -127,18 +51,6 @@ button:disabled{opacity:.6;cursor:wait}
   </form>
   <div class="w" id="pT" style="margin-top:12px"></div>
 </section>
-
-<section id="log" hidden>
-  <h2>سجل التسليمات</h2>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end;margin-bottom:10px">
-    <label>بحث<input id="lq" placeholder="وصل الخروج، الهيكل، الفاتورة، الفلاح"></label>
-    <label>من تاريخ<input id="d1" type="date"></label>
-    <label>إلى تاريخ<input id="d2" type="date"></label>
-    <button type="button" class="p" id="xl">تصدير CSV</button>
-  </div>
-  <div class="w" id="logT"></div>
-</section>
-
 <section id="receipts" hidden>
   <h2>تسجيل الأسمدة الواردة للمخزن</h2>
   <form id="fr">
@@ -150,154 +62,13 @@ button:disabled{opacity:.6;cursor:wait}
   </form>
   <div class="w" id="rT" style="margin-top:12px"></div>
 </section>
-<section id="audit" hidden>
-  <h2>سجل التعديلات (من غيّر ماذا ومتى)</h2>
-  <div class="w" id="auT"></div>
-</section>
-
-<section id="account" hidden>
-  <h2>تغيير كلمة المرور</h2>
-  <form id="fa">
-    <label>كلمة المرور الجديدة<input name="p1" type="password" minlength="6" required autocomplete="new-password"></label>
-    <label>تأكيد كلمة المرور<input name="p2" type="password" minlength="6" required autocomplete="new-password"></label>
-    <button class="p">حفظ كلمة المرور</button>
-  </form>
-</section>
 <datalist id="pl"></datalist>
 </div>
 </main>
 <div id="toast" role="status"></div>
-
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="common.js"></script>
 <script>
-// ===== أدخل بيانات مشروعك هنا (Project Settings > API) =====
-const SUPABASE_URL = "https://ibznldpkdrqgcdnrxwnj.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imliem5sZHBrZHJxZ2NkbnJ4d25qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5OTUwODUsImV4cCI6MjExMDU3MTA4NX0.LUyefDjCMWnac-cytLMkmOOLIPtgr0GdsPTWAqewJfw";
-// النطاق الذي يُضاف تلقائيا لاسم المستخدم (admin تصبح admin@cclsadrar.com)
-const EMAIL_DOMAIN = "cclsadrar.com";
-// رصيد أقل من هذا الحد (بالقنطار) يظهر بلون تحذيري
-const LOW_STOCK = 100;
-// ===========================================================
-
-const $ = s => document.querySelector(s);
-const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const today = () => new Date().toISOString().slice(0, 10);
-const n = v => Number(v).toLocaleString("fr-FR", {maximumFractionDigits: 2});
-const tbl = (h, rows) => rows.length
-  ? `<table><thead><tr>${h.map(x => `<th>${x}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`
-  : `<p style="color:var(--mu)">لا توجد بيانات بعد.</p>`;
-let tt;
-function toast(m, bad) {
-  const t = $("#toast"); t.textContent = m; t.style.background = bad ? "var(--bad)" : "var(--tx)";
-  t.style.display = "block"; clearTimeout(tt); tt = setTimeout(() => t.style.display = "none", 3500);
-}
-
-if (SUPABASE_URL.includes("YOUR-PROJECT")) { $("#cfg").hidden = false; throw new Error("Supabase non configuré"); }
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-// ----- الدخول -----
-$("#lf").onsubmit = async e => {
-  e.preventDefault();
-  const f = new FormData(e.target);
-  let user = f.get("email").trim().toLowerCase();
-  if (!user.includes("@")) user += "@" + EMAIL_DOMAIN;
-  const { error } = await sb.auth.signInWithPassword({ email: user, password: f.get("password") });
-  if (error) toast("تعذّر الدخول: " + error.message, 1);
-};
-$("#out").onclick = () => sb.auth.signOut();
-$("#pwb").onclick = () => show("account");
-$("#fa").onsubmit = async e => {
-  e.preventDefault();
-  const f = new FormData(e.target), p = f.get("p1");
-  if (p !== f.get("p2")) return toast("كلمتا المرور غير متطابقتين", 1);
-  const { error } = await sb.auth.updateUser({ password: p });
-  if (error) return toast(error.message, 1);
-  toast("تم تغيير كلمة المرور"); e.target.reset();
-};
-sb.auth.onAuthStateChange((_, s) => {
-  $("#login").hidden = !!s; $("#app").hidden = !s; $("#out").hidden = !s; $("#pwb").hidden = !s;
-  if (s) init();
-});
-
-// ----- التبويبات -----
-const tabs = { stock: ["stock"], invoices: ["invoices", "invList"], pickup: ["pickup"], receipts: ["receipts"], account: ["account"], log: ["log"], audit: ["audit"] };
-const load = { stock: loadStock, invoices: loadInvoices, pickup: loadPickup, receipts: loadReceipts, account: () => {}, log: loadLog, audit: loadAudit };
-function show(t) {
-  document.querySelectorAll("main section").forEach(s => s.hidden = true);
-  tabs[t].forEach(id => $("#" + id).hidden = false);
-  document.querySelectorAll("nav button").forEach(b => b.setAttribute("aria-current", b.dataset.t === t));
-  loadProducts(); load[t]();
-}
-document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.dataset.t));
-async function init() {
-  $("#fi [name=invoice_year]").value = new Date().getFullYear();
-  $("#fi [name=invoice_date]").value = today();
-  $("#fp [name=w_date]").value = today();
-  $("#fr [name=entry_date]").value = today();
-  const { data: me } = await sb.from("profiles").select("full_name, role").maybeSingle();
-  const role = me?.role;
-  const ok = {
-    director: ["stock"],
-    keeper: ["stock", "invoices", "pickup", "log", "receipts"],
-    head: ["stock", "invoices", "pickup", "log", "receipts", "audit"]
-  }[role] || [];
-  document.querySelectorAll("nav button").forEach(b => b.hidden = !ok.includes(b.dataset.t));
-  $("#who").textContent = me ? `${me.full_name} - ${{ director: "مدير المؤسسة", keeper: "أمين المخزن", head: "رئيس أمين المخزن" }[role]}` : "";
-  if (!ok.length) {
-    $("#app").hidden = true;
-    $("#cfg").textContent = "حسابك لا يملك صلاحية بعد. راجع مسؤول النظام لتعيين دورك.";
-    $("#cfg").hidden = false;
-    return;
-  }
-  $("#cfg").hidden = true;
-  show("stock");
-}
-async function loadAudit() {
-  const { data, error } = await sb.from("audit_log").select("*").order("id", { ascending: false }).limit(300);
-  if (error) return toast(error.message, 1);
-  const A = { INSERT: "إضافة", UPDATE: "تعديل", DELETE: "حذف" };
-  const T = { products: "الأسمدة", stock_in: "الوارد", invoices: "الفواتير", withdrawals: "التسليمات" };
-  $("#auT").innerHTML = tbl(["الوقت", "المستخدم", "العملية", "القسم", "رقم السجل"],
-    data.map(r => [r.changed_at.slice(0, 16).replace("T", " "), esc(r.user_name || r.user_email), A[r.action], T[r.table_name] || r.table_name, r.row_id]));
-}
-
-// ----- الأسمدة (قائمة تلقائية) -----
-async function loadProducts() {
-  const { data } = await sb.from("products").select("name").order("name");
-  $("#pl").innerHTML = (data || []).map(p => `<option value="${esc(p.name)}">`).join("");
-}
-async function productId(name) {
-  const { data, error } = await sb.from("products").upsert({ name: name.trim() }, { onConflict: "name" }).select("id").single();
-  if (error) throw error;
-  return data.id;
-}
-
-// ----- المخزون -----
-let stockRows = [];
-async function loadStock() {
-  const [s, iv, w] = await Promise.all([
-    sb.from("stock_status").select("*").order("name"),
-    sb.from("invoice_balance").select("remaining"),
-    sb.from("withdrawals").select("qty").gte("w_date", today().slice(0, 8) + "01")]);
-  if (s.error) return toast(s.error.message, 1);
-  stockRows = s.data;
-  const inv = iv.data || [], act = inv.filter(x => x.remaining > 0).length;
-  const sum = a => (a || []).reduce((t, x) => t + Number(x.qty ?? x.balance), 0);
-  $("#cards").innerHTML = [["إجمالي الباقي في المخزن (قنطار)", n(sum(stockRows))], ["فواتير نشطة", act],
-    ["فواتير مكتملة", inv.length - act], ["المسلَّم هذا الشهر (قنطار)", n(sum(w.data))]]
-    .map(([l, v]) => `<div class="card"><b>${v}</b><span>${l}</span></div>`).join("");
-  drawStock();
-}
-function drawStock() {
-  const q = $("#sq").value.trim().toLowerCase();
-  const cls = b => b < 0 ? "bad" : b < LOW_STOCK ? "warn" : "";
-  $("#stockT").innerHTML = tbl(["السماد", "الوارد", "المستلم", "الباقي في المخزن"],
-    stockRows.filter(r => r.name.toLowerCase().includes(q))
-      .map(r => [esc(r.name), n(r.received), n(r.withdrawn), `<span class="${cls(r.balance)}">${n(r.balance)}</span>`]));
-}
-$("#sq").oninput = drawStock;
-
-// ----- وارد المخزن -----
 $("#fr").onsubmit = async e => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
@@ -314,9 +85,6 @@ async function loadReceipts() {
   $("#rT").innerHTML = tbl(["التاريخ", "السماد", "الكمية", "ملاحظة"],
     (data || []).map(r => [r.entry_date, esc(r.products?.name), n(r.qty), esc(r.note)]));
 }
-
-// ----- الفواتير -----
-let invoices = [];
 $("#fi").onsubmit = async e => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
@@ -327,67 +95,10 @@ $("#fi").onsubmit = async e => {
     const { error } = await sb.from("invoices").insert({ ...f, product_id });
     if (error) throw error;
     toast("تم حفظ الفاتورة"); e.target.reset(); init2();
-    loadProducts(); loadInvoices();
+    loadProducts();
   } catch (x) { toast(x.code === "23505" ? "رقم الفاتورة مسجّل من قبل في هذه السنة" : x.message, 1); }
 };
 function init2() { $("#fi [name=invoice_year]").value = new Date().getFullYear(); $("#fi [name=invoice_date]").value = today(); }
-async function loadInvoices() {
-  const { data, error } = await sb.from("invoice_balance").select("*").order("id", { ascending: false }).limit(300);
-  if (error) return toast(error.message, 1);
-  invoices = data; drawInvoices();
-}
-function drawInvoices() {
-  const q = $("#q").value.trim().toLowerCase();
-  const rows = invView = invoices.filter(i =>
-    (st === "all" || (st === "open" ? i.remaining > 0 : i.remaining <= 0)) &&
-    (!q || `${i.invoice_no} ${i.client_name} ${i.farmer_name}`.toLowerCase().includes(q)));
-  $("#invT").innerHTML = tbl(["الفاتورة", "التاريخ", "الفلاح", "السماد", "الكمية", "المستلم", "المتبقي"],
-    rows.map(i => [`${esc(i.invoice_no)}/${i.invoice_year}`, i.invoice_date || "", esc(`${i.client_name || ""} ${i.farmer_name || ""}`),
-      esc(i.product_name), n(i.qty), n(i.taken), `<b>${n(i.remaining)}</b>`]));
-}
-$("#q").oninput = drawInvoices;
-let st = "all", invView = [], logRows = [], logView = [];
-document.querySelectorAll(".f").forEach(b => b.onclick = () => {
-  st = b.dataset.s;
-  document.querySelectorAll(".f").forEach(x => x.setAttribute("aria-pressed", x === b));
-  drawInvoices();
-});
-
-// ----- تصدير CSV (يفتح في Excel) -----
-function csv(name, h, rows) {
-  const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
-  const t = "\ufeff" + [h, ...rows].map(r => r.map(q).join(",")).join("\r\n");
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([t], { type: "text/csv;charset=utf-8" }));
-  a.download = `${name}-${today()}.csv`; a.click();
-}
-$("#xi").onclick = () => csv("invoices",
-  ["الفاتورة", "التاريخ", "الفلاح", "السماد", "الكمية", "المستلم", "المتبقي", "الهاتف", "ملاحظات", "أُدخلت بواسطة"],
-  invView.map(i => [`${i.invoice_no}/${i.invoice_year}`, i.invoice_date, `${i.client_name || ""} ${i.farmer_name || ""}`.trim(),
-    i.product_name, i.qty, i.taken, i.remaining, i.phone, i.notes, i.created_by]));
-
-// ----- سجل التسليمات -----
-const LOGH = ["التاريخ", "الفاتورة", "الفلاح", "السماد", "الكمية", "الهيكل / البطاقة الرمادية", "السائق", "الشاحنة", "وصل الخروج", "أُدخل بواسطة", "وقت الإدخال"];
-async function loadLog() {
-  const { data, error } = await sb.from("withdrawals")
-    .select("*, invoices(invoice_no, invoice_year, client_name, farmer_name, products(name))")
-    .order("id", { ascending: false }).limit(300);
-  if (error) return toast(error.message, 1);
-  logRows = data; drawLog();
-}
-function drawLog() {
-  const q = $("#lq").value.trim().toLowerCase(), a = $("#d1").value, b = $("#d2").value;
-  logView = logRows.filter(w => (!a || w.w_date >= a) && (!b || w.w_date <= b) &&
-    (!q || Object.values({ ...w, ...w.invoices }).join(" ").toLowerCase().includes(q)))
-    .map(w => { const i = w.invoices || {};
-      return [w.w_date, `${i.invoice_no}/${i.invoice_year}`, `${i.client_name || ""} ${i.farmer_name || ""}`.trim(), i.products?.name,
-        w.qty, w.vehicle_ref, w.driver_name, w.truck_no, w.bon_no, w.created_by, (w.created_at || "").slice(0, 16).replace("T", " ")]; });
-  $("#logT").innerHTML = tbl(LOGH, logView.map(r => r.map(esc)));
-}
-["#lq", "#d1", "#d2"].forEach(s => $(s).oninput = drawLog);
-$("#xl").onclick = () => csv("deliveries", LOGH, logView);
-
-// ----- التسليم -----
 let open = [];
 async function loadPickup() {
   const { data, error } = await sb.from("invoice_balance").select("*").gt("remaining", 0).order("id", { ascending: false });
@@ -432,15 +143,19 @@ $("#fp").onsubmit = async e => {
   const keep = id; await loadPickup(); $("#pi").value = keep; drawPickup();
 };
 
-// ----- حالة الحفظ: تعطيل الزر أثناء الإرسال لمنع التكرار -----
-document.querySelectorAll("form").forEach(f => {
-  const h = f.onsubmit; if (!h) return;
-  f.onsubmit = async e => {
-    const b = f.querySelector("button.p");
-    if (b.disabled) { e.preventDefault(); return; }
-    const t = b.textContent; b.disabled = true; b.textContent = "جارٍ الحفظ...";
-    try { await h.call(f, e); } finally { b.disabled = false; b.textContent = t; }
-  };
+startApp({
+  page: "index",
+  tabs: [
+    ["invoices", "تسجيل فاتورة", ["invoices"], () => {}],
+    ["pickup", "تسليم السماد للفلاحين", ["pickup"], loadPickup],
+    ["receipts", "الأسمدة الواردة للمخزن", ["receipts"], loadReceipts]
+  ],
+  ready() {
+    $("#fi [name=invoice_year]").value = new Date().getFullYear();
+    $("#fi [name=invoice_date]").value = today();
+    $("#fp [name=w_date]").value = today();
+    $("#fr [name=entry_date]").value = today();
+  }
 });
 </script>
 </body>

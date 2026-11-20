@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>المستخدمون والصلاحيات - تسيير مخزون الأسمدة</title>
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<header><div style="display:flex;gap:10px;align-items:center"><button class="p" id="menu" aria-label="القائمة" style="background:var(--ac);color:#1d2b22">☰</button><h1>المستخدمون والصلاحيات - تسيير مخزون الأسمدة</h1></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span id="links" style="display:flex;gap:6px;flex-wrap:wrap"></span><span id="who" style="font-size:.85rem"></span><button class="p" id="pwb" hidden style="background:var(--ac);color:#1d2b22">كلمة المرور</button><button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button></div></header>
+<main>
+<div id="cfg" class="box" hidden></div>
+<div id="app" hidden>
+<nav></nav>
+<section id="create" hidden>
+  <h2>إنشاء مستخدم جديد</h2>
+  <form id="fu">
+    <label>اسم المستخدم (حروف لاتينية وأرقام)<input name="username" required autocomplete="off" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\-]+"></label>
+    <label>الاسم الكامل<input name="full_name" required></label>
+    <label>كلمة المرور<input name="password" type="password" minlength="6" required autocomplete="new-password"></label>
+    <label>الدور<select name="role" id="nr"></select></label>
+    <div class="perms" id="np" style="grid-column:1/-1"></div>
+    <button class="p">إنشاء المستخدم</button>
+  </form>
+</section>
+<section id="list" hidden>
+  <h2>المستخدمون والصلاحيات الممنوحة لهم</h2>
+  <div class="w" id="uT"></div>
+</section>
+</div>
+</main>
+<div id="toast" role="status"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="common.js"></script>
+<script>
+const permBoxes = (sel, dis) => Object.entries(PERMS).map(([k, l]) =>
+  `<label><input type="checkbox" class="pc" value="${k}"${sel.includes(k) ? " checked" : ""}${dis ? " disabled" : ""}>${l}</label>`).join("");
+const roleOpts = cur => Object.entries(ROLES).map(([k, v]) => `<option value="${k}"${cur === k ? " selected" : ""}>${v}</option>`).join("");
+function resetNew() {
+  $("#nr").innerHTML = roleOpts("keeper");
+  $("#np").innerHTML = permBoxes(DEFAULTS.keeper);
+}
+$("#nr").onchange = e => {
+  const d = DEFAULTS[e.target.value] || [];
+  $("#np").querySelectorAll(".pc").forEach(c => c.checked = d.includes(c.value));
+};
+
+$("#fu").onsubmit = async e => {
+  e.preventDefault();
+  const f = new FormData(e.target), username = f.get("username").trim().toLowerCase();
+  const full_name = f.get("full_name").trim(), role = f.get("role");
+  const perms = [...$("#np").querySelectorAll(".pc:checked")].map(c => c.value);
+  const email = username + "@" + EMAIL_DOMAIN;
+  // عميل مؤقت لا يحفظ الجلسة حتى لا تُستبدل جلسة المسؤول بجلسة المستخدم الجديد
+  const tmp = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: "sb-signup-tmp" } });
+  const { data, error } = await tmp.auth.signUp({ email, password: f.get("password"), options: { data: { full_name } } });
+  if (error) return toast(error.message, 1);
+  if (!data.user || !data.user.identities?.length) return toast("اسم المستخدم مسجّل من قبل", 1);
+  const { error: e2 } = await sb.from("profiles").upsert({ id: data.user.id, full_name, role, perms, email, active: true });
+  if (e2) return toast("أُنشئ الحساب لكن تعذّر حفظ صلاحياته: " + e2.message + " (نفّذ supabase-setup.sql)", 1);
+  toast("تم إنشاء المستخدم"); e.target.reset(); resetNew(); loadUsers();
+};
+
+async function loadUsers() {
+  const { data, error } = await sb.from("profiles").select("*").order("full_name");
+  if (error) return toast(error.message, 1);
+  $("#uT").innerHTML = tbl(["المستخدم", "الدور", "الصلاحيات", "مفعّل", ""], data.map(u => {
+    const self = u.id === ME.id, P = permsOf({ ...u, active: true });
+    return [
+      `${esc(u.full_name)}${self ? " (أنت)" : ""}<br><small>${esc((u.email || "").split("@")[0])}</small>`,
+      `<select data-r${self ? " disabled" : ""}>${roleOpts(u.role)}</select>`,
+      `<div class="perms">${permBoxes(P, self)}</div>`,
+      `<input type="checkbox" data-a${u.active !== false ? " checked" : ""}${self ? " disabled" : ""}>`,
+      self ? "" : `<button class="p" data-id="${u.id}">حفظ</button>`
+    ];
+  }));
+}
+$("#uT").onchange = e => {
+  if (!e.target.matches("[data-r]")) return;
+  const d = DEFAULTS[e.target.value] || [];
+  e.target.closest("tr").querySelectorAll(".pc").forEach(c => c.checked = d.includes(c.value));
+};
+$("#uT").onclick = async e => {
+  const b = e.target.closest("button[data-id]"); if (!b) return;
+  const tr = b.closest("tr");
+  const row = {
+    role: tr.querySelector("[data-r]").value,
+    active: tr.querySelector("[data-a]").checked,
+    perms: [...tr.querySelectorAll(".pc:checked")].map(c => c.value)
+  };
+  b.disabled = true;
+  const { data, error } = await sb.from("profiles").update(row).eq("id", b.dataset.id).select();
+  b.disabled = false;
+  if (error) return toast(error.message, 1);
+  if (!data.length) return toast("لم يُحفظ التعديل: تحقق من سياسات الأمان (supabase-setup.sql)", 1);
+  toast("تم حفظ التعديلات");
+};
+
+resetNew();
+startApp({
+  page: "users",
+  tabs: [["users", "المستخدمون والصلاحيات", ["create", "list"], loadUsers]]
+});
+</script>
+</body>
+</html>

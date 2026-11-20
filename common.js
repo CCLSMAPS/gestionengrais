@@ -1,0 +1,148 @@
+// مشترك بين كل الصفحات: غيّر إعدادات Supabase هنا مرة واحدة فقط
+// ===== أدخل بيانات مشروعك هنا (Project Settings > API) =====
+const SUPABASE_URL = "https://ibznldpkdrqgcdnrxwnj.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imliem5sZHBrZHJxZ2NkbnJ4d25qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5OTUwODUsImV4cCI6MjExMDU3MTA4NX0.LUyefDjCMWnac-cytLMkmOOLIPtgr0GdsPTWAqewJfw";
+// النطاق الذي يُضاف تلقائيا لاسم المستخدم (admin تصبح admin@cclsadrar.com)
+const EMAIL_DOMAIN = "cclsadrar.com";
+// رصيد أقل من هذا الحد (بالقنطار) يظهر بلون تحذيري
+const LOW_STOCK = 100;
+// ===========================================================
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const today = () => new Date().toISOString().slice(0, 10);
+const n = v => Number(v).toLocaleString("fr-FR", {maximumFractionDigits: 2});
+const tbl = (h, rows) => rows.length
+  ? `<table><thead><tr>${h.map(x => `<th>${x}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`
+  : `<p style="color:var(--mu)">لا توجد بيانات بعد.</p>`;
+let tt;
+function toast(m, bad) {
+  const t = $("#toast"); t.textContent = m; t.style.background = bad ? "var(--bad)" : "var(--tx)";
+  t.style.display = "block"; clearTimeout(tt); tt = setTimeout(() => t.style.display = "none", 3500);
+}
+async function loadProducts() {
+  const { data } = await sb.from("products").select("name").order("name");
+  $("#pl").innerHTML = (data || []).map(p => `<option value="${esc(p.name)}">`).join("");
+}
+async function productId(name) {
+  const { data, error } = await sb.from("products").upsert({ name: name.trim() }, { onConflict: "name" }).select("id").single();
+  if (error) throw error;
+  return data.id;
+}
+function csv(name, h, rows) {
+  const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+  const t = "\ufeff" + [h, ...rows].map(r => r.map(q).join(",")).join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([t], { type: "text/csv;charset=utf-8" }));
+  a.download = `${name}-${today()}.csv`; a.click();
+}
+
+// ===== مشترك: الاتصال، الصلاحيات، الدخول، التنقل =====
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const ROLES = { director: "مدير المؤسسة", keeper: "أمين المخزن", head: "رئيس أمين المخزن", admin: "مسؤول النظام" };
+const PERMS = { stock: "عرض المخزون", invoices: "الفواتير", pickup: "تسليم السماد", receipts: "الأسمدة الواردة", log: "سجل التسليمات", audit: "سجل التعديلات", users: "إدارة المستخدمين" };
+// الصلاحيات الافتراضية لكل دور (تُستعمل إن لم تُحدَّد صلاحيات خاصة للمستخدم)
+const DEFAULTS = {
+  director: ["stock"],
+  keeper: ["stock", "invoices", "pickup", "log", "receipts"],
+  head: ["stock", "invoices", "pickup", "log", "receipts", "audit"],
+  admin: Object.keys(PERMS)
+};
+const PAGES = [
+  ["index.html", "إدخال البيانات", ["invoices", "pickup", "receipts"]],
+  ["warehouse.html", "تسيير المخزن", ["stock", "invoices", "log", "audit"]],
+  ["users.html", "المستخدمون والصلاحيات", ["users"]]
+];
+const permsOf = p => !p || p.active === false ? [] : (Array.isArray(p.perms) ? p.perms : DEFAULTS[p.role] || []);
+let ME = null;
+
+const LOGIN_HTML = `<div id="login" class="box" hidden>
+  <h2>تسجيل الدخول</h2>
+  <form id="lf">
+    <label>اسم المستخدم<input name="email" type="text" required autocomplete="username" autocapitalize="none" spellcheck="false"></label>
+    <label>كلمة المرور<input name="password" type="password" required></label>
+    <button class="p">دخول</button>
+  </form>
+</div>
+`;
+const ACCOUNT_HTML = `<section id="account" hidden>
+  <h2>تغيير كلمة المرور</h2>
+  <form id="fa">
+    <label>كلمة المرور الجديدة<input name="p1" type="password" minlength="6" required autocomplete="new-password"></label>
+    <label>تأكيد كلمة المرور<input name="p2" type="password" minlength="6" required autocomplete="new-password"></label>
+    <button class="p">حفظ كلمة المرور</button>
+  </form>
+</section>`;
+
+function lockForms() {
+document.querySelectorAll("form").forEach(f => {
+  const h = f.onsubmit; if (!h) return;
+  f.onsubmit = async e => {
+    const b = f.querySelector("button.p");
+    if (b.disabled) { e.preventDefault(); return; }
+    const t = b.textContent; b.disabled = true; b.textContent = "جارٍ الحفظ...";
+    try { await h.call(f, e); } finally { b.disabled = false; b.textContent = t; }
+  };
+});
+}
+
+function startApp({ page, tabs, ready }) {
+  $("main").insertAdjacentHTML("afterbegin", LOGIN_HTML);
+  $("#app").insertAdjacentHTML("beforeend", ACCOUNT_HTML);
+  const nav = $("nav");
+  nav.innerHTML = tabs.map(t => `<button data-t="${t[0]}">${t[1]}</button>`).join("");
+  const byKey = Object.fromEntries(tabs.map(t => [t[0], t]));
+
+  function show(k) {
+    document.querySelectorAll("main section").forEach(s => s.hidden = true);
+    (k === "account" ? ["account"] : byKey[k][2]).forEach(id => $("#" + id).hidden = false);
+    nav.querySelectorAll("button").forEach(b => b.setAttribute("aria-current", b.dataset.t === k));
+    nav.classList.remove("open");
+    if (k !== "account") { if ($("#pl")) loadProducts(); byKey[k][3](); }
+  }
+  nav.querySelectorAll("button").forEach(b => b.onclick = () => show(b.dataset.t));
+  $("#menu").onclick = () => nav.classList.toggle("open");
+
+  $("#lf").onsubmit = async e => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    let user = f.get("email").trim().toLowerCase();
+    if (!user.includes("@")) user += "@" + EMAIL_DOMAIN;
+    const { error } = await sb.auth.signInWithPassword({ email: user, password: f.get("password") });
+    if (error) toast("تعذّر الدخول: " + error.message, 1);
+  };
+  $("#out").onclick = () => sb.auth.signOut();
+  $("#pwb").onclick = () => show("account");
+  $("#fa").onsubmit = async e => {
+    e.preventDefault();
+    const f = new FormData(e.target), p = f.get("p1");
+    if (p !== f.get("p2")) return toast("كلمتا المرور غير متطابقتين", 1);
+    const { error } = await sb.auth.updateUser({ password: p });
+    if (error) return toast(error.message, 1);
+    toast("تم تغيير كلمة المرور"); e.target.reset();
+  };
+
+  async function enter(s) {
+    const { data: me } = await sb.from("profiles").select("*").eq("id", s.user.id).maybeSingle();
+    ME = me ? { ...me, id: s.user.id } : { id: s.user.id };
+    const P = permsOf(me), ok = tabs.filter(t => P.includes(t[0]));
+    $("#who").textContent = me ? `${me.full_name} - ${ROLES[me.role] || ""}` : "";
+    $("#links").innerHTML = PAGES.filter(p => p[0] !== page + ".html" && p[2].some(k => P.includes(k)))
+      .map(p => `<a class="lk" href="${p[0]}">${p[1]}</a>`).join("");
+    nav.querySelectorAll("button").forEach(b => b.hidden = !ok.some(t => t[0] === b.dataset.t));
+    if (!ok.length) {
+      $("#app").hidden = true;
+      $("#cfg").textContent = P.length ? "ليست لديك صلاحية على هذه الصفحة. استعمل الروابط في أعلى الصفحة." : "حسابك لا يملك صلاحية بعد. راجع مسؤول النظام لتعيين دورك.";
+      $("#cfg").hidden = false; return;
+    }
+    $("#cfg").hidden = true;
+    if (ready) ready();
+    show(ok[0][0]);
+  }
+  sb.auth.onAuthStateChange((_, s) => {
+    $("#login").hidden = !!s; $("#app").hidden = !s; $("#out").hidden = !s; $("#pwb").hidden = !s;
+    $("#menu").classList.toggle("on", !!s);
+    if (!s) { $("#who").textContent = ""; $("#links").innerHTML = ""; $("#cfg").hidden = true; return; }
+    setTimeout(() => enter(s), 0);
+  });
+  lockForms();
+}
