@@ -52,7 +52,7 @@ const PAGES = [
   ["warehouse.html", "تسيير المخزن", ["stock", "invoices", "log", "audit"]],
   ["users.html", "المستخدمون والصلاحيات", ["users"]]
 ];
-const permsOf = p => !p || p.active === false ? [] : (Array.isArray(p.perms) ? p.perms : DEFAULTS[p.role] || []);
+const permsOf = p => !p || p.is_blocked === true ? [] : (Array.isArray(p.permissions) ? p.permissions : DEFAULTS[p.role] || []);
 let ME = null;
 
 const LOGIN_HTML = `<div id="login" class="box" hidden>
@@ -122,7 +122,7 @@ function startApp({ page, tabs, ready }) {
   };
 
   async function enter(s) {
-    const { data: me } = await sb.from("profiles").select("*").eq("id", s.user.id).maybeSingle();
+    const { data: me } = await sb.from("profiles").select("*").eq("user_id", s.user.id).maybeSingle();
     ME = me ? { ...me, id: s.user.id } : { id: s.user.id };
     const P = permsOf(me), ok = tabs.filter(t => P.includes(t[0]));
     $("#who").textContent = me ? `${me.full_name} - ${ROLES[me.role] || ""}` : "";
