@@ -4,8 +4,19 @@ const SUPABASE_URL = "https://ibznldpkdrqgcdnrxwnj.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imliem5sZHBrZHJxZ2NkbnJ4d25qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5OTUwODUsImV4cCI6MjExMDU3MTA4NX0.LUyefDjCMWnac-cytLMkmOOLIPtgr0GdsPTWAqewJfw";
 // النطاق الذي يُضاف تلقائيا لاسم المستخدم (admin تصبح admin@cclsadrar.com)
 const EMAIL_DOMAIN = "cclsadrar.com";
-// رصيد أقل من هذا الحد (بالقنطار) يظهر بلون تحذيري
-const LOW_STOCK = 100;
+// رصيد أقل من هذا الحد (بالقنطار) يظهر بلون تحذيري (يمكن تخصيصه من الإعدادات)
+const LOW_STOCK_KEY = "ccls_low_stock_threshold";
+const DEFAULT_LOW_STOCK = 5;
+function getLowStockThreshold() {
+  try {
+    const raw = localStorage.getItem(LOW_STOCK_KEY);
+    if (raw !== null && raw !== "") {
+      const v = Number(raw);
+      if (Number.isFinite(v) && v >= 0) return v;
+    }
+  } catch (_) {}
+  return DEFAULT_LOW_STOCK;
+}
 // ===========================================================
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -42,9 +53,12 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const ROLES = {}, PERMS = {}, DEFAULTS = {}, PERM_PAGES = {};
 let ADMIN_ROLES = new Set();
 const PAGES = [
-  ["index.html", "إدخال البيانات"],
-  ["warehouse.html", "تسيير المخزن"],
-  ["users.html", "المستخدمون والصلاحيات"]
+  ["reception.html", "1. استقبال الملفات", ["index.html", "reception.html"]],
+  ["index.html", "2. الفواتير والوارد", ["index.html"]],
+  ["bons.html", "3. أذون الخروج", ["index.html", "warehouse.html", "bons.html"]],
+  ["warehouse.html", "4. تسيير المخزن", ["warehouse.html"]],
+  ["crops.html", "5. إحصائيات الزراعات", ["index.html", "warehouse.html", "crops.html"]],
+  ["users.html", "6. المستخدمون", ["users.html"]]
 ];
 async function loadCatalog() {
   const [r, p, rp] = await Promise.all([
@@ -75,6 +89,12 @@ const LOGIN_HTML = `<div id="login" class="box" hidden>
 </div>
 `;
 const ACCOUNT_HTML = `<section id="account" hidden>
+  <h2>الإعدادات - الحد الأدنى للمخزن</h2>
+  <form id="fs" style="margin-bottom:18px">
+    <label>الحد الأدنى للمخزن (قنطار - Threshold)<input name="threshold" id="cfgThreshold" type="number" step="any" min="0" required></label>
+    <button class="p">حفظ الإعدادات</button>
+    <button type="button" class="f" id="resetThreshold">الافتراضي (5)</button>
+  </form>
   <h2>تغيير كلمة المرور</h2>
   <form id="fa">
     <label>كلمة المرور الجديدة<input name="p1" type="password" minlength="6" required autocomplete="new-password"></label>
@@ -99,6 +119,29 @@ function startApp({ page, tabs, ready }) {
   $("main").insertAdjacentHTML("afterbegin", LOGIN_HTML);
   $("#app").insertAdjacentHTML("beforeend", ACCOUNT_HTML);
   const nav = $("nav");
+  let backdrop = $(".nav-backdrop");
+  if (!backdrop) {
+    backdrop = document.createElement("div");
+    backdrop.className = "nav-backdrop";
+    backdrop.hidden = true;
+    document.body.appendChild(backdrop);
+  }
+  const syncHeaderHeight = () => {
+    const h = $("header");
+    if (h) document.documentElement.style.setProperty("--header-h", `${h.offsetHeight}px`);
+  };
+  syncHeaderHeight();
+  if (typeof ResizeObserver !== "undefined" && $("header")) {
+    new ResizeObserver(syncHeaderHeight).observe($("header"));
+  }
+  window.addEventListener("resize", syncHeaderHeight);
+
+  const setNavOpen = openState => {
+    nav.classList.toggle("open", openState);
+    backdrop.hidden = !openState;
+  };
+  backdrop.onclick = () => setNavOpen(false);
+
   nav.innerHTML = tabs.map(t => `<button data-t="${t[0]}">${t[1]}</button>`).join("");
   const byKey = Object.fromEntries(tabs.map(t => [t[0], t]));
 
@@ -106,11 +149,12 @@ function startApp({ page, tabs, ready }) {
     document.querySelectorAll("main section").forEach(s => s.hidden = true);
     (k === "account" ? ["account"] : byKey[k][2]).forEach(id => $("#" + id).hidden = false);
     nav.querySelectorAll("button").forEach(b => b.setAttribute("aria-current", b.dataset.t === k));
-    nav.classList.remove("open");
+    setNavOpen(false);
     if (k !== "account") { if ($("#pl")) loadProducts(); byKey[k][3](); }
   }
   nav.querySelectorAll("button").forEach(b => b.onclick = () => show(b.dataset.t));
-  $("#menu").onclick = () => nav.classList.toggle("open");
+  window.showAppTab = show;
+  $("#menu").onclick = () => setNavOpen(!nav.classList.contains("open"));
 
   $("#lf").onsubmit = async e => {
     e.preventDefault();
@@ -121,7 +165,25 @@ function startApp({ page, tabs, ready }) {
     if (error) toast("تعذّر الدخول: " + error.message, 1);
   };
   $("#out").onclick = () => sb.auth.signOut();
-  $("#pwb").onclick = () => show("account");
+  $("#pwb").textContent = "الإعدادات";
+  $("#pwb").onclick = () => {
+    $("#cfgThreshold").value = getLowStockThreshold();
+    show("account");
+  };
+  $("#fs").onsubmit = async e => {
+    e.preventDefault();
+    const val = Number(new FormData(e.target).get("threshold"));
+    if (!Number.isFinite(val) || val < 0) return toast("أدخل قيمة صالحة للحد الأدنى", 1);
+    localStorage.setItem(LOW_STOCK_KEY, String(val));
+    window.dispatchEvent(new CustomEvent("ccls:threshold-change", { detail: val }));
+    toast(`تم حفظ الحد الأدنى للمخزن: ${n(val)} قنطار`);
+  };
+  $("#resetThreshold").onclick = () => {
+    localStorage.setItem(LOW_STOCK_KEY, String(DEFAULT_LOW_STOCK));
+    $("#cfgThreshold").value = DEFAULT_LOW_STOCK;
+    window.dispatchEvent(new CustomEvent("ccls:threshold-change", { detail: DEFAULT_LOW_STOCK }));
+    toast(`تمت استعادة القيمة الافتراضية (${DEFAULT_LOW_STOCK} قنطار)`);
+  };
   $("#fa").onsubmit = async e => {
     e.preventDefault();
     const f = new FormData(e.target), p = f.get("p1");
@@ -135,10 +197,12 @@ function startApp({ page, tabs, ready }) {
     try { await loadCatalog(); } catch (x) { $("#app").hidden = true; $("#cfg").textContent = "تعذّر تحميل المناصب والصلاحيات: " + x.message + " (نفّذ supabase-setup.sql)"; $("#cfg").hidden = false; return; }
     const { data: me } = await sb.from("profiles").select("*").eq("user_id", s.user.id).maybeSingle();
     ME = me ? { ...me, id: s.user.id } : { id: s.user.id };
-    const P = permsOf(me), ok = tabs.filter(t => P.includes(t[0]));
+    const P = permsOf(me), ok = tabs.filter(t => P.includes(t[0]) || (Array.isArray(t[4]) ? t[4].some(x => P.includes(x)) : t[4] && P.includes(t[4])));
     $("#who").textContent = me ? `${me.full_name} - ${ROLES[me.role] || me.role || ""}` : "";
-    $("#links").innerHTML = PAGES.filter(p => p[0] !== page + ".html" && Object.keys(PERMS).some(k => P.includes(k) && (PERM_PAGES[k] || []).includes(p[0])))
-      .map(p => `<a class="lk" href="${p[0]}">${p[1]}</a>`).join("");
+    $("#links").innerHTML = PAGES.filter(p =>
+      Object.keys(PERMS).some(k => P.includes(k) && (PERM_PAGES[k] || []).some(pg => p[2].includes(pg)))
+    )
+      .map(p => `<a class="lk" href="${p[0]}"${p[0] === page + ".html" ? ' aria-current="page"' : ""}>${p[1]}</a>`).join("");
     nav.querySelectorAll("button").forEach(b => b.hidden = !ok.some(t => t[0] === b.dataset.t));
     if (!ok.length) {
       $("#app").hidden = true;
@@ -148,11 +212,12 @@ function startApp({ page, tabs, ready }) {
     $("#cfg").hidden = true;
     if (ready) ready();
     show(ok[0][0]);
+    requestAnimationFrame(syncHeaderHeight);
   }
   sb.auth.onAuthStateChange((_, s) => {
     $("#login").hidden = !!s; $("#app").hidden = !s; $("#out").hidden = !s; $("#pwb").hidden = !s;
     $("#menu").classList.toggle("on", !!s);
-    if (!s) { $("#who").textContent = ""; $("#links").innerHTML = ""; $("#cfg").hidden = true; return; }
+    if (!s) { $("#who").textContent = ""; $("#links").innerHTML = ""; $("#cfg").hidden = true; setNavOpen(false); requestAnimationFrame(syncHeaderHeight); return; }
     setTimeout(() => enter(s), 0);
   });
   lockForms();

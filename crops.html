@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>إحصائيات الزراعات والمساحات - تسيير مخزون الأسمدة</title>
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<header>
+  <div style="display:flex;gap:10px;align-items:center">
+    <button class="p" id="menu" aria-label="القائمة" style="background:var(--ac);color:#1d2b22">☰</button>
+    <h1>إحصائيات الزراعات والمساحات المزروعة</h1>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span id="links" style="display:flex;gap:6px;flex-wrap:wrap"></span>
+    <span id="who" style="font-size:.85rem"></span>
+    <button class="p" id="pwb" hidden style="background:var(--ac);color:#1d2b22">كلمة المرور</button>
+    <button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button>
+  </div>
+</header>
+<main>
+<div id="cfg" class="box" hidden></div>
+<div id="app" hidden>
+<nav></nav>
+<section id="cropsSec" hidden>
+  <div class="no-print">
+    <h2>توزيع المساحات المزروعة حسب نوع الزراعة</h2>
+    <div class="cards" id="cCards"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:12px">
+      <label style="flex:1;min-width:170px">بحث<input id="cq" placeholder="اسم الفلاح، رقم الملف، المنطقة، الزراعة..."></label>
+      <label>المنطقة<select id="cz"></select></label>
+      <label>نوع الزراعة<select id="cc"></select></label>
+      <button type="button" class="p" id="xc">تصدير CSV</button>
+      <button type="button" class="p" id="pdfDossiers">تصدير PDF</button>
+      <button type="button" class="f" id="printDossiers">طباعة القائمة</button>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+      <strong>الرسم البياني الدائري (Recharts Pie Chart)</strong>
+      <span id="cultureChartMeta" style="color:var(--mu);font-size:.85rem"></span>
+    </div>
+    <div id="culture-chart-root"></div>
+  </div>
+</section>
+<section id="cropsTableSec" hidden>
+  <div class="no-print">
+    <h2>ملخص المساحات حسب نوع الزراعة</h2>
+    <div class="w" id="cropSummaryT" style="margin-bottom:16px"></div>
+    <h2>تعديل وتحديث المساحات المزروعة للملفات</h2>
+    <div class="w" id="dT"></div>
+  </div>
+</section>
+</div>
+</main>
+<div id="dossiersPrintReport" hidden></div>
+<div id="toast" role="status"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="common.js"></script>
+<script src="dossiers-data.js"></script>
+<script src="dist/culture-chart.js"></script>
+<script src="dist/dossiers-pdf.js"></script>
+<script>
+let DOSSIERS = [];
+let hasRemoteDb = false;
+
+async function loadCrops() {
+  DOSSIERS = readLocalDossiers();
+  hasRemoteDb = false;
+  try {
+    const { data, error } = await sb.from("dossier_receptions").select("*").order("id", { ascending: true });
+    if (!error && Array.isArray(data)) {
+      hasRemoteDb = true;
+      if (data.length) {
+        DOSSIERS = data;
+        writeLocalDossiers(DOSSIERS);
+      }
+    }
+  } catch (_) {}
+  const zones = [...new Set(DOSSIERS.map(d => d.zone).filter(Boolean))];
+  const crops = [...new Set(DOSSIERS.map(d => (d.culture || "").toUpperCase()).filter(Boolean))];
+  const curZ = $("#cz").value, curC = $("#cc").value;
+  $("#cz").innerHTML = '<option value="">كل المناطق</option>' + zones.map(z => `<option value="${esc(z)}">${esc(z)}</option>`).join("");
+  $("#cc").innerHTML = '<option value="">كل الزراعات</option>' + crops.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  $("#cz").value = curZ; $("#cc").value = curC;
+  renderCrops();
+}
+
+function renderCrops() {
+  const q = ($("#cq").value || "").trim().toLowerCase();
+  const z = $("#cz").value;
+  const c = $("#cc").value;
+  const rows = DOSSIERS.filter(d =>
+    (!z || d.zone === z) &&
+    (!c || (d.culture || "").toUpperCase() === c) &&
+    (!q || [d.dossier_no, d.farmer_name, d.zone, d.culture, d.phone].join(" ").toLowerCase().includes(q))
+  );
+
+  const byCulture = new Map();
+  rows.forEach(d => {
+    const key = (d.culture || "غير محدد").trim().toUpperCase() || "غير محدد";
+    const cur = byCulture.get(key) || { culture: key, area: 0, count: 0 };
+    const sup = Number(d.superficie || 0);
+    cur.area += Number.isFinite(sup) && sup > 0 ? sup : 0;
+    cur.count += 1;
+    byCulture.set(key, cur);
+  });
+  const chartData = [...byCulture.values()].sort((a, b) => (b.area - a.area) || (b.count - a.count));
+  const totalArea = chartData.reduce((t, x) => t + x.area, 0);
+
+  $("#cCards").innerHTML = [
+    ["الملفات المعروضة", rows.length],
+    ["إجمالي المساحة (هكتار)", n(totalArea)],
+    ["أنواع الزراعات", chartData.length],
+    ["المناطق", new Set(rows.map(r => r.zone).filter(Boolean)).size]
+  ].map(([l, v]) => `<div class="card"><b>${esc(v)}</b><span>${l}</span></div>`).join("");
+
+  $("#cultureChartMeta").textContent = chartData.length
+    ? `أنواع الزراعة: ${chartData.length} | إجمالي المساحة: ${n(totalArea)} هكتار`
+    : "";
+  if (window.renderCulturePieChart) window.renderCulturePieChart(chartData);
+
+  $("#cropSummaryT").innerHTML = tbl(
+    ["نوع الزراعة", "عدد الملفات", "إجمالي المساحة (هكتار)", "النسبة من المساحة %"],
+    chartData.map(x => [
+      `<b>${esc(x.culture)}</b>`,
+      x.count,
+      n(x.area),
+      totalArea > 0 ? n((x.area / totalArea) * 100) + "%" : "—"
+    ])
+  );
+
+  $("#dT").innerHTML = tbl(
+    ["رقم الملف", "اسم الفلاح", "المنطقة", "الزراعة", "المساحة (هكتار)", "التاريخ"],
+    rows.map(d => [
+      `<b>${esc(d.dossier_no)}</b>`,
+      esc(d.farmer_name),
+      esc(d.zone || "-"),
+      esc(d.culture || "-"),
+      `<input type="number" step="any" min="0" data-sup="${esc(d.dossier_no)}" value="${d.superficie !== "" && d.superficie != null ? esc(d.superficie) : ""}" placeholder="0" style="width:95px">`,
+      esc(d.reception_date)
+    ])
+  );
+}
+
+$("#dT").addEventListener("change", async e => {
+  const inp = e.target.closest("input[data-sup]");
+  if (!inp) return;
+  const no = inp.dataset.sup;
+  const val = inp.value.trim();
+  const num = val === "" ? "" : Number(val);
+  if (val !== "" && (!Number.isFinite(num) || num < 0)) return toast("أدخل مساحة صحيحة", 1);
+  const target = DOSSIERS.find(x => String(x.dossier_no) === no);
+  if (!target) return;
+  target.superficie = num;
+  if (hasRemoteDb && target.id) {
+    const { error } = await sb.from("dossier_receptions").update({ superficie: num === "" ? null : num }).eq("id", target.id);
+    if (error) return toast(error.message, 1);
+  }
+  writeLocalDossiers(DOSSIERS);
+  renderCrops();
+  toast(`تم تحديث مساحة الملف ${no}`);
+});
+
+["#cq", "#cz", "#cc"].forEach(s => $(s).addEventListener("input", renderCrops));
+$("#xc").onclick = () => csv("crops-areas-2026-2027",
+  ["رقم الملف", "اسم الفلاح", "المنطقة", "الزراعة", "المساحة", "التاريخ"],
+  DOSSIERS.map(d => [d.dossier_no, d.farmer_name, d.zone, d.culture, d.superficie, d.reception_date]));
+$("#pdfDossiers").onclick = async () => {
+  if (!DOSSIERS.length) return toast("لا توجد ملفات للتصدير", 1);
+  const b = $("#pdfDossiers"), orig = b.textContent;
+  b.disabled = true; b.textContent = "جارٍ إنشاء PDF...";
+  try {
+    await window.exportDossiersPdf(DOSSIERS);
+    toast("تم تصدير ملف PDF بنجاح");
+  } catch (_) {
+    window.printDossiersList(DOSSIERS);
+  } finally {
+    b.disabled = false; b.textContent = orig;
+  }
+};
+$("#printDossiers").onclick = () => {
+  if (!DOSSIERS.length) return toast("لا توجد ملفات للطباعة", 1);
+  window.printDossiersList(DOSSIERS);
+};
+
+startApp({
+  page: "crops",
+  tabs: [
+    ["crops", "إحصائيات الزراعات والمساحات", ["cropsSec", "cropsTableSec"], loadCrops, ["invoices", "stock"]]
+  ]
+});
+</script>
+</body>
+</html>

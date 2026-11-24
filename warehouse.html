@@ -15,17 +15,35 @@
 <section id="stock" hidden>
   <h2>المخزون حسب المخزن والمنتج (بالقنطار)</h2>
   <div class="cards" id="cards"></div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:10px">
+  <div id="lowStockAlert" class="alert-warn" hidden></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:10px;margin-bottom:10px">
     <label>بحث<input id="sq" placeholder="اسم المنتج"></label>
     <label>المخزن<select id="sw"></select></label>
     <label>نوع المنتج<select id="sc"></select></label>
   </div>
   <div class="w" id="stockT"></div>
 </section>
+<section id="lowStockSec" hidden>
+  <h2>منتجات أوشكت على النفاد في المخزن</h2>
+  <div class="cards" id="lowCards"></div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:12px">
+    <label style="min-width:140px;flex:0 1 160px">الحد الأدنى للتنبيه (قنطار)<input id="lowLimit" type="number" step="any" min="0" value="5"></label>
+    <label style="min-width:160px;flex:1">المخزن<select id="lw"></select></label>
+    <button type="button" class="p" id="xlow">تصدير CSV</button>
+  </div>
+  <div class="w" id="lowStockT"></div>
+</section>
+<section id="stockChart" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+    <h2 style="margin:0">إجمالي الكميات المتوفرة في كل مخزن (بالقنطار)</h2>
+    <span id="chartMeta" style="color:var(--mu);font-size:.85rem"></span>
+  </div>
+  <div id="warehouse-chart-root"></div>
+</section>
 <section id="invList" hidden>
   <h2>الفواتير</h2>
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:10px">
-    <label style="flex:1;min-width:200px">بحث<input id="q" placeholder="رقم الفاتورة أو الاسم"></label>
+    <label style="flex:1;min-width:160px">بحث<input id="q" placeholder="رقم الفاتورة أو الاسم"></label>
     <button type="button" class="f" data-s="all" aria-pressed="true">الكل</button>
     <button type="button" class="f" data-s="open" aria-pressed="false">قيد السحب</button>
     <button type="button" class="f" data-s="done" aria-pressed="false">مكتملة بالكامل</button>
@@ -35,7 +53,7 @@
 </section>
 <section id="log" hidden>
   <h2>سجل التسليمات</h2>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end;margin-bottom:10px">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:10px;align-items:end;margin-bottom:10px">
     <label>بحث<input id="lq" placeholder="وصل الخروج، الهيكل، الفاتورة، الفلاح"></label>
     <label>من تاريخ<input id="d1" type="date"></label>
     <label>إلى تاريخ<input id="d2" type="date"></label>
@@ -75,6 +93,7 @@
 <div id="toast" role="status"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="common.js"></script>
+<script src="dist/warehouse-chart.js"></script>
 <script>
 let stockRows = [];
 async function loadStock() {
@@ -86,14 +105,101 @@ async function loadStock() {
     sb.from("product_categories").select("id,name").order("sort_order")]);
   if (s.error) return toast(s.error.message + " (نفّذ supabase-warehouses.sql)", 1);
   stockRows = s.data;
-  fillSel("#sw", wh.data, "كل المخازن"); fillSel("#sc", ct.data, "كل الأنواع");
+  fillSel("#sw", wh.data, "كل المخازن"); fillSel("#lw", wh.data, "كل المخازن"); fillSel("#sc", ct.data, "كل الأنواع");
   const inv = iv.data || [], act = inv.filter(x => x.remaining > 0).length;
   const sum = a => (a || []).reduce((t, x) => t + Number(x.qty ?? x.balance), 0);
   const low = stockRows.filter(r => r.daily > 0 && r.balance <= r.reorder_point).length;
   $("#cards").innerHTML = [["إجمالي الباقي في المخازن (قنطار)", n(sum(stockRows))], ["فواتير نشطة", act],
     ["مواد تحت نقطة إعادة الطلب", low], ["المسلَّم هذا الشهر (قنطار)", n(sum(w.data))]]
     .map(([l, v]) => `<div class="card"><b>${v}</b><span>${l}</span></div>`).join("");
+  drawWarehouseChart(wh.data || []);
+  drawLowStock();
   drawStock();
+}
+function getLowLimit() {
+  const el = $("#lowLimit");
+  if (el && !el.dataset.init) {
+    el.value = getLowStockThreshold();
+    el.dataset.init = "1";
+  }
+  const v = Number(el?.value ?? getLowStockThreshold());
+  return Number.isFinite(v) && v >= 0 ? v : getLowStockThreshold();
+}
+window.addEventListener("ccls:threshold-change", e => {
+  if ($("#lowLimit")) $("#lowLimit").value = e.detail;
+  drawLowStock();
+  drawStock();
+});
+function drawLowStock() {
+  const limit = getLowLimit();
+  const w = $("#lw").value;
+  const allLow = stockRows.filter(r => Number(r.balance) < limit).sort((a, b) => Number(a.balance) - Number(b.balance));
+  const rows = allLow.filter(r => !w || String(r.wid) === w);
+  const outCount = rows.filter(r => Number(r.balance) <= 0).length;
+  const nearCount = rows.length - outCount;
+
+  const alertBox = $("#lowStockAlert");
+  if (allLow.length) {
+    alertBox.hidden = false;
+    alertBox.innerHTML = `<span><strong>تنبيه المخزون:</strong> يوجد <b>${allLow.length}</b> منتج كميته أقل من <b>${n(limit)}</b> قنطار.</span>
+      <button type="button" class="p" style="background:#b45309;color:#fff;padding:6px 12px" onclick="window.showAppTab && window.showAppTab('lowStock')">عرض قائمة المنتجات المنخفضة</button>`;
+  } else {
+    alertBox.hidden = true;
+  }
+
+  $("#lowCards").innerHTML = [
+    ["إجمالي المنتجات تحت الحد", rows.length],
+    ["نفد المخزون (0 أو أقل)", outCount],
+    ["أوشك على النفاد", nearCount],
+    ["الحد المعتمد (قنطار)", n(limit)]
+  ].map(([l, v]) => `<div class="card"><b>${v}</b><span>${l}</span></div>`).join("");
+
+  if (!rows.length) {
+    $("#lowStockT").innerHTML = `<p style="color:var(--mu)">لا توجد منتجات أقل من ${n(limit)} قنطار حالياً.</p>`;
+    return;
+  }
+  $("#lowStockT").innerHTML = `<table><thead><tr><th>المنتج</th><th>المخزن</th><th>الوارد</th><th>المستلم</th><th>الباقي (قنطار)</th><th>الحد الأدنى</th><th>الحالة</th></tr></thead><tbody>` +
+    rows.map(r => {
+      const bal = Number(r.balance);
+      const isOut = bal <= 0;
+      const cls = isOut ? "row-bad" : "row-warn";
+      const valCls = isOut ? "bad" : "warn";
+      const tag = isOut ? `<span class="tag-bad">نفد المخزون</span>` : `<span class="tag-warn">أوشك على النفاد</span>`;
+      return `<tr class="${cls}"><td><b>${esc(r.name)}</b></td><td>${esc(r.warehouse || "-")}</td><td>${n(r.received)}</td><td>${n(r.withdrawn)}</td><td class="${valCls}">${n(bal)}</td><td>${n(limit)}</td><td>${tag}</td></tr>`;
+    }).join("") + `</tbody></table>`;
+}
+$("#lowLimit").addEventListener("input", () => {
+  localStorage.setItem(LOW_STOCK_KEY, $("#lowLimit").value);
+  drawLowStock();
+  drawStock();
+});
+$("#lw").addEventListener("input", drawLowStock);
+$("#xlow").onclick = () => {
+  const limit = getLowLimit();
+  const w = $("#lw").value;
+  const rows = stockRows.filter(r => Number(r.balance) < limit && (!w || String(r.wid) === w));
+  csv("low-stock", ["المنتج", "المخزن", "الوارد", "المستلم", "الباقي", "الحد الأدنى"],
+    rows.map(r => [r.name, r.warehouse, r.received, r.withdrawn, r.balance, limit]));
+};
+function drawWarehouseChart(warehouses) {
+  const byWh = new Map();
+  warehouses.forEach(w => {
+    byWh.set(w.name, { warehouse: w.name, balance: 0, received: 0, withdrawn: 0, products: 0 });
+  });
+  stockRows.forEach(r => {
+    const key = r.warehouse || "غير محدد";
+    const cur = byWh.get(key) || { warehouse: key, balance: 0, received: 0, withdrawn: 0, products: 0 };
+    cur.balance += Number(r.balance || 0);
+    cur.received += Number(r.received || 0);
+    cur.withdrawn += Number(r.withdrawn || 0);
+    cur.products += 1;
+    byWh.set(key, cur);
+  });
+  const chartData = [...byWh.values()].sort((a, b) => b.balance - a.balance);
+  $("#chartMeta").textContent = chartData.length
+    ? `عدد المخازن: ${chartData.length} | الإجمالي: ${n(chartData.reduce((t, x) => t + x.balance, 0))} قنطار`
+    : "";
+  if (window.renderWarehouseChart) window.renderWarehouseChart(chartData);
 }
 function fillSel(sel, rows, all) {
   const cur = $(sel).value;
@@ -102,11 +208,21 @@ function fillSel(sel, rows, all) {
 }
 function drawStock() {
   const q = $("#sq").value.trim().toLowerCase(), w = $("#sw").value, c = $("#sc").value;
-  const st = r => r.daily > 0 && r.balance <= r.reorder_point ? `<span class="${r.cover_days <= r.lead_days ? "bad" : "warn"}">اطلب الآن</span>` : "";
+  const limit = getLowLimit();
+  const st = r => {
+    const bal = Number(r.balance);
+    if (bal <= 0) return `<span class="tag-bad">نفد المخزون</span>`;
+    if (bal < limit) return `<span class="tag-warn">أوشك على النفاد</span>`;
+    return r.daily > 0 && bal <= r.reorder_point ? `<span class="${r.cover_days <= r.lead_days ? "bad" : "warn"}">اطلب الآن</span>` : "";
+  };
   $("#stockT").innerHTML = tbl(["المنتج", "المخزن", "الوارد", "المستلم", "الباقي", "المعدل اليومي", "أيام التغطية", "نقطة إعادة الطلب", "ABC", "الحالة"],
     stockRows.filter(r => r.name.toLowerCase().includes(q) && (!w || String(r.wid) === w) && (!c || String(r.category_id) === c))
-      .map(r => [esc(r.name), esc(r.warehouse), n(r.received), n(r.withdrawn), `<span class="${r.balance < 0 ? "bad" : ""}">${n(r.balance)}</span>`,
-        n(r.daily), r.cover_days ?? "-", n(r.reorder_point), r.abc, st(r)]));
+      .map(r => {
+        const bal = Number(r.balance);
+        const cls = bal <= 0 ? "bad" : bal < limit ? "warn" : "";
+        return [esc(r.name), esc(r.warehouse), n(r.received), n(r.withdrawn), `<span class="${cls}">${n(bal)}</span>`,
+          n(r.daily), r.cover_days ?? "-", n(r.reorder_point), r.abc, st(r)];
+      }));
 }
 ["#sq", "#sw", "#sc"].forEach(x => $(x).oninput = drawStock);
 let invoices = [];
@@ -233,7 +349,8 @@ $("#prT").onclick = e => {
 startApp({
   page: "warehouse",
   tabs: [
-    ["stock", "المخزون الكلي من الأسمدة", ["stock"], loadStock],
+    ["stock", "المخزون الكلي من الأسمدة", ["stock", "stockChart"], loadStock],
+    ["lowStock", "منتجات أوشكت على النفاد", ["lowStockSec"], loadStock, "stock"],
     ["invoices", "الفواتير", ["invList"], loadInvoices],
     ["log", "سجل التسليمات", ["log"], loadLog],
     ["audit", "سجل التعديلات", ["audit"], loadAudit],

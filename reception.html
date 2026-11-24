@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>استقبال ملفات الفلاحين (Accusé de réception) - CCLS ADRAR</title>
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<header>
+  <div style="display:flex;gap:10px;align-items:center">
+    <button class="p" id="menu" aria-label="القائمة" style="background:var(--ac);color:#1d2b22">☰</button>
+    <h1>استقبال ملفات الفلاحين (Accusé de réception)</h1>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span id="links" style="display:flex;gap:6px;flex-wrap:wrap"></span>
+    <span id="who" style="font-size:.85rem"></span>
+    <button class="p" id="pwb" hidden style="background:var(--ac);color:#1d2b22">كلمة المرور</button>
+    <button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button>
+  </div>
+</header>
+<main>
+<div id="cfg" class="box" hidden></div>
+<div id="app" hidden>
+<nav></nav>
+<section id="receptionSec" hidden>
+  <div class="no-print">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <h2 style="margin:0">إيداع ملف فلاح وإصدار وصل الاستلام (Accusé de réception de dossier)</h2>
+      <span id="dbBadge" style="font-size:.82rem;color:var(--mu)"></span>
+    </div>
+    <form id="fd">
+      <label>رقم الملف (N°)<input name="dossier_no" required autocomplete="off"></label>
+      <label>القطاع (SECTEUR)<input name="secteur" list="sl" value="/" autocomplete="off"></label>
+      <label>اسم الفلاح (NOM DE L'AGRICULTEUR)<input name="farmer_name" list="fl" required autocomplete="off" placeholder="اختر من القائمة أو اكتب الاسم..."></label>
+      <label>تاريخ الإيداع (DATE)<input name="reception_date" type="date" required></label>
+      <label>المساحة (SUPERFICIE - ha)<input name="superficie" type="number" step="any" min="0" placeholder="30.00"></label>
+      <label>المنطقة (ZONE)<input name="zone" list="zl" autocomplete="off"></label>
+      <label>نوع الزراعة (CULTURE)<input name="culture" list="cl" value="BLE" autocomplete="off"></label>
+      <label>رقم الهاتف (N° DE TELEPHONE)<input name="phone" type="tel" placeholder="06-XX-XX-XX-XX"></label>
+      <label>الموسم (CAMP)<input name="camp" value="2026/2027" required></label>
+      <button class="p">حفظ في قاعدة البيانات وإصدار الوصل</button>
+      <button type="button" class="f" id="previewBtn">معاينة الوصل فقط</button>
+    </form>
+  </div>
+
+  <div id="accuseBox" style="margin-top:16px" hidden>
+    <div class="no-print" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
+      <strong>وصل استلام الملف (Accusé de réception de dossier)</strong>
+      <div style="display:flex;gap:8px">
+        <button type="button" class="p" id="doPrintBtn">طباعة الوصل</button>
+        <button type="button" class="f" id="hidePrintBtn">إخفاء</button>
+      </div>
+    </div>
+    <div id="accusePrint" class="slip-wrap"></div>
+  </div>
+
+  <div class="no-print" style="margin-top:18px">
+    <h2>أرشيف الملفات المستلمة</h2>
+    <div class="cards" id="dCards"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:10px">
+      <label style="flex:1;min-width:170px">بحث في الأرشيف<input id="dq" placeholder="رقم الملف، اسم الفلاح، المنطقة، الزراعة، الهاتف..."></label>
+      <label>المنطقة<select id="dz"></select></label>
+      <button type="button" class="p" id="xd">تصدير CSV</button>
+      <button type="button" class="p" id="pdfDossiers">تصدير PDF</button>
+      <button type="button" class="f" id="printDossiers">طباعة القائمة</button>
+    </div>
+    <div class="w" id="dT"></div>
+  </div>
+</section>
+<datalist id="fl"></datalist>
+<datalist id="zl"></datalist>
+<datalist id="cl"><option value="BLE"><option value="MAIS"><option value="ORGE"><option value="AVOINE"><option value="TRITICALE"></datalist>
+<datalist id="sl"><option value="/"><option value="S,T"></datalist>
+</div>
+</main>
+<div id="dossiersPrintReport" hidden></div>
+<div id="toast" role="status"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="common.js"></script>
+<script src="dossiers-data.js"></script>
+<script src="dist/dossiers-pdf.js"></script>
+<script>
+let DOSSIERS = [];
+let FARMERS = [];
+let hasRemoteDb = false;
+
+function syncLists() {
+  FARMERS = getKnownFarmers(DOSSIERS);
+  $("#fl").innerHTML = FARMERS.map(f => `<option value="${esc(f.farmer_name)}">`).join("");
+  const zones = [...new Set(DOSSIERS.map(d => d.zone).filter(Boolean))];
+  $("#zl").innerHTML = zones.map(z => `<option value="${esc(z)}">`).join("");
+  const curZ = $("#dz").value;
+  $("#dz").innerHTML = '<option value="">كل المناطق</option>' + zones.map(z => `<option value="${esc(z)}">${esc(z)}</option>`).join("");
+  $("#dz").value = curZ;
+}
+
+function suggestNextNo() {
+  const maxNo = DOSSIERS.reduce((m, x) => {
+    const num = parseInt(x.dossier_no, 10);
+    return Number.isFinite(num) && num > m ? num : m;
+  }, 0);
+  $("#fd [name=dossier_no]").value = String(maxNo + 1).padStart(2, "0");
+}
+
+async function loadReception() {
+  DOSSIERS = readLocalDossiers();
+  hasRemoteDb = false;
+  try {
+    const { data, error } = await sb.from("dossier_receptions").select("*").order("id", { ascending: true });
+    if (!error && Array.isArray(data)) {
+      hasRemoteDb = true;
+      if (data.length) {
+        DOSSIERS = data;
+        writeLocalDossiers(DOSSIERS);
+      } else if (DOSSIERS.length) {
+        const seedRows = DOSSIERS.map(({ id, ...rest }) => ({
+          ...rest,
+          superficie: rest.superficie === "" ? null : rest.superficie,
+          camp: rest.camp || "2026/2027"
+        }));
+        const ins = await sb.from("dossier_receptions").insert(seedRows).select();
+        if (!ins.error && ins.data) {
+          DOSSIERS = ins.data;
+          writeLocalDossiers(DOSSIERS);
+        }
+      }
+      $("#dbBadge").textContent = "متصل بقاعدة البيانات Supabase ✓";
+    } else {
+      $("#dbBadge").textContent = "حفظ محلي (لتفعيل الحفظ في Supabase نفّذ supabase-dossiers.sql)";
+    }
+  } catch (_) {
+    $("#dbBadge").textContent = "حفظ محلي (لتفعيل الحفظ في Supabase نفّذ supabase-dossiers.sql)";
+  }
+  syncLists();
+  renderArchive();
+  if (!$("#fd [name=dossier_no]").value) suggestNextNo();
+  if (!$("#fd [name=reception_date]").value) $("#fd [name=reception_date]").value = today();
+}
+
+function renderArchive() {
+  const q = ($("#dq").value || "").trim().toLowerCase();
+  const z = $("#dz").value;
+  const rows = DOSSIERS.filter(d =>
+    (!z || d.zone === z) &&
+    (!q || [d.dossier_no, d.farmer_name, d.zone, d.culture, d.phone, d.secteur].join(" ").toLowerCase().includes(q))
+  );
+  const totalArea = DOSSIERS.reduce((s, d) => s + (Number(d.superficie) > 0 ? Number(d.superficie) : 0), 0);
+  $("#dCards").innerHTML = [
+    ["إجمالي الملفات المسجلة", DOSSIERS.length],
+    ["المساحة الإجمالية (هكتار)", n(totalArea)],
+    ["المناطق", new Set(DOSSIERS.map(d => d.zone).filter(Boolean)).size],
+    ["الموسم", "2026/2027"]
+  ].map(([l, v]) => `<div class="card"><b>${esc(v)}</b><span>${l}</span></div>`).join("");
+
+  $("#dT").innerHTML = tbl(
+    ["رقم الملف", "التاريخ", "المنطقة", "اسم الفلاح", "الزراعة", "الهاتف", "المساحة", "القطاع", "إجراءات"],
+    [...rows].reverse().map(d => [
+      `<b>${esc(d.dossier_no)}</b>`,
+      esc(d.reception_date),
+      esc(d.zone || "-"),
+      esc(d.farmer_name),
+      esc(d.culture || "-"),
+      esc(d.phone || "-"),
+      d.superficie !== "" && d.superficie != null ? n(d.superficie) : "-",
+      esc(d.secteur || "/"),
+      `<div style="display:flex;gap:4px">
+        <button type="button" class="f" data-slip="${esc(d.dossier_no)}">طباعة الوصل</button>
+        <button type="button" class="p" data-del="${esc(d.dossier_no)}" style="background:var(--bad);padding:6px 10px">حذف</button>
+      </div>`
+    ])
+  );
+}
+
+function buildSlipHtml(d) {
+  const sup = d.superficie !== "" && d.superficie != null ? `${n(d.superficie)} ha` : "—";
+  const dt = d.reception_date
+    ? new Date(d.reception_date + "T00:00:00").toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
+    : "";
+  const camp = d.camp || "2026/2027";
+  const copy = () => `
+    <div class="slip">
+      <div class="slip-head">
+        <img src="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif" alt="CCLS Adrar">
+        <div>
+          <h3>OFFICE ALGERIEN INTERPROFESSIONNEL DES CEREALES</h3>
+          <p>Coopérative de Céréales et des légumes secs d'Adrar</p>
+          <div class="slip-title">Accusé de réception de dossier</div>
+          <p><strong>CAMP ${esc(camp)}</strong></p>
+        </div>
+        <img src="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif" alt="CCLS Adrar">
+      </div>
+      <div class="slip-grid">
+        <div><b>N° :</b><span>${esc(d.dossier_no)}</span></div>
+        <div><b>SECTEUR :</b><span>${esc(d.secteur || "/")}</span></div>
+        <div><b>NOM DE L'AGRICULTEUR :</b><span>${esc(d.farmer_name)}</span></div>
+        <div><b>DATE :</b><span>${esc(dt || d.reception_date)}</span></div>
+        <div><b>ZONE :</b><span>${esc(d.zone || "—")}</span></div>
+        <div><b>SUPERFICIE :</b><span>${esc(sup)}</span></div>
+        <div><b>CULTURE :</b><span>${esc(d.culture || "—")}</span></div>
+        <div><b>N° DE TELEPHONE :</b><span>${esc(d.phone || "—")}</span></div>
+      </div>
+      <div class="slip-foot">
+        <span>SIGNATURE DE L'AGRICULTEUR</span>
+        <span>S/DSAP</span>
+      </div>
+    </div>`;
+  return copy() + '<hr class="slip-cut">' + copy();
+}
+
+function showSlip(d) {
+  $("#accusePrint").innerHTML = buildSlipHtml(d);
+  $("#accuseBox").hidden = false;
+  $("#accuseBox").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+$("#fd [name=farmer_name]").addEventListener("change", e => {
+  const val = e.target.value.trim().toUpperCase();
+  const f = FARMERS.find(x => x.farmer_name === val);
+  if (!f) return;
+  if (f.zone && !$("#fd [name=zone]").value) $("#fd [name=zone]").value = f.zone;
+  if (f.phone && !$("#fd [name=phone]").value) $("#fd [name=phone]").value = f.phone;
+  if (f.culture) $("#fd [name=culture]").value = f.culture;
+  if (f.superficie !== "" && f.superficie != null && !$("#fd [name=superficie]").value) $("#fd [name=superficie]").value = f.superficie;
+  if (f.secteur) $("#fd [name=secteur]").value = f.secteur;
+});
+
+$("#fd").onsubmit = async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  const item = {
+    dossier_no: f.dossier_no.trim(),
+    reception_date: f.reception_date,
+    zone: (f.zone || "").trim().toUpperCase(),
+    farmer_name: f.farmer_name.trim().toUpperCase(),
+    culture: (f.culture || "").trim().toUpperCase(),
+    phone: (f.phone || "").trim(),
+    superficie: f.superficie !== "" ? Number(f.superficie) : "",
+    secteur: (f.secteur || "/").trim() || "/",
+    camp: (f.camp || "2026/2027").trim()
+  };
+
+  if (hasRemoteDb) {
+    const payload = {
+      ...item,
+      superficie: item.superficie === "" ? null : item.superficie,
+      created_by: ME?.full_name || ME?.email || null
+    };
+    const { data, error } = await sb.from("dossier_receptions").insert(payload).select().single();
+    if (error) return toast("تعذّر الحفظ في قاعدة البيانات: " + error.message, 1);
+    DOSSIERS.push(data);
+    toast("تم حفظ الملف في قاعدة البيانات وإصدار وصل الاستلام");
+  } else {
+    const nextId = DOSSIERS.reduce((m, x) => Math.max(m, Number(x.id || 0)), 0) + 1;
+    DOSSIERS.push({ id: nextId, ...item });
+    toast("تم حفظ الملف محلياً وإصدار الوصل (نفّذ supabase-dossiers.sql للمزامنة السحابية)");
+  }
+
+  writeLocalDossiers(DOSSIERS);
+  syncLists();
+  renderArchive();
+  showSlip(item);
+  e.target.reset();
+  $("#fd [name=reception_date]").value = today();
+  $("#fd [name=culture]").value = "BLE";
+  $("#fd [name=secteur]").value = "/";
+  $("#fd [name=camp]").value = "2026/2027";
+  suggestNextNo();
+};
+
+$("#previewBtn").onclick = () => {
+  const f = Object.fromEntries(new FormData($("#fd")));
+  if (!f.farmer_name && !f.dossier_no) return toast("أدخل رقم الملف أو اسم الفلاح أولاً", 1);
+  showSlip(f);
+};
+$("#doPrintBtn").onclick = () => window.print();
+$("#hidePrintBtn").onclick = () => { $("#accuseBox").hidden = true; };
+["#dq", "#dz"].forEach(s => $(s).addEventListener("input", renderArchive));
+$("#xd").onclick = () => csv("dossiers-2026-2027",
+  ["رقم الملف", "التاريخ", "المنطقة", "اسم الفلاح", "الزراعة", "رقم الهاتف", "المساحة", "القطاع"],
+  DOSSIERS.map(d => [d.dossier_no, d.reception_date, d.zone, d.farmer_name, d.culture, d.phone, d.superficie, d.secteur]));
+$("#pdfDossiers").onclick = async () => {
+  if (!DOSSIERS.length) return toast("لا توجد ملفات مسجلة للتصدير", 1);
+  const b = $("#pdfDossiers"), orig = b.textContent;
+  b.disabled = true; b.textContent = "جارٍ إنشاء PDF...";
+  try {
+    await window.exportDossiersPdf(DOSSIERS);
+    toast("تم تصدير ملف PDF بنجاح");
+  } catch (_) {
+    window.printDossiersList(DOSSIERS);
+  } finally {
+    b.disabled = false; b.textContent = orig;
+  }
+};
+$("#printDossiers").onclick = () => {
+  if (!DOSSIERS.length) return toast("لا توجد ملفات مسجلة للطباعة", 1);
+  window.printDossiersList(DOSSIERS);
+};
+
+$("#dT").onclick = async e => {
+  const slipBtn = e.target.closest("[data-slip]");
+  if (slipBtn) {
+    const d = DOSSIERS.find(x => String(x.dossier_no) === slipBtn.dataset.slip);
+    if (d) showSlip(d);
+    return;
+  }
+  const delBtn = e.target.closest("[data-del]");
+  if (delBtn) {
+    const no = delBtn.dataset.del;
+    if (!confirm(`حذف الملف رقم ${no}؟`)) return;
+    const target = DOSSIERS.find(x => String(x.dossier_no) === no);
+    if (hasRemoteDb && target?.id) {
+      const { error } = await sb.from("dossier_receptions").delete().eq("id", target.id);
+      if (error) return toast(error.message, 1);
+    }
+    DOSSIERS = DOSSIERS.filter(x => String(x.dossier_no) !== no);
+    writeLocalDossiers(DOSSIERS);
+    syncLists();
+    renderArchive();
+    toast("تم حذف الملف");
+  }
+};
+
+startApp({
+  page: "reception",
+  tabs: [
+    ["reception", "استقبال الملفات (Accusé)", ["receptionSec"], loadReception, "invoices"]
+  ],
+  ready() {
+    $("#fd [name=reception_date]").value = today();
+  }
+});
+</script>
+</body>
+</html>

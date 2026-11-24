@@ -3,11 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>إدخال البيانات - تسيير مخزون الأسمدة</title>
+<title>تسيير مخزون الأسمدة - CCLS ADRAR</title>
+<meta name="description" content="نظام تسيير مخزون الأسمدة والفواتير والتسليمات والمستخدمين.">
+<meta property="og:title" content="تسيير مخزون الأسمدة - CCLS ADRAR">
+<meta property="og:description" content="نظام تسيير مخزون الأسمدة والفواتير والتسليمات والمستخدمين.">
 <link rel="stylesheet" href="common.css">
 </head>
 <body>
-<header><div style="display:flex;gap:10px;align-items:center"><button class="p" id="menu" aria-label="القائمة" style="background:var(--ac);color:#1d2b22">☰</button><h1>إدخال البيانات - تسيير مخزون الأسمدة</h1></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span id="links" style="display:flex;gap:6px;flex-wrap:wrap"></span><span id="who" style="font-size:.85rem"></span><button class="p" id="pwb" hidden style="background:var(--ac);color:#1d2b22">كلمة المرور</button><button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button></div></header>
+<header><div style="display:flex;gap:10px;align-items:center"><button class="p" id="menu" aria-label="القائمة" style="background:var(--ac);color:#1d2b22">☰</button><h1>إدخال البيانات - الفواتير والوارد</h1></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span id="links" style="display:flex;gap:6px;flex-wrap:wrap"></span><span id="who" style="font-size:.85rem"></span><button class="p" id="pwb" hidden style="background:var(--ac);color:#1d2b22">كلمة المرور</button><button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button></div></header>
 <main>
 <div id="cfg" class="box" hidden></div>
 <div id="app" hidden>
@@ -18,10 +21,10 @@
     <label>رقم الفاتورة<input name="invoice_no" required></label>
     <label>السنة<input name="invoice_year" type="number" required></label>
     <label>تاريخ الفاتورة<input name="invoice_date" type="date"></label>
-    <label>رقم الملف (Dossier)<input name="dossier_no"></label>
+    <label>رقم الملف (Dossier)<input name="dossier_no" list="dl" autocomplete="off"></label>
     <label>الاسم (Nom)<input name="client_name"></label>
-    <label>اللقب / الاسم الشخصي (Prénom)<input name="farmer_name" required></label>
-    <label>المنطقة (Région)<input name="region"></label>
+    <label>اللقب / الاسم الشخصي (Prénom)<input name="farmer_name" list="fl" required autocomplete="off"></label>
+    <label>المنطقة (Région)<input name="region" list="zl"></label>
     <label>هاتف الفلاح<input name="phone" type="tel"></label>
     <label>ملاحظات<input name="notes"></label>
     <div id="lines" style="grid-column:1/-1;display:grid;gap:8px"></div>
@@ -31,12 +34,14 @@
 </section>
 <section id="pickup" hidden>
   <h2>تسليم السماد للفلاحين (Bon d'enlèvement)</h2>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:10px">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:10px;margin-bottom:10px">
+    <label style="grid-column:1/-1">بحث عام (اسم الفلاح، رقم الهاتف، أو رقم الفاتورة)<input id="pq" type="search" autocomplete="off" placeholder="اكتب اسم الفلاح أو رقم الهاتف أو رقم الفاتورة..."></label>
     <label>رقم الفاتورة (مثال: 21 أو 21/2026)<input id="pn" autocomplete="off" inputmode="numeric"></label>
     <label>بحث برقم المجلد (Dossier)<input id="pd" autocomplete="off"></label>
     <label>الفاتورة<select id="pi"></select></label>
   </div>
   <div class="info" id="pinfo"></div>
+  <div id="pickupStockWarn" hidden></div>
   <form id="fp">
     <label>الكمية المستلمة (QTX)<input name="qty" type="number" step="any" min="0" required></label>
     <label>التاريخ<input name="w_date" type="date" required></label>
@@ -62,11 +67,15 @@
   <div class="w" id="rT" style="margin-top:12px"></div>
 </section>
 <datalist id="pl"></datalist>
+<datalist id="dl"></datalist>
+<datalist id="fl"></datalist>
+<datalist id="zl"></datalist>
 </div>
 </main>
 <div id="toast" role="status"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="common.js"></script>
+<script src="dossiers-data.js"></script>
 <script>
 $("#fr").onsubmit = async e => {
   e.preventDefault();
@@ -84,10 +93,9 @@ async function loadReceipts() {
   $("#rT").innerHTML = tbl(["التاريخ", "السماد", "الكمية", "ملاحظة"],
     (data || []).map(r => [r.entry_date, esc(r.products?.name), n(r.qty), esc(r.note)]));
 }
-// فاتورة بعدة منتجات: كل منتج يُحفظ سطرا مستقلا يحمل رقم الفاتورة نفسه
 function addLine() {
   const d = document.createElement("div"); d.className = "line";
-  d.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;align-items:end;border:1px solid var(--bd);border-radius:8px;padding:8px";
+  d.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:8px;align-items:end;border:1px solid var(--bd);border-radius:8px;padding:8px";
   d.innerHTML = `<label>المنتج<input data-p list="pl" required autocomplete="off" placeholder="سماد، مبيد، بذور..."></label>
     <label>الكمية (QTX)<input data-q type="number" step="any" min="0" required></label>
     <label>السعر للوحدة<input data-u type="number" step="any" min="0"></label>
@@ -117,35 +125,107 @@ $("#fi").onsubmit = async e => {
 };
 function init2() { $("#fi [name=invoice_year]").value = new Date().getFullYear(); $("#fi [name=invoice_date]").value = today(); }
 let open = [];
+let stockList = [];
+function getStockThreshold() {
+  return typeof getLowStockThreshold === "function" ? getLowStockThreshold() : 5;
+}
+window.addEventListener("ccls:threshold-change", () => updatePickupStockWarn(open.find(x => x.id == $("#pi").value)));
+function findInvoiceStock(inv) {
+  if (!inv || !stockList.length) return null;
+  const byProd = stockList.filter(r => r.name === inv.product_name);
+  if (!byProd.length) return null;
+  if (inv.warehouse_id != null) {
+    const exactId = byProd.find(r => String(r.wid) === String(inv.warehouse_id));
+    if (exactId) return { balance: Number(exactId.balance), warehouse: exactId.warehouse || inv.warehouse || "المخزن" };
+  }
+  if (inv.warehouse) {
+    const exactWh = byProd.find(r => r.warehouse === inv.warehouse);
+    if (exactWh) return { balance: Number(exactWh.balance), warehouse: exactWh.warehouse };
+  }
+  const totalBal = byProd.reduce((s, r) => s + Number(r.balance || 0), 0);
+  return { balance: totalBal, warehouse: byProd.length === 1 ? (byProd[0].warehouse || "المخزن") : "كل المخازن" };
+}
+function updatePickupStockWarn(inv) {
+  const box = $("#pickupStockWarn");
+  const st = findInvoiceStock(inv);
+  if (!inv || !st) { box.hidden = true; box.innerHTML = ""; return; }
+  const limit = getStockThreshold();
+  const bal = st.balance;
+  const qVal = Number($("#fp [name=qty]").value || 0);
+  const after = qVal > 0 ? bal - qVal : bal;
+  if (bal <= 0) {
+    box.className = "alert-bad";
+    box.hidden = false;
+    box.innerHTML = `<span><strong>تحذير حرج:</strong> رصيد المنتج <b>${esc(inv.product_name)}</b> في (${esc(st.warehouse)}) منخفض جداً أو نفد (<b>${n(bal)}</b> قنطار). يرجى التأكد قبل تأكيد التسليم.</span><span class="tag-bad">نفد المخزون</span>`;
+  } else if (bal < limit) {
+    box.className = "alert-warn";
+    box.hidden = false;
+    box.innerHTML = `<span><strong>تنبيه مخزون منخفض:</strong> الرصيد المتبقي من <b>${esc(inv.product_name)}</b> في (${esc(st.warehouse)}) قليل جداً (<b>${n(bal)}</b> قنطار — أقل من الحد ${n(limit)} قنطار).</span><span class="tag-warn">أوشك على النفاد</span>`;
+  } else if (qVal > 0 && qVal > bal) {
+    box.className = "alert-bad";
+    box.hidden = false;
+    box.innerHTML = `<span><strong>تحذير الكمية:</strong> الكمية المطلوبة (<b>${n(qVal)}</b>) تتجاوز الرصيد المتوفر في (${esc(st.warehouse)}) البالغ <b>${n(bal)}</b> قنطار.</span><span class="tag-bad">تجاوز الرصيد</span>`;
+  } else if (qVal > 0 && after < limit) {
+    box.className = "alert-warn";
+    box.hidden = false;
+    box.innerHTML = `<span><strong>تنبيه بعد التسليم:</strong> سيتبقى من <b>${esc(inv.product_name)}</b> في (${esc(st.warehouse)}) <b>${n(after)}</b> قنطار فقط (أقل من الحد ${n(limit)} قنطار).</span><span class="tag-warn">سيصبح منخفضاً</span>`;
+  } else {
+    box.hidden = true;
+    box.innerHTML = "";
+  }
+}
 async function loadPickup() {
-  const { data, error } = await sb.from("invoice_balance").select("*").gt("remaining", 0).order("id", { ascending: false });
-  if (error) return toast(error.message, 1);
-  open = data;
-  $("#pi").innerHTML = data.length
-    ? data.map(i => `<option value="${i.id}">${esc(i.invoice_no)}/${i.invoice_year} - ${esc(i.farmer_name)} - ${esc(i.product_name)}</option>`).join("")
+  const [invRes, stRes] = await Promise.all([
+    sb.from("invoice_balance").select("*").gt("remaining", 0).order("id", { ascending: false }),
+    sb.from("stock_analysis").select("name, warehouse, wid, balance")
+  ]);
+  if (invRes.error) return toast(invRes.error.message, 1);
+  open = invRes.data || [];
+  stockList = stRes.data || [];
+  $("#pi").innerHTML = open.length
+    ? open.map(i => `<option value="${i.id}">${esc(i.invoice_no)}/${i.invoice_year} - ${esc(`${i.client_name ? i.client_name + " " : ""}${i.farmer_name || ""}`)}${i.phone ? ` (${esc(i.phone)})` : ""} - ${esc(i.product_name)}</option>`).join("")
     : `<option value="">لا توجد فواتير بها كمية متبقية</option>`;
   filterPick();
 }
 function filterPick() {
+  const q = ($("#pq")?.value || "").trim().toLowerCase();
+  const qNorm = q.replace(/[\s\-]+/g, "");
   const a = $("#pn").value.trim().toLowerCase(), d = $("#pd").value.trim().toLowerCase();
-  const list = open.filter(i =>
-    (!a || String(i.invoice_no).toLowerCase() === a || `${i.invoice_no}/${i.invoice_year}`.toLowerCase() === a) &&
-    (!d || String(i.dossier_no || "").toLowerCase().includes(d)));
+  const list = open.filter(i => {
+    const invFull = `${i.invoice_no}/${i.invoice_year}`.toLowerCase();
+    const fullName = `${i.client_name || ""} ${i.farmer_name || ""}`.trim().toLowerCase();
+    const phoneRaw = String(i.phone || "").toLowerCase();
+    const phoneNorm = phoneRaw.replace(/[\s\-]+/g, "");
+    const matchQ = !q ||
+      String(i.invoice_no || "").toLowerCase().includes(q) ||
+      invFull.includes(q) ||
+      fullName.includes(q) ||
+      phoneRaw.includes(q) ||
+      (qNorm && phoneNorm.includes(qNorm)) ||
+      String(i.dossier_no || "").toLowerCase().includes(q);
+    const matchN = !a || String(i.invoice_no).toLowerCase() === a || invFull === a;
+    const matchD = !d || String(i.dossier_no || "").toLowerCase().includes(d);
+    return matchQ && matchN && matchD;
+  });
   $("#pi").innerHTML = list.length
-    ? list.map(i => `<option value="${i.id}">${esc(i.invoice_no)}/${i.invoice_year} - ${esc(i.farmer_name)} - ${esc(i.product_name)}</option>`).join("")
+    ? list.map(i => `<option value="${i.id}">${esc(i.invoice_no)}/${i.invoice_year} - ${esc(`${i.client_name ? i.client_name + " " : ""}${i.farmer_name || ""}`)}${i.phone ? ` (${esc(i.phone)})` : ""} - ${esc(i.product_name)}</option>`).join("")
     : `<option value="">لا توجد فاتورة مطابقة بها كمية متبقية</option>`;
   drawPickup();
 }
 async function drawPickup() {
   const i = open.find(x => x.id == $("#pi").value);
-  $("#pinfo").textContent = i ? `${i.client_name || ""} ${i.farmer_name || ""} | ${i.product_name} | الكمية: ${n(i.qty)} | المستلم: ${n(i.taken)} | المتبقي: ${n(i.remaining)}` : "";
+  const st = findInvoiceStock(i);
+  const stockTxt = st ? ` | المتوفر بالمخزن (${st.warehouse}): ${n(st.balance)} قنطار` : "";
+  $("#pinfo").textContent = i ? `${i.client_name || ""} ${i.farmer_name || ""}${i.phone ? ` (${i.phone})` : ""} | ${i.product_name} | الكمية: ${n(i.qty)} | المستلم: ${n(i.taken)} | المتبقي بالفاتورة: ${n(i.remaining)}${stockTxt}` : "";
+  updatePickupStockWarn(i);
   if (!i) { $("#pT").innerHTML = ""; return; }
   const { data } = await sb.from("withdrawals").select("*").eq("invoice_id", i.id).order("id", { ascending: false });
   $("#pT").innerHTML = tbl(["التاريخ", "الكمية", "المركبة", "إذن الخروج"],
     (data || []).map(w => [w.w_date, n(w.qty), esc(w.vehicle_ref), esc(w.bon_no)]));
 }
 $("#pi").onchange = drawPickup;
-["#pn", "#pd"].forEach(s => $(s).oninput = filterPick);
+$("#fp [name=qty]").addEventListener("input", () => updatePickupStockWarn(open.find(x => x.id == $("#pi").value)));
+["#pq", "#pn", "#pd"].forEach(s => $(s).oninput = filterPick);
 $("#fp").onsubmit = async e => {
   e.preventDefault();
   const id = $("#pi").value; if (!id) return;
@@ -160,7 +240,6 @@ $("#fp").onsubmit = async e => {
   const keep = id; await loadPickup(); $("#pi").value = keep; drawPickup();
 };
 
-// المخازن حسب نوع المنتج: المخزن بلا أنواع محددة يقبل كل الأنواع
 let WH = [], WC = [], PR = [];
 async function loadLookups() {
   const [w, c, p] = await Promise.all([sb.from("warehouses").select("id,name").eq("active", true).order("name"),
@@ -175,10 +254,37 @@ function fillWh(sel, prod) {
 }
 $("#fr [name=product]").addEventListener("input", e => fillWh("#rw", e.target.value));
 
+// تعبئة تلقائية من سجل الفلاحين والملفات
+let DOSSIER_REF = [];
+function loadDossierAutofill() {
+  DOSSIER_REF = typeof readLocalDossiers === "function" ? readLocalDossiers() : [];
+  const farmers = typeof getKnownFarmers === "function" ? getKnownFarmers(DOSSIER_REF) : DOSSIER_REF;
+  $("#dl").innerHTML = DOSSIER_REF.map(d => `<option value="${esc(d.dossier_no)}">${esc(d.farmer_name)} - ${esc(d.zone)}</option>`).join("");
+  $("#fl").innerHTML = [...new Set(farmers.map(d => d.farmer_name).filter(Boolean))].map(x => `<option value="${esc(x)}">`).join("");
+  $("#zl").innerHTML = [...new Set(farmers.map(d => d.zone).filter(Boolean))].map(z => `<option value="${esc(z)}">`).join("");
+}
+function applyFarmerFill(match) {
+  if (!match) return;
+  if (match.dossier_no && !$("#fi [name=dossier_no]").value) $("#fi [name=dossier_no]").value = match.dossier_no;
+  if (match.farmer_name) $("#fi [name=farmer_name]").value = match.farmer_name;
+  if (match.zone) $("#fi [name=region]").value = match.zone;
+  if (match.phone) $("#fi [name=phone]").value = match.phone;
+}
+$("#fi [name=dossier_no]").addEventListener("change", e => {
+  const v = e.target.value.trim().toLowerCase();
+  applyFarmerFill(DOSSIER_REF.find(x => String(x.dossier_no || "").toLowerCase() === v));
+});
+$("#fi [name=farmer_name]").addEventListener("change", e => {
+  const v = e.target.value.trim().toLowerCase();
+  const farmers = typeof getKnownFarmers === "function" ? getKnownFarmers(DOSSIER_REF) : DOSSIER_REF;
+  const fromDos = DOSSIER_REF.find(x => String(x.farmer_name || "").toLowerCase() === v);
+  applyFarmerFill(fromDos || farmers.find(x => String(x.farmer_name || "").toLowerCase() === v));
+});
+
 startApp({
   page: "index",
   tabs: [
-    ["invoices", "تسجيل فاتورة", ["invoices"], loadLookups],
+    ["invoices", "تسجيل فاتورة", ["invoices"], () => { loadLookups(); loadDossierAutofill(); }],
     ["pickup", "تسليم السماد للفلاحين", ["pickup"], loadPickup],
     ["receipts", "الأسمدة الواردة للمخزن", ["receipts"], () => { loadLookups(); loadReceipts(); }]
   ],
@@ -188,6 +294,7 @@ startApp({
     $("#fi [name=invoice_date]").value = today();
     $("#fp [name=w_date]").value = today();
     $("#fr [name=entry_date]").value = today();
+    loadDossierAutofill();
   }
 });
 </script>

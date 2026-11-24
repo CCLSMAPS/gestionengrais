@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>أذون الخروج (Bon de sortie) - تسيير مخزون الأسمدة</title>
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<header>
+  <div style="display:flex;gap:10px;align-items:center">
+    <button class="p" id="menu" aria-label="القائمة" style="background:var(--ac);color:#1d2b22">☰</button>
+    <h1>أذون الخروج ومتابعة الأسمدة (Bon de sortie)</h1>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span id="links" style="display:flex;gap:6px;flex-wrap:wrap"></span>
+    <span id="who" style="font-size:.85rem"></span>
+    <button class="p" id="pwb" hidden style="background:var(--ac);color:#1d2b22">كلمة المرور</button>
+    <button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button>
+  </div>
+</header>
+<main>
+<div id="cfg" class="box" hidden></div>
+<div id="app" hidden>
+<nav></nav>
+
+<section id="bonSec" hidden>
+  <div class="no-print">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <h2 style="margin:0">إصدار وطباعة إذن خروج (BON DE SORTIE)</h2>
+      <span id="bonDbBadge" style="font-size:.82rem;color:var(--mu)"></span>
+    </div>
+    <form id="fb">
+      <label>رقم إذن الخروج (BON N°)<input name="bon_no" required autocomplete="off"></label>
+      <label>التاريخ (DATE)<input name="sortie_date" type="date" required></label>
+      <label>رقم الفاتورة (N° FACTURE)<input name="invoice_no" autocomplete="off"></label>
+      <label>الموسم (CAMP)<input name="camp" value="2025/2026" required></label>
+      <label>الفلاح / المستفيد (AGRICULTEUR)<input name="farmer_name" list="bfl" required autocomplete="off"></label>
+      <label>رقم بطاقة الفلاح (N° CARTE FELLAH)<input name="carte_fellah" autocomplete="off"></label>
+      <label>المنطقة (ZONE)<input name="zone" list="bzl" autocomplete="off"></label>
+      <label>اسم السائق (NOM DE CHAUFFEUR)<input name="driver_name" required autocomplete="off"></label>
+      <label>ترقيم الشاحنة (IMMATRICULATION)<input name="truck_no" required autocomplete="off" placeholder="1128-517-16"></label>
+      <div id="bonLines" style="grid-column:1/-1;display:grid;gap:8px"></div>
+      <button type="button" class="f" id="addBonLine" style="justify-self:start">+ إضافة مادة أخرى (حتى 4)</button>
+      <button class="p">حفظ وإصدار إذن الخروج</button>
+      <button type="button" class="f" id="previewBonBtn">معاينة الإذن فقط</button>
+    </form>
+  </div>
+
+  <div id="bonPreviewBox" style="margin-top:16px" hidden>
+    <div class="no-print" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
+      <strong>معاينة إذن الخروج (BON DE SORTIE)</strong>
+      <div style="display:flex;gap:8px">
+        <button type="button" class="p" id="printBonBtn">طباعة إذن الخروج</button>
+        <button type="button" class="f" id="hideBonBtn">إخفاء</button>
+      </div>
+    </div>
+    <div id="bonPrintArea"></div>
+  </div>
+</section>
+
+<section id="etatSec" hidden>
+  <div class="no-print">
+    <h2>جدول متابعة خروج الأسمدة (ETAT DE SORTIE DES ENGRAIS)</h2>
+    <div class="cards" id="bCards"></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:10px;align-items:end;margin-bottom:10px">
+      <label>بحث<input id="bq" placeholder="رقم الإذن، الفاتورة، الفلاح، السائق، الشاحنة..."></label>
+      <label>المنطقة<select id="bz"></select></label>
+      <label>من تاريخ<input id="bd1" type="date"></label>
+      <label>إلى تاريخ<input id="bd2" type="date"></label>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button type="button" class="p" id="xb">تصدير CSV</button>
+      <button type="button" class="p" id="printEtatBtn">طباعة جدول المتابعة (Etat de sortie)</button>
+    </div>
+    <div class="w" id="bT"></div>
+  </div>
+</section>
+
+<datalist id="bfl"></datalist>
+<datalist id="bzl"></datalist>
+<datalist id="bpl"></datalist>
+</div>
+</main>
+<div id="etatPrintReport" hidden></div>
+<div id="toast" role="status"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="common.js"></script>
+<script src="dossiers-data.js"></script>
+<script src="bons-data.js"></script>
+<script>
+let BONS = [];
+let hasRemoteBons = false;
+
+function addBonLine(init) {
+  if ($("#bonLines").children.length >= 4) return toast("الحد الأقصى 4 مواد في الإذن الواحد", 1);
+  const idx = $("#bonLines").children.length + 1;
+  const d = document.createElement("div");
+  d.className = "bline";
+  d.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:8px;align-items:end;border:1px solid var(--bd);border-radius:8px;padding:8px";
+  d.innerHTML = `<label>المادة (${idx}) (Désignation)<input data-d list="bpl" required autocomplete="off" value="${esc(init?.designation || "")}" placeholder="KSC SULFACID..."></label>
+    <label>الكمية (Quantité)<input data-q type="number" step="any" min="0" required value="${esc(init?.qty || "")}"></label>
+    <button type="button" class="f" data-x>حذف</button>`;
+  $("#bonLines").append(d);
+}
+
+$("#addBonLine").onclick = () => addBonLine();
+$("#bonLines").onclick = e => {
+  if (e.target.matches("[data-x]") && $("#bonLines").children.length > 1) e.target.closest(".bline").remove();
+};
+
+function syncBonLists() {
+  const dossiers = typeof readLocalDossiers === "function" ? readLocalDossiers() : [];
+  const farmers = [...new Set([
+    ...BONS.map(b => b.farmer_name),
+    ...dossiers.map(d => d.farmer_name)
+  ].filter(Boolean))];
+  const zones = [...new Set([
+    ...BONS.map(b => b.zone),
+    ...dossiers.map(d => d.zone)
+  ].filter(Boolean))];
+  const prods = [...new Set(BONS.map(b => b.designation).filter(Boolean))];
+  $("#bfl").innerHTML = farmers.map(f => `<option value="${esc(f)}">`).join("");
+  $("#bzl").innerHTML = zones.map(z => `<option value="${esc(z)}">`).join("");
+  $("#bpl").innerHTML = prods.map(p => `<option value="${esc(p)}">`).join("");
+  const curZ = $("#bz").value;
+  $("#bz").innerHTML = '<option value="">كل المناطق</option>' + zones.map(z => `<option value="${esc(z)}">${esc(z)}</option>`).join("");
+  $("#bz").value = curZ;
+}
+
+function suggestNextBon() {
+  const maxNo = BONS.reduce((m, x) => {
+    const num = parseInt(x.bon_no, 10);
+    return Number.isFinite(num) && num > m ? num : m;
+  }, 0);
+  $("#fb [name=bon_no]").value = maxNo ? String(maxNo + 1) : "1692";
+}
+
+async function loadBons() {
+  BONS = readLocalBons();
+  hasRemoteBons = false;
+  try {
+    const { data, error } = await sb.from("bon_sorties").select("*").order("id", { ascending: true });
+    if (!error && Array.isArray(data)) {
+      hasRemoteBons = true;
+      if (data.length) {
+        BONS = data;
+        writeLocalBons(BONS);
+      } else if (BONS.length) {
+        const seedRows = BONS.map(({ id, ...rest }) => rest);
+        const ins = await sb.from("bon_sorties").insert(seedRows).select();
+        if (!ins.error && ins.data) {
+          BONS = ins.data;
+          writeLocalBons(BONS);
+        }
+      }
+      $("#bonDbBadge").textContent = "متصل بقاعدة البيانات Supabase ✓";
+    } else {
+      $("#bonDbBadge").textContent = "حفظ محلي (لتفعيل الحفظ في Supabase نفّذ supabase-bons.sql)";
+    }
+  } catch (_) {
+    $("#bonDbBadge").textContent = "حفظ محلي (لتفعيل الحفظ في Supabase نفّذ supabase-bons.sql)";
+  }
+  syncBonLists();
+  renderEtat();
+  if (!$("#fb [name=bon_no]").value) suggestNextBon();
+  if (!$("#fb [name=sortie_date]").value) $("#fb [name=sortie_date]").value = today();
+}
+
+function filteredBons() {
+  const q = ($("#bq").value || "").trim().toLowerCase();
+  const z = $("#bz").value;
+  const d1 = $("#bd1").value, d2 = $("#bd2").value;
+  return BONS.filter(b =>
+    (!z || b.zone === z) &&
+    (!d1 || b.sortie_date >= d1) &&
+    (!d2 || b.sortie_date <= d2) &&
+    (!q || [b.bon_no, b.invoice_no, b.farmer_name, b.carte_fellah, b.designation, b.driver_name, b.truck_no, b.zone].join(" ").toLowerCase().includes(q))
+  );
+}
+
+function renderEtat() {
+  const rows = filteredBons();
+  const totalQty = rows.reduce((s, b) => s + Number(b.qty || 0), 0);
+  const uniqBons = new Set(rows.map(b => b.bon_no)).size;
+  $("#bCards").innerHTML = [
+    ["إجمالي السطور", rows.length],
+    ["عدد أذون الخروج", uniqBons],
+    ["إجمالي الكميات الخارجة", n(totalQty)],
+    ["المناطق", new Set(rows.map(r => r.zone).filter(Boolean)).size]
+  ].map(([l, v]) => `<div class="card"><b>${esc(v)}</b><span>${l}</span></div>`).join("");
+
+  $("#bT").innerHTML = tbl(
+    ["N° BON", "N° FACTURE", "DATE", "AGRICULTEUR", "CARTE FELLAH", "DESIGNATION", "QUANTITE", "CHAUFFEUR", "IMMATRICULATION", "ZONE", "إجراءات"],
+    [...rows].reverse().map(b => [
+      `<b>${esc(b.bon_no)}</b>`,
+      esc(b.invoice_no || "-"),
+      esc(b.sortie_date),
+      esc(b.farmer_name),
+      esc(b.carte_fellah || "-"),
+      esc(b.designation),
+      `<b>${n(b.qty)}</b>`,
+      esc(b.driver_name || "-"),
+      esc(b.truck_no || "-"),
+      esc(b.zone || "-"),
+      `<div style="display:flex;gap:4px">
+        <button type="button" class="f" data-bon="${esc(b.bon_no)}">طباعة الإذن</button>
+        <button type="button" class="p" data-del="${esc(b.id || "")}" style="background:var(--bad);padding:6px 10px">حذف</button>
+      </div>`
+    ])
+  );
+}
+
+function buildBonHtml(header, lines) {
+  const dt = header.sortie_date ? header.sortie_date.split("-").reverse().join("/") : "";
+  const zoneText = header.zone || "";
+  const padded = [0, 1, 2, 3].map(i => lines[i] || null);
+  const rows = padded.map((ln, idx) => `
+    <tr>
+      <td>${idx + 1}</td>
+      <td>${ln ? esc(ln.designation) : ""}</td>
+      <td>${ln ? n(ln.qty) : ""}</td>
+      ${idx === 0 ? `<td rowspan="4" style="vertical-align:middle;font-weight:700">${esc(zoneText)}</td>` : ""}
+    </tr>`).join("");
+
+  return `
+    <div class="bon-doc">
+      <div class="bon-top">
+        <img src="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif" alt="CCLS">
+        <div class="bon-meta">
+          <h3>OFFICE ALGERIEN INTERPROFESSIONNEL DES CEREALES</h3>
+          <p>Coopérative de Céréales et des légumes secs d'Adrar</p>
+          <p><strong>COMP ${esc(header.camp || "2025/2026")}</strong></p>
+        </div>
+        <img src="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif" alt="CCLS">
+      </div>
+      <div class="bon-nums">
+        <span>BON DE SORTIE N°:</span><span>${esc(header.bon_no)}</span>
+        <span>DATE:</span><span>${esc(dt)}</span>
+        <span>N° FACTURE:</span><span>${esc(header.invoice_no || "—")}</span>
+      </div>
+      <div class="bon-farmer">
+        <div>AGRICULTEUR :</div>
+        <div>${esc(header.farmer_name)}</div>
+      </div>
+      <table class="bon-tbl">
+        <thead>
+          <tr><th>N°</th><th>Désignation</th><th>Quantité (Qx)</th><th>ZONE</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <table class="bon-driver">
+        <tr><td style="width:35%">NOM DE CHAUFFEUR:</td><td>${esc(header.driver_name || "—")}</td></tr>
+        <tr><td>IMMATRICULATION:</td><td>${esc(header.truck_no || "—")}</td></tr>
+      </table>
+      <div class="bon-signs">
+        <span>MAGASINIER</span>
+        <span>AGRICULTEUR :</span>
+      </div>
+    </div>`;
+}
+
+function showBon(bonNo) {
+  const lines = BONS.filter(b => String(b.bon_no) === String(bonNo));
+  if (!lines.length) return;
+  $("#bonPrintArea").innerHTML = buildBonHtml(lines[0], lines);
+  $("#bonPreviewBox").hidden = false;
+  $("#bonPreviewBox").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+$("#fb [name=farmer_name]").addEventListener("change", e => {
+  const val = e.target.value.trim().toUpperCase();
+  const prev = BONS.find(b => b.farmer_name.toUpperCase() === val);
+  const dossiers = typeof readLocalDossiers === "function" ? readLocalDossiers() : [];
+  const dos = dossiers.find(d => d.farmer_name.toUpperCase() === val);
+  if (prev) {
+    if (prev.carte_fellah && !$("#fb [name=carte_fellah]").value) $("#fb [name=carte_fellah]").value = prev.carte_fellah;
+    if (prev.zone && !$("#fb [name=zone]").value) $("#fb [name=zone]").value = prev.zone;
+  } else if (dos?.zone && !$("#fb [name=zone]").value) {
+    $("#fb [name=zone]").value = dos.zone;
+  }
+});
+
+$("#fb").onsubmit = async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  const lines = [...$("#bonLines").children].map(el => ({
+    designation: el.querySelector("[data-d]").value.trim().toUpperCase(),
+    qty: Number(el.querySelector("[data-q]").value)
+  }));
+  const records = lines.map(ln => ({
+    bon_no: f.bon_no.trim(),
+    invoice_no: (f.invoice_no || "").trim(),
+    sortie_date: f.sortie_date,
+    farmer_name: f.farmer_name.trim().toUpperCase(),
+    carte_fellah: (f.carte_fellah || "").trim(),
+    designation: ln.designation,
+    qty: ln.qty,
+    driver_name: f.driver_name.trim().toUpperCase(),
+    truck_no: f.truck_no.trim().toUpperCase(),
+    zone: (f.zone || "").trim().toUpperCase(),
+    camp: (f.camp || "2025/2026").trim()
+  }));
+
+  if (hasRemoteBons) {
+    const payload = records.map(r => ({ ...r, created_by: ME?.full_name || ME?.email || null }));
+    const { data, error } = await sb.from("bon_sorties").insert(payload).select();
+    if (error) return toast("تعذّر الحفظ في قاعدة البيانات: " + error.message, 1);
+    BONS.push(...data);
+    toast("تم حفظ إذن الخروج في قاعدة البيانات");
+  } else {
+    let nextId = BONS.reduce((m, x) => Math.max(m, Number(x.id || 0)), 0);
+    records.forEach(r => { nextId += 1; BONS.push({ id: nextId, ...r }); });
+    toast("تم حفظ إذن الخروج محلياً");
+  }
+  writeLocalBons(BONS);
+  syncBonLists();
+  renderEtat();
+  $("#bonPrintArea").innerHTML = buildBonHtml(records[0], lines);
+  $("#bonPreviewBox").hidden = false;
+  e.target.reset();
+  $("#bonLines").innerHTML = "";
+  addBonLine();
+  $("#fb [name=sortie_date]").value = today();
+  $("#fb [name=camp]").value = "2025/2026";
+  suggestNextBon();
+};
+
+$("#previewBonBtn").onclick = () => {
+  const f = Object.fromEntries(new FormData($("#fb")));
+  const lines = [...$("#bonLines").children].map(el => ({
+    designation: el.querySelector("[data-d]").value.trim().toUpperCase(),
+    qty: Number(el.querySelector("[data-q]").value || 0)
+  })).filter(x => x.designation || x.qty);
+  if (!f.farmer_name && !f.bon_no) return toast("أدخل رقم الإذن واسم الفلاح أولاً", 1);
+  $("#bonPrintArea").innerHTML = buildBonHtml(f, lines);
+  $("#bonPreviewBox").hidden = false;
+};
+$("#printBonBtn").onclick = () => window.print();
+$("#hideBonBtn").onclick = () => { $("#bonPreviewBox").hidden = true; };
+
+["#bq", "#bz", "#bd1", "#bd2"].forEach(s => $(s).addEventListener("input", renderEtat));
+$("#xb").onclick = () => csv("etat-sortie-engrais",
+  ["N° BON SORTIE", "N° FACTURE", "DATE", "AGRICULTEUR", "N° CARTE FELLAH", "DESIGNATION", "QUANTITE", "NOM DE CHAUFFEUR", "IMMATRICULATION", "ZONE"],
+  filteredBons().map(b => [b.bon_no, b.invoice_no, b.sortie_date, b.farmer_name, b.carte_fellah, b.designation, b.qty, b.driver_name, b.truck_no, b.zone]));
+
+$("#printEtatBtn").onclick = () => {
+  const rows = filteredBons();
+  if (!rows.length) return toast("لا توجد بيانات للطباعة", 1);
+  const trs = rows.map(b => `
+    <tr>
+      <td><b>${esc(b.bon_no)}</b></td>
+      <td>${esc(b.invoice_no || "")}</td>
+      <td>${esc(b.sortie_date ? b.sortie_date.split("-").reverse().join("/") : "")}</td>
+      <td style="text-align:left">${esc(b.farmer_name)}</td>
+      <td>${esc(b.carte_fellah || "")}</td>
+      <td>${esc(b.designation)}</td>
+      <td><b>${n(b.qty)}</b></td>
+      <td>${esc(b.driver_name || "")}</td>
+      <td>${esc(b.truck_no || "")}</td>
+      <td>${esc(b.zone || "")}</td>
+    </tr>`).join("");
+  const el = $("#etatPrintReport");
+  el.innerHTML = `
+    <div class="etat-doc">
+      <div style="text-align:center;font-weight:700;font-size:.95rem">الجمهورية الجزائرية الديمقراطية الشعبية</div>
+      <div style="text-align:center;font-weight:700;font-size:.88rem;margin-bottom:8px">RÉPUBLIQUE ALGÉRIENNE DÉMOCRATIQUE ET POPULAIRE</div>
+      <div class="etat-head">
+        <div style="font-size:.76rem;font-weight:700;line-height:1.5">
+          MINISTERE DE L'AGRICULTURE ET DEVELOPPEMENT RURAL ET DE LA PECHE<br>
+          OFFICE ALGERIEN INTERPROFESSIONNEL DES CEREALES<br>
+          COOPERATIVE DE CEREALES ET LEGUMES SECS D'ADRAR
+        </div>
+        <img src="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif" alt="CCLS" style="height:64px;width:auto">
+        <div dir="rtl" style="font-size:.82rem;font-weight:700;line-height:1.5;text-align:center">
+          وزارة الفلاحة والتنمية الريفية والصيد البحري<br>
+          الديوان الجزائري المهني للحبوب<br>
+          تعاونية الحبوب والبقول الجافة أدرار
+        </div>
+      </div>
+      <div class="etat-title">ETAT DE SORTIE DES ENGRAIS</div>
+      <table style="width:100%;border-collapse:collapse;font-size:.78rem">
+        <thead>
+          <tr style="background:#111;color:#fff">
+            <th style="border:1px solid #333;padding:5px">N° BON</th>
+            <th style="border:1px solid #333;padding:5px">N° FACTURE</th>
+            <th style="border:1px solid #333;padding:5px">DATE</th>
+            <th style="border:1px solid #333;padding:5px">AGRICULTEUR</th>
+            <th style="border:1px solid #333;padding:5px">N° CARTE FELLAH</th>
+            <th style="border:1px solid #333;padding:5px">Désignation</th>
+            <th style="border:1px solid #333;padding:5px">Quantité</th>
+            <th style="border:1px solid #333;padding:5px">NOM DE CHAUFFEUR</th>
+            <th style="border:1px solid #333;padding:5px">IMMATRICULATION</th>
+            <th style="border:1px solid #333;padding:5px">ZONE</th>
+          </tr>
+        </thead>
+        <tbody>${trs}</tbody>
+      </table>
+    </div>`;
+  el.hidden = false;
+  document.body.classList.add("printing-list");
+  const cleanup = () => {
+    document.body.classList.remove("printing-list");
+    el.hidden = true;
+    window.removeEventListener("afterprint", cleanup);
+  };
+  window.addEventListener("afterprint", cleanup);
+  window.print();
+};
+
+$("#bT").onclick = async e => {
+  const bonBtn = e.target.closest("[data-bon]");
+  if (bonBtn) {
+    showBon(bonBtn.dataset.bon);
+    return;
+  }
+  const delBtn = e.target.closest("[data-del]");
+  if (delBtn) {
+    const id = delBtn.dataset.del;
+    if (!confirm("حذف هذا السطر من سجل الخروج؟")) return;
+    if (hasRemoteBons && id) {
+      const { error } = await sb.from("bon_sorties").delete().eq("id", id);
+      if (error) return toast(error.message, 1);
+    }
+    BONS = BONS.filter(x => String(x.id) !== String(id));
+    writeLocalBons(BONS);
+    syncBonLists();
+    renderEtat();
+    toast("تم الحذف");
+  }
+};
+
+startApp({
+  page: "bons",
+  tabs: [
+    ["bon", "إصدار إذن خروج (Bon)", ["bonSec"], loadBons, ["pickup", "log", "invoices"]],
+    ["etat", "حالة خروج الأسمدة (Etat)", ["etatSec"], loadBons, ["log", "pickup", "invoices"]]
+  ],
+  ready() {
+    if (!$("#bonLines").children.length) addBonLine();
+    $("#fb [name=sortie_date]").value = today();
+  }
+});
+</script>
+</body>
+</html>
