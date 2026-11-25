@@ -159,7 +159,7 @@ a.lk[aria-current=page]{background:var(--ac);color:#1d2b22;border-color:var(--ac
   html,body{background:#fff!important;overflow:visible!important;height:auto!important;max-width:none!important}
   header,nav,.nav-backdrop,#toast,#cfg,.no-print,#cultureChart{display:none!important}
   main,main:has(#app:not([hidden])){margin:0!important;padding:0!important;width:100%!important;max-width:100%!important}
-  #dossiers,#receptionSec,#bonSec,#cropsSec{border:0!important;padding:0!important;margin:0!important;background:#fff!important}
+  #dossiers,#receptionSec,#bonSec,#cropsSec,#cropsTableSec{border:0!important;padding:0!important;margin:0!important;background:#fff!important}
   #accuseBox:not([hidden]),#bonPreviewBox:not([hidden]){display:block!important;margin:0!important}
   .slip-wrap{display:block!important}
   .slip{break-inside:avoid;padding:12px 16px;margin-bottom:8px;overflow:visible}
@@ -171,6 +171,6 @@ a.lk[aria-current=page]{background:var(--ac);color:#1d2b22;border-color:var(--ac
   .slip-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 14px}
   .slip-foot,.bon-signs{grid-template-columns:1fr 1fr}
   .bon-farmer{grid-template-columns:1fr 1.6fr;gap:14px}
-  body.printing-list #app,body.printing-list #dossiers,body.printing-list #receptionSec,body.printing-list #accuseBox,body.printing-list #bonSec{display:none!important}
+  body.printing-list #app,body.printing-list #dossiers,body.printing-list #receptionSec,body.printing-list #accuseBox,body.printing-list #bonSec,body.printing-list #cropsSec,body.printing-list #cropsTableSec{display:none!important}
   body.printing-list #dossiersPrintReport,body.printing-list #etatPrintReport{display:block!important}
 }

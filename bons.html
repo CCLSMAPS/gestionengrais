@@ -30,6 +30,10 @@
       <h2 style="margin:0">إصدار وطباعة إذن خروج (BON DE SORTIE)</h2>
       <span id="bonDbBadge" style="font-size:.82rem;color:var(--mu)"></span>
     </div>
+    <div id="bonEditBanner" class="info" hidden style="border:1px solid var(--ac);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <strong id="bonEditLabel">تعديل إذن خروج</strong>
+      <button type="button" class="f" id="cancelBonEdit">إلغاء التعديل</button>
+    </div>
     <form id="fb">
       <label>رقم إذن الخروج (BON N°)<input name="bon_no" required autocomplete="off"></label>
       <label>التاريخ (DATE)<input name="sortie_date" type="date" required></label>
@@ -42,7 +46,7 @@
       <label>ترقيم الشاحنة (IMMATRICULATION)<input name="truck_no" required autocomplete="off" placeholder="1128-517-16"></label>
       <div id="bonLines" style="grid-column:1/-1;display:grid;gap:8px"></div>
       <button type="button" class="f" id="addBonLine" style="justify-self:start">+ إضافة مادة أخرى (حتى 4)</button>
-      <button class="p">حفظ وإصدار إذن الخروج</button>
+      <button class="p" id="submitBonBtn">حفظ وإصدار إذن الخروج</button>
       <button type="button" class="f" id="previewBonBtn">معاينة الإذن فقط</button>
     </form>
   </div>
@@ -166,8 +170,10 @@ async function loadBons() {
   }
   syncBonLists();
   renderEtat();
-  if (!$("#fb [name=bon_no]").value) suggestNextBon();
-  if (!$("#fb [name=sortie_date]").value) $("#fb [name=sortie_date]").value = today();
+  if (!editingOriginalBonNo) {
+    if (!$("#fb [name=bon_no]").value) suggestNextBon();
+    if (!$("#fb [name=sortie_date]").value) $("#fb [name=sortie_date]").value = today();
+  }
 }
 
 function filteredBons() {
@@ -206,7 +212,8 @@ function renderEtat() {
       esc(b.driver_name || "-"),
       esc(b.truck_no || "-"),
       esc(b.zone || "-"),
-      `<div style="display:flex;gap:4px">
+      `<div style="display:flex;gap:4px;flex-wrap:wrap">
+        <button type="button" class="f" data-edit-bon="${esc(b.bon_no)}">تعديل</button>
         <button type="button" class="f" data-bon="${esc(b.bon_no)}">طباعة الإذن</button>
         <button type="button" class="p" data-del="${esc(b.id || "")}" style="background:var(--bad);padding:6px 10px">حذف</button>
       </div>`
@@ -291,6 +298,48 @@ $("#fb [name=farmer_name]").addEventListener("change", e => {
   }
 });
 
+let editingOriginalBonNo = "";
+let editingBonIds = [];
+
+function cancelBonEdit() {
+  editingOriginalBonNo = "";
+  editingBonIds = [];
+  $("#bonEditBanner").hidden = true;
+  $("#fb").reset();
+  $("#bonLines").innerHTML = "";
+  addBonLine();
+  $("#fb [name=sortie_date]").value = today();
+  $("#fb [name=camp]").value = "2025/2026";
+  suggestNextBon();
+  requestAnimationFrame(() => { $("#submitBonBtn").textContent = "حفظ وإصدار إذن الخروج"; });
+}
+$("#cancelBonEdit").onclick = cancelBonEdit;
+
+function startEditBon(bonNo) {
+  const lines = BONS.filter(b => String(b.bon_no) === String(bonNo));
+  if (!lines.length) return;
+  const h = lines[0];
+  editingOriginalBonNo = String(bonNo);
+  editingBonIds = lines.map(x => x.id).filter(Boolean);
+  if (typeof window.showAppTab === "function") window.showAppTab("bon");
+  $("#bonEditLabel").textContent = `تعديل إذن الخروج رقم ${h.bon_no} (${h.farmer_name || ""})`;
+  $("#bonEditBanner").hidden = false;
+  $("#fb [name=bon_no]").value = h.bon_no || "";
+  $("#fb [name=sortie_date]").value = h.sortie_date || today();
+  $("#fb [name=invoice_no]").value = h.invoice_no || "";
+  $("#fb [name=camp]").value = h.camp || "2025/2026";
+  $("#fb [name=farmer_name]").value = h.farmer_name || "";
+  $("#fb [name=carte_fellah]").value = h.carte_fellah || "";
+  $("#fb [name=zone]").value = h.zone || "";
+  $("#fb [name=driver_name]").value = h.driver_name || "";
+  $("#fb [name=truck_no]").value = h.truck_no || "";
+  $("#bonLines").innerHTML = "";
+  lines.slice(0, 4).forEach(ln => addBonLine(ln));
+  if (!$("#bonLines").children.length) addBonLine();
+  $("#submitBonBtn").textContent = "حفظ تعديل الإذن";
+  $("#bonSec").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 $("#fb").onsubmit = async e => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
@@ -311,6 +360,50 @@ $("#fb").onsubmit = async e => {
     zone: (f.zone || "").trim().toUpperCase(),
     camp: (f.camp || "2025/2026").trim()
   }));
+
+  if (editingOriginalBonNo) {
+    const oldIds = [...editingBonIds];
+    if (hasRemoteBons) {
+      const updatedRows = [];
+      const commonCount = Math.min(records.length, oldIds.length);
+      for (let idx = 0; idx < commonCount; idx++) {
+        const { data, error } = await sb.from("bon_sorties").update(records[idx]).eq("id", oldIds[idx]).select().single();
+        if (error) return toast("تعذّر تعديل السطر: " + error.message, 1);
+        updatedRows.push(data);
+      }
+      if (records.length > commonCount) {
+        const extra = records.slice(commonCount).map(r => ({ ...r, created_by: ME?.full_name || ME?.email || null }));
+        const { data, error } = await sb.from("bon_sorties").insert(extra).select();
+        if (error) return toast("تعذّر إضافة السطور الجديدة: " + error.message, 1);
+        updatedRows.push(...(data || []));
+      }
+      if (oldIds.length > records.length) {
+        const toDel = oldIds.slice(records.length);
+        const { error } = await sb.from("bon_sorties").delete().in("id", toDel);
+        if (error) return toast("تعذّر حذف السطور الزائدة: " + error.message, 1);
+      }
+      const oldIdSet = new Set(oldIds.map(String));
+      BONS = BONS.filter(x => !oldIdSet.has(String(x.id)) && String(x.bon_no) !== editingOriginalBonNo);
+      BONS.push(...updatedRows);
+    } else {
+      const oldIdSet = new Set(oldIds.map(String));
+      BONS = BONS.filter(x => !oldIdSet.has(String(x.id)) && String(x.bon_no) !== editingOriginalBonNo);
+      let nextId = BONS.reduce((m, x) => Math.max(m, Number(x.id || 0)), 0);
+      records.forEach((r, idx) => {
+        const keepId = oldIds[idx] || (++nextId);
+        BONS.push({ id: keepId, ...r });
+      });
+    }
+    toast("تم تعديل إذن الخروج بنجاح");
+    writeLocalBons(BONS);
+    syncBonLists();
+    renderEtat();
+    currentBonNo = records[0]?.bon_no || "";
+    $("#bonPrintArea").innerHTML = buildBonHtml(records[0], lines);
+    $("#bonPreviewBox").hidden = false;
+    cancelBonEdit();
+    return;
+  }
 
   if (hasRemoteBons) {
     const payload = records.map(r => ({ ...r, created_by: ME?.full_name || ME?.email || null }));
@@ -451,16 +544,50 @@ $("#printEtatBtn").onclick = () => {
     </div>`;
   el.hidden = false;
   document.body.classList.add("printing-list");
+  let printed = false;
   const cleanup = () => {
     document.body.classList.remove("printing-list");
     el.hidden = true;
     window.removeEventListener("afterprint", cleanup);
+    window.removeEventListener("beforeprint", onBeforePrint);
   };
-  window.addEventListener("afterprint", cleanup);
-  window.print();
+  const onBeforePrint = () => { printed = true; };
+  window.addEventListener("beforeprint", onBeforePrint, { once: true });
+  window.addEventListener("afterprint", cleanup, { once: true });
+  try {
+    window.print();
+    setTimeout(async () => {
+      if (!printed) {
+        try {
+          if (window.exportSlipPdf) {
+            await window.exportSlipPdf(el, "engrais", "etat-sortie");
+            toast("تم تجهيز وتحميل جدول المتابعة بصيغة PDF للطباعة");
+          }
+        } catch (err) {
+          toast(err?.message || "تعذّر الطباعة، استخدم تصدير CSV", 1);
+        } finally {
+          cleanup();
+        }
+      }
+    }, 450);
+  } catch (_) {
+    try {
+      if (window.exportSlipPdf) {
+        await window.exportSlipPdf(el, "engrais", "etat-sortie");
+        toast("تم تحميل جدول المتابعة بصيغة PDF للطباعة");
+      }
+    } finally {
+      cleanup();
+    }
+  }
 };
 
 $("#bT").onclick = async e => {
+  const editBtn = e.target.closest("[data-edit-bon]");
+  if (editBtn) {
+    startEditBon(editBtn.dataset.editBon);
+    return;
+  }
   const bonBtn = e.target.closest("[data-bon]");
   if (bonBtn) {
     showBon(bonBtn.dataset.bon);

@@ -49,6 +49,27 @@
     <button type="button" class="f" data-s="done" aria-pressed="false">مكتملة بالكامل</button>
     <button type="button" class="p" id="xi">تصدير CSV</button>
   </div>
+  <div id="invEditBox" class="info" hidden style="border:1px solid var(--ac);margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
+      <strong id="invEditTitle">تعديل فاتورة</strong>
+      <button type="button" class="f" id="cancelInvEdit">إلغاء</button>
+    </div>
+    <form id="fInvEdit">
+      <input type="hidden" name="id">
+      <label>رقم الفاتورة<input name="invoice_no" required></label>
+      <label>السنة<input name="invoice_year" type="number" required></label>
+      <label>تاريخ الفاتورة<input name="invoice_date" type="date"></label>
+      <label>رقم الملف<input name="dossier_no"></label>
+      <label>الاسم (Nom)<input name="client_name"></label>
+      <label>اللقب / الفلاح (Prénom)<input name="farmer_name" required></label>
+      <label>المنطقة<input name="region"></label>
+      <label>الهاتف<input name="phone" type="tel"></label>
+      <label>الكمية (QTX)<input name="qty" type="number" step="any" min="0" required></label>
+      <label>السعر للوحدة<input name="unit_price" type="number" step="any" min="0"></label>
+      <label>ملاحظات<input name="notes"></label>
+      <button class="p">حفظ التعديل</button>
+    </form>
+  </div>
   <div class="w" id="invT"></div>
 </section>
 <section id="log" hidden>
@@ -58,6 +79,23 @@
     <label>من تاريخ<input id="d1" type="date"></label>
     <label>إلى تاريخ<input id="d2" type="date"></label>
     <button type="button" class="p" id="xl">تصدير CSV</button>
+  </div>
+  <div id="logEditBox" class="info" hidden style="border:1px solid var(--ac);margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
+      <strong id="logEditTitle">تعديل عملية تسليم</strong>
+      <button type="button" class="f" id="cancelLogEdit">إلغاء</button>
+    </div>
+    <form id="fLogEdit">
+      <input type="hidden" name="id">
+      <label>التاريخ<input name="w_date" type="date" required></label>
+      <label>الكمية (QTX)<input name="qty" type="number" step="any" min="0" required></label>
+      <label>رقم الهيكل / البطاقة الرمادية<input name="vehicle_ref" required></label>
+      <label>اسم السائق<input name="driver_name" required></label>
+      <label>رقم الشاحنة<input name="truck_no" required></label>
+      <label>رقم إذن الخروج<input name="bon_no"></label>
+      <label>ملاحظات<input name="note"></label>
+      <button class="p">حفظ التعديل</button>
+    </form>
   </div>
   <div class="w" id="logT"></div>
 </section>
@@ -235,23 +273,84 @@ function drawInvoices() {
   const q = $("#q").value.trim().toLowerCase();
   const rows = invView = invoices.filter(i =>
     (st === "all" || (st === "open" ? i.remaining > 0 : i.remaining <= 0)) &&
-    (!q || `${i.invoice_no} ${i.client_name} ${i.farmer_name}`.toLowerCase().includes(q)));
-  $("#invT").innerHTML = tbl(["الفاتورة", "التاريخ", "الفلاح", "السماد", "الكمية", "المستلم", "المتبقي"],
-    rows.map(i => [`${esc(i.invoice_no)}/${i.invoice_year}`, i.invoice_date || "", esc(`${i.client_name || ""} ${i.farmer_name || ""}`),
-      esc(i.product_name), n(i.qty), n(i.taken), `<b>${n(i.remaining)}</b>`]));
+    (!q || `${i.invoice_no} ${i.client_name} ${i.farmer_name} ${i.product_name}`.toLowerCase().includes(q)));
+  $("#invT").innerHTML = tbl(["الفاتورة", "التاريخ", "الفلاح", "السماد", "الكمية", "المستلم", "المتبقي", "إجراءات"],
+    rows.map(i => [`${esc(i.invoice_no)}/${i.invoice_year}`, i.invoice_date || "", esc(`${i.client_name || ""} ${i.farmer_name || ""}`.trim()),
+      esc(i.product_name), n(i.qty), n(i.taken), `<b>${n(i.remaining)}</b>`,
+      `<div style="display:flex;gap:4px">
+        <button type="button" class="f" data-edit-inv="${i.id}">تعديل</button>
+        <button type="button" class="p" data-del-inv="${i.id}" style="background:var(--bad);padding:6px 10px">حذف</button>
+      </div>`]));
 }
 $("#q").oninput = drawInvoices;
-let st = "all", invView = [], logRows = [], logView = [];
-document.querySelectorAll(".f").forEach(b => b.onclick = () => {
+let st = "all", invView = [], logRows = [], logView = [], logFiltered = [];
+document.querySelectorAll(".f[data-s]").forEach(b => b.onclick = () => {
   st = b.dataset.s;
-  document.querySelectorAll(".f").forEach(x => x.setAttribute("aria-pressed", x === b));
+  document.querySelectorAll(".f[data-s]").forEach(x => x.setAttribute("aria-pressed", x === b));
   drawInvoices();
 });
+$("#invT").onclick = async e => {
+  const editBtn = e.target.closest("[data-edit-inv]");
+  if (editBtn) {
+    const inv = invoices.find(x => String(x.id) === editBtn.dataset.editInv);
+    if (!inv) return;
+    $("#invEditTitle").textContent = `تعديل الفاتورة ${inv.invoice_no}/${inv.invoice_year} — ${inv.product_name}`;
+    $("#fInvEdit [name=id]").value = inv.id;
+    $("#fInvEdit [name=invoice_no]").value = inv.invoice_no || "";
+    $("#fInvEdit [name=invoice_year]").value = inv.invoice_year || "";
+    $("#fInvEdit [name=invoice_date]").value = inv.invoice_date || "";
+    $("#fInvEdit [name=dossier_no]").value = inv.dossier_no || "";
+    $("#fInvEdit [name=client_name]").value = inv.client_name || "";
+    $("#fInvEdit [name=farmer_name]").value = inv.farmer_name || "";
+    $("#fInvEdit [name=region]").value = inv.region || "";
+    $("#fInvEdit [name=phone]").value = inv.phone || "";
+    $("#fInvEdit [name=qty]").value = inv.qty ?? "";
+    $("#fInvEdit [name=unit_price]").value = inv.unit_price ?? "";
+    $("#fInvEdit [name=notes]").value = inv.notes || "";
+    $("#invEditBox").hidden = false;
+    $("#invEditBox").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    return;
+  }
+  const delBtn = e.target.closest("[data-del-inv]");
+  if (delBtn) {
+    const id = delBtn.dataset.delInv;
+    if (!confirm("حذف سطر الفاتورة؟")) return;
+    const { error } = await sb.from("invoices").delete().eq("id", id);
+    if (error) return toast(error.code === "23503" ? "لا يمكن الحذف: توجد تسليمات مرتبطة بهذه الفاتورة" : error.message, 1);
+    toast("تم حذف الفاتورة");
+    loadInvoices();
+  }
+};
+$("#cancelInvEdit").onclick = () => { $("#invEditBox").hidden = true; $("#fInvEdit").reset(); };
+$("#fInvEdit").onsubmit = async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  const id = f.id;
+  const payload = {
+    invoice_no: f.invoice_no.trim(),
+    invoice_year: Number(f.invoice_year),
+    invoice_date: f.invoice_date || null,
+    dossier_no: f.dossier_no?.trim() || null,
+    client_name: f.client_name?.trim() || null,
+    farmer_name: f.farmer_name.trim(),
+    region: f.region?.trim() || null,
+    phone: f.phone?.trim() || null,
+    qty: Number(f.qty),
+    unit_price: f.unit_price !== "" ? Number(f.unit_price) : null,
+    notes: f.notes?.trim() || null
+  };
+  const { error } = await sb.from("invoices").update(payload).eq("id", id);
+  if (error) return toast(error.message, 1);
+  toast("تم تعديل الفاتورة");
+  $("#invEditBox").hidden = true;
+  e.target.reset();
+  loadInvoices();
+};
 $("#xi").onclick = () => csv("invoices",
-  ["الفاتورة", "التاريخ", "الفلاح", "السماد", "الكمية", "المستلم", "المتبقي", "الهاتف", "ملاحظات", "أُدخلت بواسطة"],
-  invView.map(i => [`${i.invoice_no}/${i.invoice_year}`, i.invoice_date, `${i.client_name || ""} ${i.farmer_name || ""}`.trim(),
-    i.product_name, i.qty, i.taken, i.remaining, i.phone, i.notes, i.created_by]));
-const LOGH = ["التاريخ", "الفاتورة", "الفلاح", "السماد", "الكمية", "الهيكل / البطاقة الرمادية", "السائق", "الشاحنة", "وصل الخروج", "أُدخل بواسطة", "وقت الإدخال"];
+  ["رقم الفاتورة", "السنة", "التاريخ", "رقم الملف", "الاسم", "اللقب / الفلاح", "السماد", "الكمية", "المستلم", "المتبقي", "الهاتف", "ملاحظات", "أُدخلت بواسطة"],
+  invView.map(i => [i.invoice_no, i.invoice_year, i.invoice_date || "", i.dossier_no || "", i.client_name || "", i.farmer_name || "",
+    i.product_name, i.qty, i.taken, i.remaining, i.phone || "", i.notes || "", i.created_by || ""]));
+const LOGH = ["التاريخ", "الفاتورة", "الفلاح", "السماد", "الكمية", "الهيكل / البطاقة الرمادية", "السائق", "الشاحنة", "وصل الخروج", "أُدخل بواسطة", "وقت الإدخال", "إجراءات"];
 async function loadLog() {
   const { data, error } = await sb.from("withdrawals")
     .select("*, invoices(invoice_no, invoice_year, client_name, farmer_name, products(name))")
@@ -261,15 +360,76 @@ async function loadLog() {
 }
 function drawLog() {
   const q = $("#lq").value.trim().toLowerCase(), a = $("#d1").value, b = $("#d2").value;
-  logView = logRows.filter(w => (!a || w.w_date >= a) && (!b || w.w_date <= b) &&
-    (!q || Object.values({ ...w, ...w.invoices }).join(" ").toLowerCase().includes(q)))
-    .map(w => { const i = w.invoices || {};
-      return [w.w_date, `${i.invoice_no}/${i.invoice_year}`, `${i.client_name || ""} ${i.farmer_name || ""}`.trim(), i.products?.name,
-        w.qty, w.vehicle_ref, w.driver_name, w.truck_no, w.bon_no, w.created_by, (w.created_at || "").slice(0, 16).replace("T", " ")]; });
-  $("#logT").innerHTML = tbl(LOGH, logView.map(r => r.map(esc)));
+  logFiltered = logRows.filter(w => (!a || w.w_date >= a) && (!b || w.w_date <= b) &&
+    (!q || Object.values({ ...w, ...w.invoices }).join(" ").toLowerCase().includes(q)));
+  logView = logFiltered.map(w => {
+    const i = w.invoices || {};
+    return [w.w_date, `${i.invoice_no}/${i.invoice_year}`, `${i.client_name || ""} ${i.farmer_name || ""}`.trim(), i.products?.name,
+      w.qty, w.vehicle_ref, w.driver_name, w.truck_no, w.bon_no, w.created_by, (w.created_at || "").slice(0, 16).replace("T", " "),
+      `<div style="display:flex;gap:4px">
+        <button type="button" class="f" data-edit-log="${w.id}">تعديل</button>
+        <button type="button" class="p" data-del-log="${w.id}" style="background:var(--bad);padding:6px 10px">حذف</button>
+      </div>`];
+  });
+  $("#logT").innerHTML = tbl(LOGH, logView.map((r, idx) => r.map((c, ci) => ci === LOGH.length - 1 ? c : esc(c))));
 }
+$("#logT").onclick = async e => {
+  const editBtn = e.target.closest("[data-edit-log]");
+  if (editBtn) {
+    const w = logRows.find(x => String(x.id) === editBtn.dataset.editLog);
+    if (!w) return;
+    const i = w.invoices || {};
+    $("#logEditTitle").textContent = `تعديل تسليم الفاتورة ${i.invoice_no || ""}/${i.invoice_year || ""} — ${i.products?.name || ""}`;
+    $("#fLogEdit [name=id]").value = w.id;
+    $("#fLogEdit [name=w_date]").value = w.w_date || "";
+    $("#fLogEdit [name=qty]").value = w.qty ?? "";
+    $("#fLogEdit [name=vehicle_ref]").value = w.vehicle_ref || "";
+    $("#fLogEdit [name=driver_name]").value = w.driver_name || "";
+    $("#fLogEdit [name=truck_no]").value = w.truck_no || "";
+    $("#fLogEdit [name=bon_no]").value = w.bon_no || "";
+    $("#fLogEdit [name=note]").value = w.note || "";
+    $("#logEditBox").hidden = false;
+    $("#logEditBox").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    return;
+  }
+  const delBtn = e.target.closest("[data-del-log]");
+  if (delBtn) {
+    const id = delBtn.dataset.delLog;
+    if (!confirm("حذف عملية التسليم هذه؟")) return;
+    const { error } = await sb.from("withdrawals").delete().eq("id", id);
+    if (error) return toast(error.message, 1);
+    toast("تم حذف التسليم");
+    loadLog();
+  }
+};
+$("#cancelLogEdit").onclick = () => { $("#logEditBox").hidden = true; $("#fLogEdit").reset(); };
+$("#fLogEdit").onsubmit = async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  const payload = {
+    w_date: f.w_date,
+    qty: Number(f.qty),
+    vehicle_ref: f.vehicle_ref.trim(),
+    driver_name: f.driver_name.trim(),
+    truck_no: f.truck_no.trim(),
+    bon_no: f.bon_no?.trim() || null,
+    note: f.note?.trim() || null
+  };
+  const { error } = await sb.from("withdrawals").update(payload).eq("id", f.id);
+  if (error) return toast(error.message, 1);
+  toast("تم تعديل عملية التسليم");
+  $("#logEditBox").hidden = true;
+  e.target.reset();
+  loadLog();
+};
 ["#lq", "#d1", "#d2"].forEach(s => $(s).oninput = drawLog);
-$("#xl").onclick = () => csv("deliveries", LOGH, logView);
+$("#xl").onclick = () => csv("deliveries",
+  ["التاريخ", "رقم الفاتورة", "السنة", "الاسم", "اللقب / الفلاح", "السماد", "الكمية", "الهيكل / البطاقة الرمادية", "السائق", "الشاحنة", "وصل الخروج", "أُدخل بواسطة", "وقت الإدخال"],
+  logFiltered.map(w => {
+    const i = w.invoices || {};
+    return [w.w_date, i.invoice_no || "", i.invoice_year || "", i.client_name || "", i.farmer_name || "",
+      i.products?.name || "", w.qty, w.vehicle_ref || "", w.driver_name || "", w.truck_no || "", w.bon_no || "", w.created_by || "", (w.created_at || "").slice(0, 16).replace("T", " ")];
+  }));
 async function loadAudit() {
   const { data, error } = await sb.from("audit_log").select("*").order("id", { ascending: false }).limit(300);
   if (error) return toast(error.message, 1);
@@ -296,7 +456,8 @@ async function loadCatalogTab() {
     `<div class="perms">${catBoxes(wc.data.filter(k => k.warehouse_id === x.id).map(k => k.category_id))}</div>`,
     `<input type="checkbox" data-a${x.active ? " checked" : ""}>`, btns(x.id)]));
   $("#cT").innerHTML = tbl(["النوع", ""], c.data.map(x => [`<input data-n value="${esc(x.name)}">`, btns(x.id)]));
-  $("#prT").innerHTML = tbl(["المنتج", "النوع", "مدة التوريد (يوم)", "احتياطي (يوم)", ""], p.data.map(x => [esc(x.name),
+  $("#prT").innerHTML = tbl(["المنتج", "النوع", "مدة التوريد (يوم)", "احتياطي (يوم)", ""], p.data.map(x => [
+    `<input data-pn value="${esc(x.name)}">`,
     `<select data-c><option value="">—</option>${catOpts(x.category_id)}</select>`,
     `<input type="number" data-ld min="0" value="${x.lead_days}" style="width:80px">`,
     `<input type="number" data-sd min="0" value="${x.safety_days}" style="width:80px">`,
@@ -343,7 +504,7 @@ $("#cT").onclick = e => {
 $("#prT").onclick = e => {
   const b = e.target.closest("button[data-id]"); if (!b) return;
   const tr = b.closest("tr");
-  run(sb.from("products").update({ category_id: tr.querySelector("[data-c]").value || null, lead_days: +tr.querySelector("[data-ld]").value, safety_days: +tr.querySelector("[data-sd]").value }).eq("id", +b.dataset.id), "تم الحفظ");
+  run(sb.from("products").update({ name: tr.querySelector("[data-pn]").value.trim(), category_id: tr.querySelector("[data-c]").value || null, lead_days: +tr.querySelector("[data-ld]").value, safety_days: +tr.querySelector("[data-sd]").value }).eq("id", +b.dataset.id), "تم الحفظ");
 };
 
 startApp({

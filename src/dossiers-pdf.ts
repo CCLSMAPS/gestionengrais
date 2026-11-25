@@ -103,6 +103,18 @@ export function buildDossiersReportHtml(
   `;
 }
 
+function savePdfBlob(pdf: jsPDF, filename: string): void {
+  const blob = pdf.output("blob");
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
 async function exportDossiersPdf(items: DossierPdfItem[]): Promise<void> {
   if (!items || !items.length) {
     throw new Error("لا توجد ملفات مسجلة للتصدير");
@@ -119,8 +131,9 @@ async function exportDossiersPdf(items: DossierPdfItem[]): Promise<void> {
   const pageH = pdf.internal.pageSize.getHeight();
 
   const host = document.createElement("div");
+  host.id = "pdfRenderHost";
   host.style.cssText =
-    "position:fixed;left:-10000px;top:0;width:1120px;background:#ffffff;z-index:-1;";
+    "position:fixed;left:-10000px;top:0;width:1120px;background:#ffffff;color:#1d2b22;z-index:-1;";
   document.body.appendChild(host);
 
   try {
@@ -143,6 +156,15 @@ async function exportDossiersPdf(items: DossierPdfItem[]): Promise<void> {
         backgroundColor: "#ffffff",
         useCORS: true,
         logging: false,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: 1120,
+        onclone: (clonedDoc) => {
+          const app = clonedDoc.getElementById("app");
+          if (app) app.remove();
+          const rep = clonedDoc.getElementById("dossiersPrintReport");
+          if (rep) rep.remove();
+        },
       });
 
       const imgData = canvas.toDataURL("image/png");
@@ -155,7 +177,7 @@ async function exportDossiersPdf(items: DossierPdfItem[]): Promise<void> {
     }
 
     const stamp = new Date().toISOString().slice(0, 10);
-    pdf.save(`dossiers-2026-2027-${stamp}.pdf`);
+    savePdfBlob(pdf, `dossiers-2026-2027-${stamp}.pdf`);
   } finally {
     host.remove();
   }
@@ -170,13 +192,29 @@ function printDossiersList(items: DossierPdfItem[]): void {
   el.innerHTML = buildDossiersReportHtml(items);
   el.hidden = false;
   document.body.classList.add("printing-list");
+  let printed = false;
   const cleanup = () => {
     document.body.classList.remove("printing-list");
     el.hidden = true;
     window.removeEventListener("afterprint", cleanup);
+    window.removeEventListener("beforeprint", onBeforePrint);
   };
+  const onBeforePrint = () => {
+    printed = true;
+  };
+  window.addEventListener("beforeprint", onBeforePrint, { once: true });
   window.addEventListener("afterprint", cleanup);
-  window.print();
+  try {
+    window.print();
+  } catch (_) {
+    // fallback handled below
+  }
+  setTimeout(() => {
+    if (!printed) {
+      cleanup();
+      exportDossiersPdf(items).catch(() => {});
+    }
+  }, 450);
 }
 
 async function exportSlipPdf(sourceEl: HTMLElement | null, fileSuffix?: string, filePrefix = "accuse-dossier"): Promise<void> {
@@ -185,6 +223,7 @@ async function exportSlipPdf(sourceEl: HTMLElement | null, fileSuffix?: string, 
   }
 
   const host = document.createElement("div");
+  host.id = "pdfSlipHost";
   host.style.cssText =
     "position:fixed;left:-10000px;top:0;width:794px;background:#ffffff;color:#111111;padding:18px;box-sizing:border-box;z-index:-1;direction:ltr;text-align:left;";
   host.innerHTML = `<div class="slip-wrap">${sourceEl.innerHTML}</div>`;
@@ -208,6 +247,13 @@ async function exportSlipPdf(sourceEl: HTMLElement | null, fileSuffix?: string, 
       backgroundColor: "#ffffff",
       useCORS: true,
       logging: false,
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: 794,
+      onclone: (clonedDoc) => {
+        const app = clonedDoc.getElementById("app");
+        if (app) app.remove();
+      },
     });
 
     const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -220,7 +266,7 @@ async function exportSlipPdf(sourceEl: HTMLElement | null, fileSuffix?: string, 
 
     pdf.addImage(canvas.toDataURL("image/png"), "PNG", offsetX, 0, renderW, renderH);
     const cleanSuffix = String(fileSuffix || "").replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-|-$/g, "");
-    pdf.save(`${filePrefix}${cleanSuffix ? "-" + cleanSuffix : ""}.pdf`);
+    savePdfBlob(pdf, `${filePrefix}${cleanSuffix ? "-" + cleanSuffix : ""}.pdf`);
   } finally {
     host.remove();
   }

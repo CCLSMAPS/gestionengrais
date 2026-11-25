@@ -17,6 +17,10 @@
 <nav></nav>
 <section id="invoices" hidden>
   <h2>تسجيل فاتورة</h2>
+  <div id="iEditBanner" class="info" hidden style="border:1px solid var(--ac);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+    <strong id="iEditLabel">تعديل فاتورة</strong>
+    <button type="button" class="f" id="cancelIEdit">إلغاء التعديل</button>
+  </div>
   <form id="fi" style="align-items:start">
     <label>رقم الفاتورة<input name="invoice_no" required></label>
     <label>السنة<input name="invoice_year" type="number" required></label>
@@ -31,8 +35,13 @@
     <label>ملاحظات<input name="notes"></label>
     <div id="lines" style="grid-column:1/-1;display:grid;gap:8px"></div>
     <button type="button" class="f" id="addLine" style="justify-self:start">+ إضافة منتج</button>
-    <button class="p">حفظ الفاتورة</button>
+    <button class="p" id="submitInvBtn">حفظ الفاتورة</button>
   </form>
+  <div style="margin-top:18px;border-top:1px solid var(--bd);padding-top:14px">
+    <h3 style="margin:0 0 10px">الفواتير المسجلة مؤخراً</h3>
+    <label style="margin-bottom:10px">بحث في الفواتير (رقم الفاتورة، الفلاح، بطاقة الفلاح، المنتج، المنطقة)<input id="iq" type="search" autocomplete="off" placeholder="ابحث هنا..."></label>
+    <div class="w" id="iT"></div>
+  </div>
 </section>
 <section id="pickup" hidden>
   <h2>تسليم السماد للفلاحين (Bon d'enlèvement)</h2>
@@ -44,6 +53,10 @@
   </div>
   <div class="info" id="pinfo"></div>
   <div id="pickupStockWarn" hidden></div>
+  <div id="pEditBanner" class="info" hidden style="border:1px solid var(--ac);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+    <strong id="pEditLabel">تعديل عملية تسليم</strong>
+    <button type="button" class="f" id="cancelPEdit">إلغاء التعديل</button>
+  </div>
   <form id="fp">
     <label>الكمية المستلمة (QTX)<input name="qty" type="number" step="any" min="0" required></label>
     <label>التاريخ<input name="w_date" type="date" required></label>
@@ -52,19 +65,24 @@
     <label>اسم السائق<input name="driver_name" required></label>
     <label>رقم الشاحنة<input name="truck_no" required></label>
     <label>ملاحظات<input name="note"></label>
-    <button class="p">تسجيل الاستلام</button>
+    <button class="p" id="submitPickupBtn">تسجيل الاستلام</button>
   </form>
   <div class="w" id="pT" style="margin-top:12px"></div>
 </section>
 <section id="receipts" hidden>
   <h2>تسجيل الأسمدة الواردة للمخزن</h2>
+  <div id="rEditBanner" class="info" hidden style="border:1px solid var(--ac);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+    <strong id="rEditLabel">تعديل عملية وارد</strong>
+    <button type="button" class="f" id="cancelREdit">إلغاء التعديل</button>
+  </div>
   <form id="fr">
     <label>السماد<input name="product" list="pl" required autocomplete="off"></label>
     <label>المخزن<select name="warehouse_id" id="rw"></select></label>
     <label>الكمية (QTX)<input name="qty" type="number" step="any" min="0" required></label>
     <label>التاريخ<input name="entry_date" type="date" required></label>
+    <label>تاريخ انتهاء صلاحية المنتج<input name="expiry_date" type="date"></label>
     <label>ملاحظة<input name="note"></label>
-    <button class="p">حفظ</button>
+    <button class="p" id="submitReceiptBtn">حفظ</button>
   </form>
   <div class="w" id="rT" style="margin-top:12px"></div>
 </section>
@@ -81,22 +99,152 @@
 <script src="common.js"></script>
 <script src="dossiers-data.js"></script>
 <script>
+let receiptsList = [];
+let editingReceiptId = null;
+const STOCK_EXP_KEY = "ccls_stock_in_expiry";
+
+function readStockExp() {
+  try { return JSON.parse(localStorage.getItem(STOCK_EXP_KEY) || "{}") || {}; } catch (_) { return {}; }
+}
+function saveStockExp(id, exp) {
+  if (id == null) return;
+  try {
+    const all = readStockExp();
+    if (exp) all[String(id)] = exp;
+    else delete all[String(id)];
+    localStorage.setItem(STOCK_EXP_KEY, JSON.stringify(all));
+  } catch (_) {}
+}
+function formatExpiryCell(exp) {
+  if (!exp) return "-";
+  const nowStr = today();
+  const soonDate = new Date();
+  soonDate.setDate(soonDate.getDate() + 30);
+  const soonStr = soonDate.toISOString().slice(0, 10);
+  if (exp < nowStr) return `<span class="tag-bad">${esc(exp)} (منتهي)</span>`;
+  if (exp <= soonStr) return `<span class="tag-warn">${esc(exp)} (قريب الانتهاء)</span>`;
+  return esc(exp);
+}
+
+function cancelReceiptEdit() {
+  editingReceiptId = null;
+  $("#rEditBanner").hidden = true;
+  $("#fr").reset();
+  $("#fr [name=entry_date]").value = today();
+  requestAnimationFrame(() => { $("#submitReceiptBtn").textContent = "حفظ"; });
+}
+$("#cancelREdit").onclick = cancelReceiptEdit;
+
 $("#fr").onsubmit = async e => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
   try {
     const product_id = await productId(f.product);
-    const { error } = await sb.from("stock_in").insert({ product_id, qty: f.qty, entry_date: f.entry_date, warehouse_id: f.warehouse_id || null, note: f.note || null });
-    if (error) throw error;
-    toast("تم حفظ الوارد"); e.target.reset(); $("#fr [name=entry_date]").value = today();
+    const payload = {
+      product_id,
+      qty: f.qty,
+      entry_date: f.entry_date,
+      expiry_date: f.expiry_date || null,
+      warehouse_id: f.warehouse_id || null,
+      note: f.note || null
+    };
+    let missingExpiryCol = false;
+    let savedRow = null;
+
+    if (editingReceiptId != null) {
+      let { data, error } = await sb.from("stock_in").update(payload).eq("id", editingReceiptId).select("id");
+      if (error && /expiry_date/i.test(error.message || "")) {
+        missingExpiryCol = true;
+        const { expiry_date, ...fallbackPayload } = payload;
+        const retry = await sb.from("stock_in").update(fallbackPayload).eq("id", editingReceiptId).select("id");
+        data = retry.data;
+        error = retry.error;
+      }
+      if (error) throw error;
+      savedRow = data?.[0] || { id: editingReceiptId };
+      saveStockExp(savedRow.id, payload.expiry_date || "");
+      toast(missingExpiryCol
+        ? "تم تعديل الوارد؛ نفّذ supabase-setup.sql لإضافة عمود expiry_date في جدول stock_in"
+        : "تم تعديل الوارد");
+      cancelReceiptEdit();
+    } else {
+      let { data, error } = await sb.from("stock_in").insert(payload).select("id");
+      if (error && /expiry_date/i.test(error.message || "")) {
+        missingExpiryCol = true;
+        const { expiry_date, ...fallbackPayload } = payload;
+        const retry = await sb.from("stock_in").insert(fallbackPayload).select("id");
+        data = retry.data;
+        error = retry.error;
+      }
+      if (error) throw error;
+      savedRow = data?.[0];
+      if (savedRow?.id != null) saveStockExp(savedRow.id, payload.expiry_date || "");
+      toast(missingExpiryCol
+        ? "تم حفظ الوارد؛ نفّذ supabase-setup.sql لإضافة عمود expiry_date في جدول stock_in"
+        : "تم حفظ الوارد");
+      e.target.reset();
+      $("#fr [name=entry_date]").value = today();
+    }
     loadProducts(); loadReceipts();
   } catch (x) { toast(x.message, 1); }
 };
 async function loadReceipts() {
   const { data } = await sb.from("stock_in").select("*, products(name)").order("id", { ascending: false }).limit(50);
-  $("#rT").innerHTML = tbl(["التاريخ", "السماد", "الكمية", "ملاحظة"],
-    (data || []).map(r => [r.entry_date, esc(r.products?.name), n(r.qty), esc(r.note)]));
+  const expMap = readStockExp();
+  receiptsList = (data || []).map(r => ({
+    ...r,
+    expiry_date: r.expiry_date || expMap[String(r.id)] || ""
+  }));
+  $("#rT").innerHTML = tbl(["التاريخ", "السماد", "المخزن", "الكمية", "تاريخ الصلاحية", "ملاحظة", "إجراءات"],
+    receiptsList.map(r => {
+      const whName = WH.find(w => String(w.id) === String(r.warehouse_id))?.name || "-";
+      return [
+        r.entry_date,
+        esc(r.products?.name),
+        esc(whName),
+        n(r.qty),
+        formatExpiryCell(r.expiry_date),
+        esc(r.note),
+        `<div style="display:flex;gap:4px">
+          <button type="button" class="f" data-edit-r="${r.id}">تعديل</button>
+          <button type="button" class="p" data-del-r="${r.id}" style="background:var(--bad);padding:6px 10px">حذف</button>
+        </div>`
+      ];
+    }));
 }
+$("#rT").onclick = async e => {
+  const editBtn = e.target.closest("[data-edit-r]");
+  if (editBtn) {
+    const r = receiptsList.find(x => String(x.id) === editBtn.dataset.editR);
+    if (!r) return;
+    editingReceiptId = r.id;
+    const pName = r.products?.name || "";
+    $("#rEditLabel").textContent = `تعديل وارد #${r.id} (${pName})`;
+    $("#rEditBanner").hidden = false;
+    $("#fr [name=product]").value = pName;
+    fillWh("#rw", pName);
+    $("#rw").value = r.warehouse_id != null ? String(r.warehouse_id) : "";
+    $("#fr [name=qty]").value = r.qty ?? "";
+    $("#fr [name=entry_date]").value = r.entry_date || today();
+    $("#fr [name=expiry_date]").value = r.expiry_date || "";
+    $("#fr [name=note]").value = r.note || "";
+    $("#submitReceiptBtn").textContent = "حفظ التعديل";
+    $("#receipts").scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  const delBtn = e.target.closest("[data-del-r]");
+  if (delBtn) {
+    const id = delBtn.dataset.delR;
+    if (!confirm("حذف عملية الوارد هذه؟")) return;
+    const { error } = await sb.from("stock_in").delete().eq("id", id);
+    if (error) return toast(error.message, 1);
+    saveStockExp(id, "");
+    if (String(editingReceiptId) === String(id)) cancelReceiptEdit();
+    toast("تم حذف الوارد");
+    loadProducts();
+    loadReceipts();
+  }
+};
 function addLine() {
   const d = document.createElement("div"); d.className = "line";
   d.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:8px;align-items:end;border:1px solid var(--bd);border-radius:8px;padding:8px";
@@ -124,6 +272,118 @@ function saveInvMeta(invoiceNo, invoiceYear, meta) {
   } catch (_) {}
 }
 
+let editingInvId = null;
+let recentInvoices = [];
+
+function cancelInvoiceEdit() {
+  editingInvId = null;
+  $("#iEditBanner").hidden = true;
+  $("#addLine").hidden = false;
+  $("#fi").reset();
+  $("#lines").innerHTML = "";
+  addLine();
+  init2();
+  $("#cardDupWarn").hidden = true;
+  $("#nameDupWarn").hidden = true;
+  requestAnimationFrame(() => { $("#submitInvBtn").textContent = "حفظ الفاتورة"; });
+}
+$("#cancelIEdit").onclick = cancelInvoiceEdit;
+
+async function startEditInvoice(id) {
+  let row = null;
+  try {
+    const { data } = await sb.from("invoices").select("*, products(name)").eq("id", id).single();
+    if (data) row = data;
+  } catch (_) {}
+  const viewRow = recentInvoices.find(x => String(x.id) === String(id));
+  if (!row && !viewRow) return;
+  const src = { ...(viewRow || {}), ...(row || {}) };
+  const resolved = resolveInvoiceMeta(src, readInvMeta());
+
+  editingInvId = src.id;
+  $("#iEditLabel").textContent = `تعديل الفاتورة ${src.invoice_no || ""}/${src.invoice_year || ""} — ${src.products?.name || src.product_name || ""}`;
+  $("#iEditBanner").hidden = false;
+  $("#addLine").hidden = true;
+
+  $("#fi [name=invoice_no]").value = src.invoice_no || "";
+  $("#fi [name=invoice_year]").value = src.invoice_year || new Date().getFullYear();
+  $("#fi [name=invoice_date]").value = src.invoice_date || "";
+  $("#fi [name=dossier_no]").value = src.dossier_no || "";
+  $("#fi [name=farmer_card_no]").value = resolved.farmer_card_no || "";
+  $("#fi [name=client_name]").value = src.client_name || "";
+  $("#fi [name=farmer_name]").value = src.farmer_name || "";
+  $("#fi [name=culture]").value = resolved.culture || "";
+  $("#fi [name=region]").value = src.region || "";
+  $("#fi [name=phone]").value = src.phone || "";
+  $("#fi [name=notes]").value = src.notes || "";
+
+  $("#lines").innerHTML = "";
+  addLine();
+  const ln = $("#lines").children[0];
+  const pName = src.products?.name || src.product_name || "";
+  ln.querySelector("[data-p]").value = pName;
+  ln.querySelector("[data-q]").value = src.qty ?? "";
+  ln.querySelector("[data-u]").value = src.unit_price ?? "";
+  const wSel = ln.querySelector("[data-w]");
+  fillWh(wSel, pName);
+  if (src.warehouse_id != null) wSel.value = String(src.warehouse_id);
+
+  $("#submitInvBtn").textContent = "حفظ التعديل";
+  scheduleInvoiceValidation(true);
+  $("#invoices").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function loadRecentInvoices() {
+  const { data, error } = await sb.from("invoice_balance").select("*").order("id", { ascending: false }).limit(80);
+  if (error) return;
+  recentInvoices = data || [];
+  drawRecentInvoices();
+}
+
+function drawRecentInvoices() {
+  const q = ($("#iq")?.value || "").trim().toLowerCase();
+  const metaMap = readInvMeta();
+  const rows = recentInvoices.filter(i => {
+    const meta = resolveInvoiceMeta(i, metaMap);
+    const hay = `${i.invoice_no}/${i.invoice_year} ${i.dossier_no || ""} ${meta.farmer_card_no || ""} ${i.client_name || ""} ${i.farmer_name || ""} ${i.product_name || ""} ${i.region || ""} ${i.phone || ""}`.toLowerCase();
+    return !q || hay.includes(q);
+  });
+  $("#iT").innerHTML = tbl(
+    ["رقم الفاتورة", "التاريخ", "الفلاح", "المنتج", "الكمية", "المتبقي", "المخزن", "إجراءات"],
+    rows.map(i => [
+      `<b>${esc(i.invoice_no)}/${esc(i.invoice_year)}</b>`,
+      esc(i.invoice_date || "-"),
+      esc(`${i.client_name || ""} ${i.farmer_name || ""}`.trim()),
+      esc(i.product_name),
+      n(i.qty),
+      `<b>${n(i.remaining)}</b>`,
+      esc(i.warehouse || "-"),
+      `<div style="display:flex;gap:4px">
+        <button type="button" class="f" data-edit-i="${i.id}">تعديل</button>
+        <button type="button" class="p" data-del-i="${i.id}" style="background:var(--bad);padding:6px 10px">حذف</button>
+      </div>`
+    ])
+  );
+}
+$("#iq").oninput = drawRecentInvoices;
+$("#iT").onclick = async e => {
+  const editBtn = e.target.closest("[data-edit-i]");
+  if (editBtn) {
+    await startEditInvoice(editBtn.dataset.editI);
+    return;
+  }
+  const delBtn = e.target.closest("[data-del-i]");
+  if (delBtn) {
+    const id = delBtn.dataset.delI;
+    if (!confirm("حذف سطر الفاتورة؟")) return;
+    const { error } = await sb.from("invoices").delete().eq("id", id);
+    if (error) return toast(error.code === "23503" ? "لا يمكن الحذف: توجد تسليمات مرتبطة بهذه الفاتورة" : error.message, 1);
+    if (String(editingInvId) === String(id)) cancelInvoiceEdit();
+    toast("تم حذف الفاتورة");
+    loadRecentInvoices();
+  }
+};
+
 $("#fi").onsubmit = async e => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
@@ -131,6 +391,39 @@ $("#fi").onsubmit = async e => {
   if (f.farmer_card_no) f.farmer_card_no = f.farmer_card_no.trim().toUpperCase();
   if (f.culture) f.culture = f.culture.trim().replace(/\s+/g, " ").toUpperCase();
   try {
+    if (editingInvId != null) {
+      const d = $("#lines").children[0];
+      const w = d.querySelector("[data-w]");
+      const payload = {
+        ...f,
+        product_id: await productId(d.querySelector("[data-p]").value),
+        qty: d.querySelector("[data-q]").value,
+        unit_price: d.querySelector("[data-u]").value || null,
+        warehouse_id: w.value || null,
+        warehouse: w.value ? w.selectedOptions[0].text : null
+      };
+      let { error } = await sb.from("invoices").update(payload).eq("id", editingInvId);
+      let missingCols = false;
+      if (error && /(farmer_card_no|culture)/i.test(error.message || "")) {
+        missingCols = true;
+        const { farmer_card_no, culture, ...fallbackPayload } = payload;
+        const retry = await sb.from("invoices").update(fallbackPayload).eq("id", editingInvId);
+        error = retry.error;
+      }
+      if (error) throw error;
+      if (f.farmer_card_no || f.culture) {
+        saveInvMeta(f.invoice_no, f.invoice_year, {
+          farmer_card_no: f.farmer_card_no || "",
+          culture: f.culture || ""
+        });
+      }
+      toast(missingCols ? "تم تعديل الفاتورة (بعض الحقول محفوظة محلياً)" : "تم تعديل الفاتورة");
+      cancelInvoiceEdit();
+      loadProducts();
+      loadRecentInvoices();
+      return;
+    }
+
     const rows = [];
     for (const d of $("#lines").children) {
       const w = d.querySelector("[data-w]");
@@ -155,7 +448,7 @@ $("#fi").onsubmit = async e => {
     toast(missingCols
       ? `تم حفظ الفاتورة (${rows.length} منتج)؛ نفّذ supabase-setup.sql لإضافة حقول البطاقة والمحصول في جدول الفواتير`
       : `تم حفظ الفاتورة (${rows.length} منتج)`);
-    e.target.reset(); $("#lines").innerHTML = ""; addLine(); init2(); loadProducts();
+    e.target.reset(); $("#lines").innerHTML = ""; addLine(); init2(); loadProducts(); loadRecentInvoices();
     $("#cardDupWarn").hidden = true; $("#nameDupWarn").hidden = true;
   } catch (x) { toast(x.code === "23505" ? "منتج مكرر في الفاتورة أو رقم الفاتورة مسجّل بهذا المنتج من قبل" : x.message, 1); }
 };
@@ -248,18 +541,83 @@ function filterPick() {
     : `<option value="">لا توجد فاتورة مطابقة بها كمية متبقية</option>`;
   drawPickup();
 }
+let lastWithdrawals = [];
+let editingPickupId = null;
+let editingPickupOldQty = 0;
+
+function cancelPickupEdit() {
+  editingPickupId = null;
+  editingPickupOldQty = 0;
+  $("#pEditBanner").hidden = true;
+  $("#fp").reset();
+  $("#fp [name=w_date]").value = today();
+  requestAnimationFrame(() => { $("#submitPickupBtn").textContent = "تسجيل الاستلام"; });
+  updatePickupStockWarn(open.find(x => x.id == $("#pi").value));
+}
+$("#cancelPEdit").onclick = cancelPickupEdit;
+
 async function drawPickup() {
   const i = open.find(x => x.id == $("#pi").value);
   const st = findInvoiceStock(i);
   const stockTxt = st ? ` | المتوفر بالمخزن (${st.warehouse}): ${n(st.balance)} قنطار` : "";
   $("#pinfo").textContent = i ? `${i.client_name || ""} ${i.farmer_name || ""}${i.phone ? ` (${i.phone})` : ""} | ${i.product_name} | الكمية: ${n(i.qty)} | المستلم: ${n(i.taken)} | المتبقي بالفاتورة: ${n(i.remaining)}${stockTxt}` : "";
   updatePickupStockWarn(i);
-  if (!i) { $("#pT").innerHTML = ""; return; }
+  if (!i) { lastWithdrawals = []; $("#pT").innerHTML = ""; return; }
   const { data } = await sb.from("withdrawals").select("*").eq("invoice_id", i.id).order("id", { ascending: false });
-  $("#pT").innerHTML = tbl(["التاريخ", "الكمية", "المركبة", "إذن الخروج"],
-    (data || []).map(w => [w.w_date, n(w.qty), esc(w.vehicle_ref), esc(w.bon_no)]));
+  lastWithdrawals = data || [];
+  $("#pT").innerHTML = tbl(["التاريخ", "الكمية", "المركبة", "السائق", "الشاحنة", "إذن الخروج", "إجراءات"],
+    lastWithdrawals.map(w => [
+      w.w_date,
+      n(w.qty),
+      esc(w.vehicle_ref),
+      esc(w.driver_name || "-"),
+      esc(w.truck_no || "-"),
+      esc(w.bon_no),
+      `<div style="display:flex;gap:4px">
+        <button type="button" class="f" data-edit-p="${w.id}">تعديل</button>
+        <button type="button" class="p" data-del-p="${w.id}" style="background:var(--bad);padding:6px 10px">حذف</button>
+      </div>`
+    ]));
 }
-$("#pi").onchange = drawPickup;
+$("#pi").onchange = () => {
+  if (editingPickupId != null) cancelPickupEdit();
+  drawPickup();
+};
+$("#pT").onclick = async e => {
+  const editBtn = e.target.closest("[data-edit-p]");
+  if (editBtn) {
+    const w = lastWithdrawals.find(x => String(x.id) === editBtn.dataset.editP);
+    if (!w) return;
+    editingPickupId = w.id;
+    editingPickupOldQty = Number(w.qty || 0);
+    $("#pEditLabel").textContent = `تعديل عملية تسليم بتاريخ ${w.w_date || ""}`;
+    $("#pEditBanner").hidden = false;
+    $("#fp [name=qty]").value = w.qty ?? "";
+    $("#fp [name=w_date]").value = w.w_date || today();
+    $("#fp [name=vehicle_ref]").value = w.vehicle_ref || "";
+    $("#fp [name=bon_no]").value = w.bon_no || "";
+    $("#fp [name=driver_name]").value = w.driver_name || "";
+    $("#fp [name=truck_no]").value = w.truck_no || "";
+    $("#fp [name=note]").value = w.note || "";
+    $("#submitPickupBtn").textContent = "حفظ تعديل الاستلام";
+    updatePickupStockWarn(open.find(x => x.id == $("#pi").value));
+    $("#fp").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    return;
+  }
+  const delBtn = e.target.closest("[data-del-p]");
+  if (delBtn) {
+    const id = delBtn.dataset.delP;
+    if (!confirm("حذف عملية التسليم هذه؟")) return;
+    const { error } = await sb.from("withdrawals").delete().eq("id", id);
+    if (error) return toast(error.message, 1);
+    if (String(editingPickupId) === String(id)) cancelPickupEdit();
+    toast("تم حذف الاستلام");
+    const keep = $("#pi").value;
+    await loadPickup();
+    $("#pi").value = keep;
+    drawPickup();
+  }
+};
 $("#fp [name=qty]").addEventListener("input", () => updatePickupStockWarn(open.find(x => x.id == $("#pi").value)));
 ["#pq", "#pn", "#pd"].forEach(s => $(s).oninput = filterPick);
 $("#fp").onsubmit = async e => {
@@ -268,11 +626,19 @@ $("#fp").onsubmit = async e => {
   const f = Object.fromEntries(new FormData(e.target));
   for (const k in f) if (f[k] === "") f[k] = null;
   const inv = open.find(x => x.id == id);
-  if (inv && Number(f.qty) > Number(inv.remaining))
-    return toast(`الكمية ${n(f.qty)} تتجاوز المتبقي في الفاتورة. أقصى كمية متاحة للاستلام الآن: ${n(inv.remaining)} قنطار`, 1);
-  const { error } = await sb.from("withdrawals").insert({ ...f, invoice_id: id });
-  if (error) return toast(error.message, 1);
-  toast("تم تسجيل الاستلام"); e.target.reset(); $("#fp [name=w_date]").value = today();
+  const maxAllowed = inv ? Number(inv.remaining) + (editingPickupId != null ? editingPickupOldQty : 0) : Infinity;
+  if (inv && Number(f.qty) > maxAllowed)
+    return toast(`الكمية ${n(f.qty)} تتجاوز المتبقي في الفاتورة. أقصى كمية متاحة للاستلام الآن: ${n(maxAllowed)} قنطار`, 1);
+  if (editingPickupId != null) {
+    const { error } = await sb.from("withdrawals").update(f).eq("id", editingPickupId);
+    if (error) return toast(error.message, 1);
+    toast("تم تعديل الاستلام");
+    cancelPickupEdit();
+  } else {
+    const { error } = await sb.from("withdrawals").insert({ ...f, invoice_id: id });
+    if (error) return toast(error.message, 1);
+    toast("تم تسجيل الاستلام"); e.target.reset(); $("#fp [name=w_date]").value = today();
+  }
   const keep = id; await loadPickup(); $("#pi").value = keep; drawPickup();
 };
 
@@ -416,6 +782,7 @@ async function validateInvoiceRealtime() {
   const metaMap = readInvMeta();
   const grouped = new Map();
   for (const r of data) {
+    if (editingInvId != null && String(r.id) === String(editingInvId)) continue;
     const key = `${String(r.invoice_no || "").trim()}|${r.invoice_year}`;
     const resolved = resolveInvoiceMeta(r, metaMap);
     let g = grouped.get(key);
@@ -531,9 +898,9 @@ function scheduleInvoiceValidation(immediate) {
 startApp({
   page: "index",
   tabs: [
-    ["invoices", "تسجيل فاتورة", ["invoices"], () => { loadLookups(); loadDossierAutofill(); }],
+    ["invoices", "تسجيل فاتورة", ["invoices"], () => { loadLookups(); loadDossierAutofill(); loadRecentInvoices(); }],
     ["pickup", "تسليم السماد للفلاحين", ["pickup"], loadPickup],
-    ["receipts", "الأسمدة الواردة للمخزن", ["receipts"], () => { loadLookups(); loadReceipts(); }]
+    ["receipts", "الأسمدة الواردة للمخزن", ["receipts"], () => { loadLookups().then(loadReceipts); }]
   ],
   ready() {
     if (!$("#lines").children.length) addLine();
@@ -542,6 +909,7 @@ startApp({
     $("#fp [name=w_date]").value = today();
     $("#fr [name=entry_date]").value = today();
     loadDossierAutofill();
+    loadRecentInvoices();
   }
 });
 </script>

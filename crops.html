@@ -86,14 +86,7 @@ async function loadCrops() {
 }
 
 function renderCrops() {
-  const q = ($("#cq").value || "").trim().toLowerCase();
-  const z = $("#cz").value;
-  const c = $("#cc").value;
-  const rows = DOSSIERS.filter(d =>
-    (!z || d.zone === z) &&
-    (!c || (d.culture || "").toUpperCase() === c) &&
-    (!q || [d.dossier_no, d.farmer_name, d.zone, d.culture, d.phone].join(" ").toLowerCase().includes(q))
-  );
+  const rows = getFilteredCrops();
 
   const byCulture = new Map();
   rows.forEach(d => {
@@ -161,26 +154,49 @@ $("#dT").addEventListener("change", async e => {
   toast(`تم تحديث مساحة الملف ${no}`);
 });
 
+function getFilteredCrops() {
+  const q = ($("#cq").value || "").trim().toLowerCase();
+  const z = $("#cz").value;
+  const c = $("#cc").value;
+  return DOSSIERS.filter(d =>
+    (!z || d.zone === z) &&
+    (!c || (d.culture || "").toUpperCase() === c) &&
+    (!q || [d.dossier_no, d.farmer_card_no, d.farmer_name, d.zone, d.culture, d.phone].join(" ").toLowerCase().includes(q))
+  );
+}
+
 ["#cq", "#cz", "#cc"].forEach(s => $(s).addEventListener("input", renderCrops));
-$("#xc").onclick = () => csv("crops-areas-2026-2027",
-  ["رقم الملف", "اسم الفلاح", "المنطقة", "الزراعة", "المساحة", "التاريخ"],
-  DOSSIERS.map(d => [d.dossier_no, d.farmer_name, d.zone, d.culture, d.superficie, d.reception_date]));
+$("#xc").onclick = () => {
+  const rows = getFilteredCrops();
+  csv("crops-areas-2026-2027",
+    ["رقم الملف", "بطاقة الفلاح", "اسم الفلاح", "المنطقة", "الزراعة", "الموسم", "المساحة", "التاريخ", "الهاتف", "القطاع"],
+    rows.map(d => [d.dossier_no, d.farmer_card_no || "", d.farmer_name, d.zone, d.culture, d.camp || "2026/2027", d.superficie, d.reception_date, d.phone, d.secteur || "/"]));
+};
 $("#pdfDossiers").onclick = async () => {
-  if (!DOSSIERS.length) return toast("لا توجد ملفات للتصدير", 1);
+  const rows = getFilteredCrops();
+  if (!rows.length) return toast("لا توجد ملفات للتصدير", 1);
+  if (typeof window.exportDossiersPdf !== "function") {
+    return toast("تعذّر تحميل أداة تصدير PDF، أعد تحميل الصفحة", 1);
+  }
   const b = $("#pdfDossiers"), orig = b.textContent;
   b.disabled = true; b.textContent = "جارٍ إنشاء PDF...";
   try {
-    await window.exportDossiersPdf(DOSSIERS);
+    await window.exportDossiersPdf(rows);
     toast("تم تصدير ملف PDF بنجاح");
-  } catch (_) {
-    window.printDossiersList(DOSSIERS);
+  } catch (err) {
+    toast(err?.message || "تعذّر إنشاء ملف PDF", 1);
   } finally {
     b.disabled = false; b.textContent = orig;
   }
 };
 $("#printDossiers").onclick = () => {
-  if (!DOSSIERS.length) return toast("لا توجد ملفات للطباعة", 1);
-  window.printDossiersList(DOSSIERS);
+  const rows = getFilteredCrops();
+  if (!rows.length) return toast("لا توجد ملفات للطباعة", 1);
+  if (typeof window.printDossiersList !== "function") {
+    window.print();
+    return;
+  }
+  window.printDossiersList(rows);
 };
 
 startApp({

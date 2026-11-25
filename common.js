@@ -40,8 +40,8 @@ async function productId(name) {
   return data.id;
 }
 function csv(name, h, rows) {
-  const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
-  const t = "\ufeff" + [h, ...rows].map(r => r.map(q).join(",")).join("\r\n");
+  const q = v => '"' + String(v ?? "").replace(/\r?\n/g, " ").replace(/"/g, '""') + '"';
+  const t = "\ufeff" + [h, ...rows].map(r => r.map(q).join(";")).join("\r\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([t], { type: "text/csv;charset=utf-8" }));
   a.download = `${name}-${today()}.csv`; a.click();
