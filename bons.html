@@ -279,10 +279,13 @@ function buildBonHtml(header, lines) {
 function showBon(bonNo) {
   const lines = BONS.filter(b => String(b.bon_no) === String(bonNo));
   if (!lines.length) return;
+  if ($("#bonSec").hidden && typeof window.showAppTab === "function") {
+    window.showAppTab("bon");
+  }
   currentBonNo = bonNo;
   $("#bonPrintArea").innerHTML = buildBonHtml(lines[0], lines);
   $("#bonPreviewBox").hidden = false;
-  $("#bonPreviewBox").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  requestAnimationFrame(() => $("#bonPreviewBox").scrollIntoView({ behavior: "smooth", block: "nearest" }));
 }
 
 $("#fb [name=farmer_name]").addEventListener("change", e => {
@@ -367,9 +370,9 @@ $("#fb").onsubmit = async e => {
       const updatedRows = [];
       const commonCount = Math.min(records.length, oldIds.length);
       for (let idx = 0; idx < commonCount; idx++) {
-        const { data, error } = await sb.from("bon_sorties").update(records[idx]).eq("id", oldIds[idx]).select().single();
+        const { data, error } = await sb.from("bon_sorties").update(records[idx]).eq("id", oldIds[idx]).select();
         if (error) return toast("تعذّر تعديل السطر: " + error.message, 1);
-        updatedRows.push(data);
+        updatedRows.push(data?.[0] || { id: oldIds[idx], ...records[idx] });
       }
       if (records.length > commonCount) {
         const extra = records.slice(commonCount).map(r => ({ ...r, created_by: ME?.full_name || ME?.email || null }));
@@ -489,7 +492,7 @@ $("#xb").onclick = () => csv("etat-sortie-engrais",
   ["N° BON SORTIE", "N° FACTURE", "DATE", "AGRICULTEUR", "N° CARTE FELLAH", "DESIGNATION", "QUANTITE", "NOM DE CHAUFFEUR", "IMMATRICULATION", "ZONE"],
   filteredBons().map(b => [b.bon_no, b.invoice_no, b.sortie_date, b.farmer_name, b.carte_fellah, b.designation, b.qty, b.driver_name, b.truck_no, b.zone]));
 
-$("#printEtatBtn").onclick = () => {
+$("#printEtatBtn").onclick = async () => {
   const rows = filteredBons();
   if (!rows.length) return toast("لا توجد بيانات للطباعة", 1);
   const trs = rows.map(b => `
@@ -542,7 +545,6 @@ $("#printEtatBtn").onclick = () => {
         <tbody>${trs}</tbody>
       </table>
     </div>`;
-  el.hidden = false;
   document.body.classList.add("printing-list");
   let printed = false;
   const cleanup = () => {
@@ -612,8 +614,8 @@ $("#bT").onclick = async e => {
 startApp({
   page: "bons",
   tabs: [
-    ["bon", "إصدار إذن خروج (Bon)", ["bonSec"], loadBons, ["pickup", "log", "invoices"]],
-    ["etat", "حالة خروج الأسمدة (Etat)", ["etatSec"], loadBons, ["log", "pickup", "invoices"]]
+    ["bon", "إصدار إذن خروج (Bon)", ["bonSec"], loadBons, ["pickup", "log", "invoices", "receipts", "stock"]],
+    ["etat", "حالة خروج الأسمدة (Etat)", ["etatSec"], loadBons, ["log", "pickup", "invoices", "receipts", "stock"]]
   ],
   ready() {
     if (!$("#bonLines").children.length) addBonLine();

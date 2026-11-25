@@ -668,8 +668,8 @@ $("#pdfDossiers").onclick = async () => {
   try {
     await window.exportDossiersPdf(DOSSIERS);
     toast("تم تصدير ملف PDF بنجاح");
-  } catch (_) {
-    window.printDossiersList(DOSSIERS);
+  } catch (err) {
+    toast(err?.message || "تعذّر إنشاء ملف PDF", 1);
   } finally {
     b.disabled = false; b.textContent = orig;
   }
@@ -715,7 +715,7 @@ $("#dT").onclick = async e => {
 startApp({
   page: "reception",
   tabs: [
-    ["reception", "استقبال الملفات (Accusé)", ["receptionSec"], loadReception, "invoices"]
+    ["reception", "استقبال الملفات (Accusé)", ["receptionSec"], loadReception, ["invoices", "pickup", "receipts"]]
   ],
   ready() {
     $("#fd [name=reception_date]").value = today();

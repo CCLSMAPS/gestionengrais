@@ -14,10 +14,10 @@ nav button{text-align:right;background:var(--bg);color:var(--tx);border:1px soli
 .nav-backdrop{position:fixed;inset:0;top:var(--header-h,62px);background:rgba(0,0,0,.38);z-index:22}
 main:has(#app:not([hidden])){margin-right:240px;width:calc(100% - 240px);max-width:none}
 @media(max-width:1023px){
-  nav{transform:translateX(100%);width:min(270px,84vw)}
-  nav.open{transform:none;box-shadow:-4px 0 24px #0005}
+  nav{position:static;top:auto;right:auto;bottom:auto;width:100%;transform:none;flex-direction:row;flex-wrap:wrap;border:1px solid var(--bd);border-radius:10px;padding:8px;margin-bottom:12px;overflow:visible}
+  nav button{width:auto;flex:1 1 auto;text-align:center;padding:8px 12px}
   main,main:has(#app:not([hidden])){margin-right:0;width:100%;max-width:100%;padding:14px}
-  #menu.on{display:inline-flex;align-items:center;justify-content:center;min-width:40px;min-height:38px;padding:6px 10px}
+  #menu,#menu.on,.nav-backdrop{display:none!important}
 }
 nav button[aria-current=true]{background:var(--pr);color:var(--pt);border-color:var(--pr)}
 section,.box{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:14px;min-width:0}

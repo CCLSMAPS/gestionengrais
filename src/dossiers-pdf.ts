@@ -109,10 +109,51 @@ function savePdfBlob(pdf: jsPDF, filename: string): void {
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  a.style.display = "none";
   document.body.appendChild(a);
   a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  setTimeout(() => {
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, 4000);
+}
+
+function prepareClonedDoc(clonedDoc: Document, hostId: string): void {
+  ["app", "cfg", "login", "toast", "dossiersPrintReport", "etatPrintReport"].forEach((id) => {
+    const el = clonedDoc.getElementById(id);
+    if (el) el.remove();
+  });
+  const header = clonedDoc.querySelector("header");
+  if (header) header.remove();
+
+  clonedDoc.documentElement.style.cssText = "background:#ffffff;margin:0;padding:0;overflow:visible;";
+  clonedDoc.body.style.cssText = "background:#ffffff;color:#111111;margin:0;padding:0;overflow:visible;";
+
+  const clonedHost = clonedDoc.getElementById(hostId);
+  if (clonedHost) {
+    clonedHost.style.position = "relative";
+    clonedHost.style.left = "0";
+    clonedHost.style.top = "0";
+    clonedHost.style.zIndex = "1";
+    clonedHost.style.margin = "0";
+  }
+}
+
+async function waitImages(container: HTMLElement): Promise<void> {
+  const imgs = Array.from(container.querySelectorAll("img"));
+  await Promise.all(
+    imgs.map(async (img) => {
+      if (!img.complete) {
+        await new Promise<void>((res) => {
+          img.onload = () => res();
+          img.onerror = () => res();
+        });
+      }
+      if (typeof img.decode === "function") {
+        await img.decode().catch(() => {});
+      }
+    })
+  );
 }
 
 async function exportDossiersPdf(items: DossierPdfItem[]): Promise<void> {
@@ -139,17 +180,7 @@ async function exportDossiersPdf(items: DossierPdfItem[]): Promise<void> {
   try {
     for (let idx = 0; idx < chunks.length; idx++) {
       host.innerHTML = buildDossiersReportHtml(chunks[idx], idx, chunks.length);
-      const imgs = Array.from(host.querySelectorAll("img"));
-      await Promise.all(
-        imgs.map((img) =>
-          img.complete
-            ? Promise.resolve()
-            : new Promise<void>((res) => {
-                img.onload = () => res();
-                img.onerror = () => res();
-              })
-        )
-      );
+      await waitImages(host);
 
       const canvas = await html2canvas(host, {
         scale: 2,
@@ -159,13 +190,12 @@ async function exportDossiersPdf(items: DossierPdfItem[]): Promise<void> {
         scrollX: 0,
         scrollY: 0,
         windowWidth: 1120,
-        onclone: (clonedDoc) => {
-          const app = clonedDoc.getElementById("app");
-          if (app) app.remove();
-          const rep = clonedDoc.getElementById("dossiersPrintReport");
-          if (rep) rep.remove();
-        },
+        onclone: (clonedDoc) => prepareClonedDoc(clonedDoc, "pdfRenderHost"),
       });
+
+      if (!canvas.width || !canvas.height) {
+        throw new Error("تعذّر رسم صفحة PDF");
+      }
 
       const imgData = canvas.toDataURL("image/png");
       const ratio = Math.min(pageW / canvas.width, pageH / canvas.height);
@@ -190,7 +220,6 @@ function printDossiersList(items: DossierPdfItem[]): void {
     return;
   }
   el.innerHTML = buildDossiersReportHtml(items);
-  el.hidden = false;
   document.body.classList.add("printing-list");
   let printed = false;
   const cleanup = () => {
@@ -203,7 +232,7 @@ function printDossiersList(items: DossierPdfItem[]): void {
     printed = true;
   };
   window.addEventListener("beforeprint", onBeforePrint, { once: true });
-  window.addEventListener("afterprint", cleanup);
+  window.addEventListener("afterprint", cleanup, { once: true });
   try {
     window.print();
   } catch (_) {
@@ -212,9 +241,9 @@ function printDossiersList(items: DossierPdfItem[]): void {
   setTimeout(() => {
     if (!printed) {
       cleanup();
-      exportDossiersPdf(items).catch(() => {});
+      exportDossiersPdf(items).catch((err) => console.error(err));
     }
-  }, 450);
+  }, 550);
 }
 
 async function exportSlipPdf(sourceEl: HTMLElement | null, fileSuffix?: string, filePrefix = "accuse-dossier"): Promise<void> {
@@ -222,25 +251,18 @@ async function exportSlipPdf(sourceEl: HTMLElement | null, fileSuffix?: string, 
     throw new Error("لا يوجد وصل جاهز للطباعة أو التحميل");
   }
 
+  const isLandscape = filePrefix === "etat-sortie" || Boolean(sourceEl.querySelector(".etat-doc"));
+  const hostWidth = isLandscape ? 1120 : 794;
+
   const host = document.createElement("div");
   host.id = "pdfSlipHost";
   host.style.cssText =
-    "position:fixed;left:-10000px;top:0;width:794px;background:#ffffff;color:#111111;padding:18px;box-sizing:border-box;z-index:-1;direction:ltr;text-align:left;";
-  host.innerHTML = `<div class="slip-wrap">${sourceEl.innerHTML}</div>`;
+    `position:fixed;left:-10000px;top:0;width:${hostWidth}px;background:#ffffff;color:#111111;padding:18px;box-sizing:border-box;z-index:-1;direction:ltr;text-align:left;`;
+  host.innerHTML = isLandscape ? sourceEl.innerHTML : `<div class="slip-wrap">${sourceEl.innerHTML}</div>`;
   document.body.appendChild(host);
 
   try {
-    const imgs = Array.from(host.querySelectorAll("img"));
-    await Promise.all(
-      imgs.map((img) =>
-        img.complete
-          ? Promise.resolve()
-          : new Promise<void>((res) => {
-              img.onload = () => res();
-              img.onerror = () => res();
-            })
-      )
-    );
+    await waitImages(host);
 
     const canvas = await html2canvas(host, {
       scale: 2,
@@ -249,14 +271,19 @@ async function exportSlipPdf(sourceEl: HTMLElement | null, fileSuffix?: string, 
       logging: false,
       scrollX: 0,
       scrollY: 0,
-      windowWidth: 794,
-      onclone: (clonedDoc) => {
-        const app = clonedDoc.getElementById("app");
-        if (app) app.remove();
-      },
+      windowWidth: hostWidth,
+      onclone: (clonedDoc) => prepareClonedDoc(clonedDoc, "pdfSlipHost"),
     });
 
-    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    if (!canvas.width || !canvas.height) {
+      throw new Error("تعذّر رسم الوثيقة بصيغة PDF");
+    }
+
+    const pdf = new jsPDF({
+      orientation: isLandscape ? "landscape" : "portrait",
+      unit: "mm",
+      format: "a4",
+    });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
     const ratio = Math.min(pageW / canvas.width, pageH / canvas.height);
