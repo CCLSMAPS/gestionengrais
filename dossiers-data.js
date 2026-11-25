@@ -55,6 +55,7 @@ function getKnownFarmers(dossiers) {
     const prev = byName.get(key) || {};
     byName.set(key, {
       farmer_name: key,
+      farmer_card_no: d.farmer_card_no || prev.farmer_card_no || "",
       zone: d.zone || prev.zone || "",
       phone: d.phone || prev.phone || "",
       culture: d.culture || prev.culture || "",

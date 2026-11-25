@@ -22,3 +22,7 @@ create policy "admin manage profiles" on public.profiles
 
 -- 5) عيّن أول مسؤول (بعد إنشاء حسابه من Authentication > Users)
 -- update public.profiles set role = 'admin' where email = 'admin@cclsadrar.com';
+
+-- 6) أعمدة رقم بطاقة الفلاح ونوع المحصول لجدول الفواتير (للتحقق الفوري)
+alter table public.invoices add column if not exists farmer_card_no text;
+alter table public.invoices add column if not exists culture text;

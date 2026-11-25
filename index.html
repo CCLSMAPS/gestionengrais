@@ -17,13 +17,15 @@
 <nav></nav>
 <section id="invoices" hidden>
   <h2>تسجيل فاتورة</h2>
-  <form id="fi">
+  <form id="fi" style="align-items:start">
     <label>رقم الفاتورة<input name="invoice_no" required></label>
     <label>السنة<input name="invoice_year" type="number" required></label>
     <label>تاريخ الفاتورة<input name="invoice_date" type="date"></label>
     <label>رقم الملف (Dossier)<input name="dossier_no" list="dl" autocomplete="off"></label>
-    <label>الاسم (Nom)<input name="client_name"></label>
-    <label>اللقب / الاسم الشخصي (Prénom)<input name="farmer_name" list="fl" required autocomplete="off"></label>
+    <label>رقم بطاقة الفلاح (N° Carte Fellah)<input name="farmer_card_no" list="fcl" autocomplete="off" placeholder="رقم بطاقة الفلاح..."><div id="cardDupWarn" class="field-alert" hidden></div></label>
+    <label>الاسم (Nom)<input name="client_name" autocomplete="off"></label>
+    <label>اللقب / الاسم الشخصي (Prénom)<input name="farmer_name" list="fl" required autocomplete="off"><div id="nameDupWarn" class="field-alert" hidden></div></label>
+    <label>نوع المحصول (Culture)<input name="culture" list="cl" autocomplete="off" placeholder="BLE, MAIS, ORGE..."></label>
     <label>المنطقة (Région)<input name="region" list="zl"></label>
     <label>هاتف الفلاح<input name="phone" type="tel"></label>
     <label>ملاحظات<input name="notes"></label>
@@ -68,7 +70,9 @@
 </section>
 <datalist id="pl"></datalist>
 <datalist id="dl"></datalist>
+<datalist id="fcl"></datalist>
 <datalist id="fl"></datalist>
+<datalist id="cl"><option value="BLE"><option value="MAIS"><option value="ORGE"><option value="AVOINE"><option value="TRITICALE"></datalist>
 <datalist id="zl"></datalist>
 </div>
 </main>
@@ -107,10 +111,25 @@ function addLine() {
 }
 $("#addLine").onclick = addLine;
 $("#lines").onclick = e => { if (e.target.matches("[data-x]") && $("#lines").children.length > 1) e.target.closest(".line").remove(); };
+const INV_META_KEY = "ccls_invoice_meta";
+function readInvMeta() {
+  try { return JSON.parse(localStorage.getItem(INV_META_KEY) || "{}") || {}; } catch (_) { return {}; }
+}
+function saveInvMeta(invoiceNo, invoiceYear, meta) {
+  if (!invoiceNo || !invoiceYear) return;
+  try {
+    const all = readInvMeta();
+    all[`${String(invoiceNo).trim()}|${invoiceYear}`] = meta;
+    localStorage.setItem(INV_META_KEY, JSON.stringify(all));
+  } catch (_) {}
+}
+
 $("#fi").onsubmit = async e => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
   for (const k in f) if (f[k] === "") f[k] = null;
+  if (f.farmer_card_no) f.farmer_card_no = f.farmer_card_no.trim().toUpperCase();
+  if (f.culture) f.culture = f.culture.trim().replace(/\s+/g, " ").toUpperCase();
   try {
     const rows = [];
     for (const d of $("#lines").children) {
@@ -118,9 +137,26 @@ $("#fi").onsubmit = async e => {
       rows.push({ ...f, product_id: await productId(d.querySelector("[data-p]").value), qty: d.querySelector("[data-q]").value,
         unit_price: d.querySelector("[data-u]").value || null, warehouse_id: w.value || null, warehouse: w.value ? w.selectedOptions[0].text : null });
     }
-    const { error } = await sb.from("invoices").insert(rows);
+    let { error } = await sb.from("invoices").insert(rows);
+    let missingCols = false;
+    if (error && /(farmer_card_no|culture)/i.test(error.message || "")) {
+      missingCols = true;
+      const fallbackRows = rows.map(({ farmer_card_no, culture, ...rest }) => rest);
+      const retry = await sb.from("invoices").insert(fallbackRows);
+      error = retry.error;
+    }
     if (error) throw error;
-    toast(`تم حفظ الفاتورة (${rows.length} منتج)`); e.target.reset(); $("#lines").innerHTML = ""; addLine(); init2(); loadProducts();
+    if (f.farmer_card_no || f.culture) {
+      saveInvMeta(f.invoice_no, f.invoice_year, {
+        farmer_card_no: f.farmer_card_no || "",
+        culture: f.culture || ""
+      });
+    }
+    toast(missingCols
+      ? `تم حفظ الفاتورة (${rows.length} منتج)؛ نفّذ supabase-setup.sql لإضافة حقول البطاقة والمحصول في جدول الفواتير`
+      : `تم حفظ الفاتورة (${rows.length} منتج)`);
+    e.target.reset(); $("#lines").innerHTML = ""; addLine(); init2(); loadProducts();
+    $("#cardDupWarn").hidden = true; $("#nameDupWarn").hidden = true;
   } catch (x) { toast(x.code === "23505" ? "منتج مكرر في الفاتورة أو رقم الفاتورة مسجّل بهذا المنتج من قبل" : x.message, 1); }
 };
 function init2() { $("#fi [name=invoice_year]").value = new Date().getFullYear(); $("#fi [name=invoice_date]").value = today(); }
@@ -254,31 +290,242 @@ function fillWh(sel, prod) {
 }
 $("#fr [name=product]").addEventListener("input", e => fillWh("#rw", e.target.value));
 
-// تعبئة تلقائية من سجل الفلاحين والملفات
+// تعبئة تلقائية من سجل الفلاحين والملفات + التحقق الفوري من قاعدة بيانات الفواتير
 let DOSSIER_REF = [];
-function loadDossierAutofill() {
+const normVal = v => String(v || "").trim().replace(/\s+/g, " ").toUpperCase();
+const normCardVal = v => String(v || "").trim().replace(/[\s\-_./]+/g, "").toUpperCase();
+
+async function loadDossierAutofill() {
   DOSSIER_REF = typeof readLocalDossiers === "function" ? readLocalDossiers() : [];
+  try {
+    const { data, error } = await sb.from("dossier_receptions").select("*").order("id", { ascending: true });
+    if (!error && Array.isArray(data) && data.length) {
+      const byId = new Map(DOSSIER_REF.filter(x => x.id != null).map(x => [String(x.id), x]));
+      DOSSIER_REF = data.map(r => {
+        const prev = byId.get(String(r.id));
+        return (!r.farmer_card_no && prev?.farmer_card_no) ? { ...r, farmer_card_no: prev.farmer_card_no } : r;
+      });
+    }
+  } catch (_) {}
   const farmers = typeof getKnownFarmers === "function" ? getKnownFarmers(DOSSIER_REF) : DOSSIER_REF;
   $("#dl").innerHTML = DOSSIER_REF.map(d => `<option value="${esc(d.dossier_no)}">${esc(d.farmer_name)} - ${esc(d.zone)}</option>`).join("");
+  $("#fcl").innerHTML = [...new Set(DOSSIER_REF.map(d => String(d.farmer_card_no || "").trim()).filter(Boolean))].map(c => `<option value="${esc(c)}">`).join("");
   $("#fl").innerHTML = [...new Set(farmers.map(d => d.farmer_name).filter(Boolean))].map(x => `<option value="${esc(x)}">`).join("");
   $("#zl").innerHTML = [...new Set(farmers.map(d => d.zone).filter(Boolean))].map(z => `<option value="${esc(z)}">`).join("");
 }
 function applyFarmerFill(match) {
   if (!match) return;
   if (match.dossier_no && !$("#fi [name=dossier_no]").value) $("#fi [name=dossier_no]").value = match.dossier_no;
+  if (match.farmer_card_no && !$("#fi [name=farmer_card_no]").value) $("#fi [name=farmer_card_no]").value = match.farmer_card_no;
   if (match.farmer_name) $("#fi [name=farmer_name]").value = match.farmer_name;
+  if (match.culture && !$("#fi [name=culture]").value) $("#fi [name=culture]").value = match.culture;
   if (match.zone) $("#fi [name=region]").value = match.zone;
   if (match.phone) $("#fi [name=phone]").value = match.phone;
+  scheduleInvoiceValidation(true);
 }
 $("#fi [name=dossier_no]").addEventListener("change", e => {
   const v = e.target.value.trim().toLowerCase();
   applyFarmerFill(DOSSIER_REF.find(x => String(x.dossier_no || "").toLowerCase() === v));
+});
+$("#fi [name=farmer_card_no]").addEventListener("change", e => {
+  const c = normCardVal(e.target.value);
+  if (!c) return;
+  const match = DOSSIER_REF.find(x => normCardVal(x.farmer_card_no) === c);
+  if (match) applyFarmerFill(match);
 });
 $("#fi [name=farmer_name]").addEventListener("change", e => {
   const v = e.target.value.trim().toLowerCase();
   const farmers = typeof getKnownFarmers === "function" ? getKnownFarmers(DOSSIER_REF) : DOSSIER_REF;
   const fromDos = DOSSIER_REF.find(x => String(x.farmer_name || "").toLowerCase() === v);
   applyFarmerFill(fromDos || farmers.find(x => String(x.farmer_name || "").toLowerCase() === v));
+});
+
+let invValTimer = null;
+let invValSeq = 0;
+
+function setFieldAlert(el, kind, html) {
+  if (!el) return;
+  if (!html) {
+    el.hidden = true;
+    el.innerHTML = "";
+    el.className = "field-alert";
+    return;
+  }
+  el.className = `field-alert ${kind === "bad" ? "field-alert-bad" : "field-alert-warn"}`;
+  el.innerHTML = html;
+  el.hidden = false;
+}
+
+function resolveInvoiceMeta(row, metaMap) {
+  const meta = metaMap[`${String(row.invoice_no || "").trim()}|${row.invoice_year}`] || {};
+  const dByNo = row.dossier_no
+    ? DOSSIER_REF.find(d => normVal(d.dossier_no) === normVal(row.dossier_no))
+    : null;
+  const rowFull = normVal(`${row.client_name || ""} ${row.farmer_name || ""}`);
+  const rowFarmer = normVal(row.farmer_name);
+  const dByName = !dByNo && (rowFull || rowFarmer)
+    ? DOSSIER_REF.find(d => {
+        const dn = normVal(d.farmer_name);
+        return dn && (dn === rowFull || dn === rowFarmer);
+      })
+    : null;
+  const dRef = dByNo || dByName;
+  return {
+    farmer_card_no: row.farmer_card_no || meta.farmer_card_no || dRef?.farmer_card_no || "",
+    culture: row.culture || meta.culture || dRef?.culture || ""
+  };
+}
+
+function formatInvSummary(g) {
+  const prods = g.products.length ? ` — ${esc(g.products.join("، "))}` : "";
+  const dt = g.invoice_date ? ` (${esc(g.invoice_date)})` : "";
+  const crop = g.culture ? ` [${esc(g.culture)}]` : "";
+  return `فاتورة <b>${esc(g.invoice_no)}/${esc(g.invoice_year)}</b>${dt}${crop}${prods}`;
+}
+
+async function validateInvoiceRealtime() {
+  const cardEl = $("#cardDupWarn");
+  const nameEl = $("#nameDupWarn");
+  const yearVal = Number($("#fi [name=invoice_year]")?.value || 0);
+  const rawCard = $("#fi [name=farmer_card_no]")?.value || "";
+  const rawClient = $("#fi [name=client_name]")?.value || "";
+  const rawFarmer = $("#fi [name=farmer_name]")?.value || "";
+  const rawCrop = $("#fi [name=culture]")?.value || "";
+
+  const dCard = normCardVal(rawCard);
+  const dClient = normVal(rawClient);
+  const dFarmer = normVal(rawFarmer);
+  const dFull = normVal(`${rawClient} ${rawFarmer}`);
+  const dCrop = normVal(rawCrop);
+
+  if (!yearVal || (!dCard && !dFull)) {
+    setFieldAlert(cardEl, "", "");
+    setFieldAlert(nameEl, "", "");
+    return;
+  }
+
+  const seq = ++invValSeq;
+  const { data, error } = await sb
+    .from("invoices")
+    .select("*, products(name)")
+    .eq("invoice_year", yearVal);
+
+  if (seq !== invValSeq) return;
+  if (error || !Array.isArray(data)) return;
+
+  const metaMap = readInvMeta();
+  const grouped = new Map();
+  for (const r of data) {
+    const key = `${String(r.invoice_no || "").trim()}|${r.invoice_year}`;
+    const resolved = resolveInvoiceMeta(r, metaMap);
+    let g = grouped.get(key);
+    if (!g) {
+      g = {
+        invoice_no: r.invoice_no,
+        invoice_year: r.invoice_year,
+        invoice_date: r.invoice_date,
+        client_name: r.client_name || "",
+        farmer_name: r.farmer_name || "",
+        full_name: normVal(`${r.client_name || ""} ${r.farmer_name || ""}`),
+        farmer_only: normVal(r.farmer_name),
+        farmer_card_no: resolved.farmer_card_no,
+        card_norm: normCardVal(resolved.farmer_card_no),
+        culture: resolved.culture,
+        culture_norm: normVal(resolved.culture),
+        products: []
+      };
+      grouped.set(key, g);
+    } else {
+      if (!g.card_norm && resolved.farmer_card_no) {
+        g.farmer_card_no = resolved.farmer_card_no;
+        g.card_norm = normCardVal(resolved.farmer_card_no);
+      }
+      if (!g.culture_norm && resolved.culture) {
+        g.culture = resolved.culture;
+        g.culture_norm = normVal(resolved.culture);
+      }
+    }
+    const pName = r.products?.name;
+    if (pName) {
+      const label = r.qty != null ? `${pName} (${n(r.qty)} QTX)` : pName;
+      if (!g.products.includes(label)) g.products.push(label);
+    }
+  }
+
+  const invList = [...grouped.values()];
+
+  // 1) التحقق برقم بطاقة الفلاح
+  if (dCard) {
+    const cardMatches = invList.filter(g => g.card_norm === dCard);
+    const cardSameCrop = dCrop ? cardMatches.filter(g => g.culture_norm === dCrop) : [];
+    const cardOther = cardMatches.filter(g => !cardSameCrop.includes(g));
+    if (cardSameCrop.length) {
+      setFieldAlert(
+        cardEl,
+        "bad",
+        `<strong>تنبيه:</strong> رقم البطاقة (<b>${esc(rawCard.trim())}</b>) مسجّل بالفعل لنفس المحصول (<b>${esc(dCrop)}</b>) في موسم <b>${yearVal}</b>:<br>${cardSameCrop.map(formatInvSummary).join("<br>")}`
+      );
+    } else if (cardOther.length) {
+      setFieldAlert(
+        cardEl,
+        "warn",
+        `<strong>ملاحظة:</strong> رقم البطاقة (<b>${esc(rawCard.trim())}</b>) مسجّل في موسم <b>${yearVal}</b>:<br>${cardOther.map(formatInvSummary).join("<br>")}`
+      );
+    } else {
+      setFieldAlert(cardEl, "", "");
+    }
+  } else {
+    setFieldAlert(cardEl, "", "");
+  }
+
+  // 2) التحقق باسم الفلاح
+  if (dFull) {
+    const nameMatches = invList.filter(g => {
+      const nameHit =
+        (g.full_name && g.full_name === dFull) ||
+        (g.farmer_only && dFarmer && !dClient && g.farmer_only === dFarmer) ||
+        (g.full_name && dFarmer && !dClient && g.full_name === dFarmer) ||
+        (g.farmer_only && g.farmer_only === dFull);
+      if (!nameHit) return false;
+      if (dCard && g.card_norm && dCard !== g.card_norm) return false;
+      return true;
+    });
+    const nameSameCrop = dCrop ? nameMatches.filter(g => g.culture_norm === dCrop) : [];
+    const nameOther = nameMatches.filter(g => !nameSameCrop.includes(g));
+    if (nameSameCrop.length) {
+      setFieldAlert(
+        nameEl,
+        "bad",
+        `<strong>تنبيه:</strong> الفلاح (<b>${esc(dFull)}</b>) مسجّل بالفعل لنفس المحصول (<b>${esc(dCrop)}</b>) في موسم <b>${yearVal}</b>:<br>${nameSameCrop.map(formatInvSummary).join("<br>")}`
+      );
+    } else if (nameOther.length) {
+      setFieldAlert(
+        nameEl,
+        "warn",
+        `<strong>ملاحظة:</strong> الفلاح (<b>${esc(dFull)}</b>) لديه فاتورة في موسم <b>${yearVal}</b>:<br>${nameOther.map(formatInvSummary).join("<br>")}`
+      );
+    } else {
+      setFieldAlert(nameEl, "", "");
+    }
+  } else {
+    setFieldAlert(nameEl, "", "");
+  }
+}
+
+function scheduleInvoiceValidation(immediate) {
+  clearTimeout(invValTimer);
+  if (immediate) {
+    validateInvoiceRealtime();
+  } else {
+    invValTimer = setTimeout(validateInvoiceRealtime, 220);
+  }
+}
+
+["invoice_year", "farmer_card_no", "client_name", "farmer_name", "culture", "dossier_no"].forEach(name => {
+  const el = $(`#fi [name=${name}]`);
+  if (!el) return;
+  el.addEventListener("input", () => scheduleInvoiceValidation(false));
+  el.addEventListener("change", () => scheduleInvoiceValidation(true));
 });
 
 startApp({

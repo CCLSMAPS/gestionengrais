@@ -29,9 +29,14 @@
       <h2 style="margin:0">إيداع ملف فلاح وإصدار وصل الاستلام (Accusé de réception de dossier)</h2>
       <span id="dbBadge" style="font-size:.82rem;color:var(--mu)"></span>
     </div>
+    <div id="editBanner" class="alert-warn" hidden>
+      <span id="editBannerText"></span>
+      <button type="button" class="f" id="cancelEditBtn">إلغاء التعديل</button>
+    </div>
     <form id="fd">
       <label>رقم الملف (N°)<input name="dossier_no" required autocomplete="off"></label>
       <label>القطاع (SECTEUR)<input name="secteur" list="sl" value="/" autocomplete="off"></label>
+      <label>رقم بطاقة الفلاح (N° CARTE FELLAH)<input name="farmer_card_no" list="fcl" autocomplete="off" placeholder="أدخل رقم بطاقة الفلاح للتحقق..."></label>
       <label>اسم الفلاح (NOM DE L'AGRICULTEUR)<input name="farmer_name" list="fl" required autocomplete="off" placeholder="اختر من القائمة أو اكتب الاسم..."></label>
       <label>تاريخ الإيداع (DATE)<input name="reception_date" type="date" required></label>
       <label>المساحة (SUPERFICIE - ha)<input name="superficie" type="number" step="any" min="0" placeholder="30.00"></label>
@@ -39,7 +44,8 @@
       <label>نوع الزراعة (CULTURE)<input name="culture" list="cl" value="BLE" autocomplete="off"></label>
       <label>رقم الهاتف (N° DE TELEPHONE)<input name="phone" type="tel" placeholder="06-XX-XX-XX-XX"></label>
       <label>الموسم (CAMP)<input name="camp" value="2026/2027" required></label>
-      <button class="p">حفظ في قاعدة البيانات وإصدار الوصل</button>
+      <div id="dupAlert" style="grid-column:1/-1;margin-bottom:0" hidden></div>
+      <button class="p" id="submitDossierBtn">حفظ في قاعدة البيانات وإصدار الوصل</button>
       <button type="button" class="f" id="previewBtn">معاينة الوصل فقط</button>
     </form>
   </div>
@@ -47,8 +53,9 @@
   <div id="accuseBox" style="margin-top:16px" hidden>
     <div class="no-print" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
       <strong>وصل استلام الملف (Accusé de réception de dossier)</strong>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button type="button" class="p" id="doPrintBtn">طباعة الوصل</button>
+        <button type="button" class="p" id="pdfSlipBtn" style="background:var(--ac);color:#1d2b22">تحميل الوصل PDF</button>
         <button type="button" class="f" id="hidePrintBtn">إخفاء</button>
       </div>
     </div>
@@ -59,7 +66,7 @@
     <h2>أرشيف الملفات المستلمة</h2>
     <div class="cards" id="dCards"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:10px">
-      <label style="flex:1;min-width:170px">بحث في الأرشيف<input id="dq" placeholder="رقم الملف، اسم الفلاح، المنطقة، الزراعة، الهاتف..."></label>
+      <label style="flex:1;min-width:170px">بحث في الأرشيف<input id="dq" placeholder="رقم الملف، بطاقة الفلاح، اسم الفلاح، المنطقة، الزراعة، الهاتف..."></label>
       <label>المنطقة<select id="dz"></select></label>
       <button type="button" class="p" id="xd">تصدير CSV</button>
       <button type="button" class="p" id="pdfDossiers">تصدير PDF</button>
@@ -69,6 +76,7 @@
   </div>
 </section>
 <datalist id="fl"></datalist>
+<datalist id="fcl"></datalist>
 <datalist id="zl"></datalist>
 <datalist id="cl"><option value="BLE"><option value="MAIS"><option value="ORGE"><option value="AVOINE"><option value="TRITICALE"></datalist>
 <datalist id="sl"><option value="/"><option value="S,T"></datalist>
@@ -84,10 +92,34 @@
 let DOSSIERS = [];
 let FARMERS = [];
 let hasRemoteDb = false;
+let editingIdx = null;
+let currentSlipDossierNo = "";
+
+const normText = v => String(v || "").trim().replace(/\s+/g, " ").toUpperCase();
+const normCard = v => String(v || "").trim().replace(/[\s\-_./]+/g, "").toUpperCase();
+const normCamp = v => String(v || "2026/2027").trim().replace(/\s+/g, "").toUpperCase();
+
+function mergeLocalCards(remoteRows, localRows) {
+  const byId = new Map();
+  const byKey = new Map();
+  (localRows || []).forEach(r => {
+    if (!r.farmer_card_no) return;
+    if (r.id != null) byId.set(String(r.id), r.farmer_card_no);
+    byKey.set(`${normText(r.dossier_no)}|${normCamp(r.camp)}`, r.farmer_card_no);
+  });
+  return (remoteRows || []).map(r => {
+    if (r.farmer_card_no !== undefined && r.farmer_card_no !== null) return r;
+    const card = (r.id != null ? byId.get(String(r.id)) : null) ||
+      byKey.get(`${normText(r.dossier_no)}|${normCamp(r.camp)}`) || "";
+    return card ? { ...r, farmer_card_no: card } : r;
+  });
+}
 
 function syncLists() {
   FARMERS = getKnownFarmers(DOSSIERS);
   $("#fl").innerHTML = FARMERS.map(f => `<option value="${esc(f.farmer_name)}">`).join("");
+  const cards = [...new Set(DOSSIERS.map(d => String(d.farmer_card_no || "").trim()).filter(Boolean))];
+  $("#fcl").innerHTML = cards.map(c => `<option value="${esc(c)}">`).join("");
   const zones = [...new Set(DOSSIERS.map(d => d.zone).filter(Boolean))];
   $("#zl").innerHTML = zones.map(z => `<option value="${esc(z)}">`).join("");
   const curZ = $("#dz").value;
@@ -96,22 +128,166 @@ function syncLists() {
 }
 
 function suggestNextNo() {
-  const maxNo = DOSSIERS.reduce((m, x) => {
+  const curCamp = normCamp($("#fd [name=camp]")?.value);
+  const inCamp = DOSSIERS.filter(x => normCamp(x.camp) === curCamp);
+  const pool = inCamp.length ? inCamp : DOSSIERS;
+  const maxNo = pool.reduce((m, x) => {
     const num = parseInt(x.dossier_no, 10);
     return Number.isFinite(num) && num > m ? num : m;
   }, 0);
   $("#fd [name=dossier_no]").value = String(maxNo + 1).padStart(2, "0");
 }
 
+function checkDuplicateRegistration(draft, excludeIdx = editingIdx) {
+  const pool = excludeIdx !== null && excludeIdx !== undefined
+    ? DOSSIERS.filter((_, idx) => idx !== excludeIdx)
+    : DOSSIERS;
+  const dCard = normCard(draft.farmer_card_no);
+  const dName = normText(draft.farmer_name);
+  const dCrop = normText(draft.culture);
+  const dCamp = normCamp(draft.camp);
+  const dNo = normText(draft.dossier_no);
+
+  const cardMatches = dCard ? pool.filter(x => normCard(x.farmer_card_no) === dCard) : [];
+  const nameMatches = dName ? pool.filter(x => normText(x.farmer_name) === dName) : [];
+
+  const cardSameCropCamp = dCrop
+    ? cardMatches.filter(x => normText(x.culture) === dCrop && normCamp(x.camp) === dCamp)
+    : [];
+
+  const nameSameCropCamp = dCrop
+    ? nameMatches.filter(x => {
+        if (normText(x.culture) !== dCrop || normCamp(x.camp) !== dCamp) return false;
+        const xCard = normCard(x.farmer_card_no);
+        if (dCard && xCard && dCard !== xCard) return false;
+        return true;
+      })
+    : [];
+
+  const cardDiffName = dName
+    ? cardMatches.filter(x => normText(x.farmer_name) && normText(x.farmer_name) !== dName)
+    : [];
+
+  const blockingSet = new Set([...cardSameCropCamp, ...nameSameCropCamp]);
+  const blocking = [...blockingSet];
+  const cardOther = cardMatches.filter(x => !blockingSet.has(x));
+  const nameOther = nameMatches.filter(x => !blockingSet.has(x));
+  const sameDossierNo = dNo
+    ? pool.filter(x => normText(x.dossier_no) === dNo && normCamp(x.camp) === dCamp && !blockingSet.has(x))
+    : [];
+
+  return {
+    dCard,
+    dName,
+    dCrop,
+    dCamp,
+    cardSameCropCamp,
+    nameSameCropCamp,
+    cardDiffName,
+    cardOther,
+    nameOther,
+    sameDossierNo,
+    blocking
+  };
+}
+
+function formatMatchLine(d) {
+  const idx = DOSSIERS.indexOf(d);
+  const parts = [
+    `ملف رقم <b>${esc(d.dossier_no)}</b>`,
+    `<b>${esc(d.farmer_name)}</b>`,
+    d.farmer_card_no ? `بطاقة الفلاح: <b>${esc(d.farmer_card_no)}</b>` : null,
+    d.culture ? `المحصول: <b>${esc(d.culture)}</b>` : null,
+    `الموسم: <b>${esc(d.camp || "2026/2027")}</b>`,
+    d.zone ? `المنطقة: ${esc(d.zone)}` : null,
+    d.reception_date ? `التاريخ: ${esc(d.reception_date)}` : null
+  ].filter(Boolean);
+  return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;padding-top:6px;border-top:1px dashed currentColor">
+    <span>${parts.join(" — ")}</span>
+    ${idx >= 0 ? `<button type="button" class="f" data-preview-idx="${idx}" style="padding:4px 10px;font-size:.82rem">عرض الوصل</button>` : ""}
+  </div>`;
+}
+
+function getFormDraft() {
+  const f = Object.fromEntries(new FormData($("#fd")));
+  return {
+    dossier_no: f.dossier_no || "",
+    farmer_card_no: f.farmer_card_no || "",
+    farmer_name: f.farmer_name || "",
+    culture: f.culture || "",
+    camp: f.camp || "2026/2027"
+  };
+}
+
+function renderDupAlert() {
+  const box = $("#dupAlert");
+  if (!box) return;
+  const draft = getFormDraft();
+  const res = checkDuplicateRegistration(draft);
+
+  if (res.blocking.length) {
+    const reasons = [];
+    if (res.cardSameCropCamp.length) {
+      reasons.push(`رقم بطاقة الفلاح (<b>${esc(draft.farmer_card_no.trim())}</b>) مسجّل من قبل`);
+    }
+    if (res.nameSameCropCamp.length) {
+      reasons.push(`الفلاح (<b>${esc(res.dName)}</b>) مسجّل من قبل`);
+    }
+    box.className = "alert-bad";
+    box.hidden = false;
+    box.innerHTML = `<div style="width:100%">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <span><strong>تسجيل مكرر غير مسموح:</strong> ${reasons.join(" و")} في نفس نوع المحصول (<b>${esc(res.dCrop)}</b>) من نفس الموسم الفلاحي (<b>${esc(res.dCamp)}</b>).</span>
+        <span class="tag-bad">مسجّل من قبل</span>
+      </div>
+      ${res.blocking.map(formatMatchLine).join("")}
+    </div>`;
+    return;
+  }
+
+  const warnings = [];
+  if (res.cardDiffName.length) {
+    warnings.push(`<div><strong>تنبيه رقم البطاقة:</strong> رقم بطاقة الفلاح (<b>${esc(draft.farmer_card_no.trim())}</b>) مسجّل سابقاً باسم فلاح مختلف:</div>${res.cardDiffName.map(formatMatchLine).join("")}`);
+  } else if (res.cardOther.length) {
+    warnings.push(`<div><strong>ملاحظة:</strong> رقم بطاقة الفلاح (<b>${esc(draft.farmer_card_no.trim())}</b>) مسجّل سابقاً في محصول أو موسم آخر:</div>${res.cardOther.map(formatMatchLine).join("")}`);
+  }
+  if (res.nameOther.length) {
+    const otherUnique = res.nameOther.filter(x => !res.cardDiffName.includes(x) && !res.cardOther.includes(x));
+    if (otherUnique.length) {
+      warnings.push(`<div><strong>ملاحظة:</strong> الفلاح (<b>${esc(res.dName)}</b>) لديه تسجيل سابق في محصول أو موسم آخر:</div>${otherUnique.map(formatMatchLine).join("")}`);
+    }
+  }
+  if (res.sameDossierNo.length) {
+    warnings.push(`<div><strong>تنبيه رقم الملف:</strong> رقم الملف (<b>${esc(draft.dossier_no.trim())}</b>) مستعمل مسبقاً في الموسم (<b>${esc(res.dCamp)}</b>).</div>`);
+  }
+
+  if (warnings.length) {
+    box.className = "alert-warn";
+    box.hidden = false;
+    box.innerHTML = `<div style="width:100%">${warnings.join("<div style='height:6px'></div>")}</div>`;
+    return;
+  }
+
+  box.hidden = true;
+  box.innerHTML = "";
+}
+
+async function fetchRemoteDossiers() {
+  const localRows = readLocalDossiers();
+  const { data, error } = await sb.from("dossier_receptions").select("*").order("id", { ascending: true });
+  if (error || !Array.isArray(data)) return { ok: false, error, localRows };
+  return { ok: true, data: mergeLocalCards(data, localRows), localRows };
+}
+
 async function loadReception() {
   DOSSIERS = readLocalDossiers();
   hasRemoteDb = false;
   try {
-    const { data, error } = await sb.from("dossier_receptions").select("*").order("id", { ascending: true });
-    if (!error && Array.isArray(data)) {
+    const res = await fetchRemoteDossiers();
+    if (res.ok) {
       hasRemoteDb = true;
-      if (data.length) {
-        DOSSIERS = data;
+      if (res.data.length) {
+        DOSSIERS = res.data;
         writeLocalDossiers(DOSSIERS);
       } else if (DOSSIERS.length) {
         const seedRows = DOSSIERS.map(({ id, ...rest }) => ({
@@ -119,9 +295,13 @@ async function loadReception() {
           superficie: rest.superficie === "" ? null : rest.superficie,
           camp: rest.camp || "2026/2027"
         }));
-        const ins = await sb.from("dossier_receptions").insert(seedRows).select();
+        let ins = await sb.from("dossier_receptions").insert(seedRows).select();
+        if (ins.error && /farmer_card_no/i.test(ins.error.message || "")) {
+          const fallbackSeed = seedRows.map(({ farmer_card_no, ...rest }) => rest);
+          ins = await sb.from("dossier_receptions").insert(fallbackSeed).select();
+        }
         if (!ins.error && ins.data) {
-          DOSSIERS = ins.data;
+          DOSSIERS = mergeLocalCards(ins.data, DOSSIERS);
           writeLocalDossiers(DOSSIERS);
         }
       }
@@ -136,14 +316,15 @@ async function loadReception() {
   renderArchive();
   if (!$("#fd [name=dossier_no]").value) suggestNextNo();
   if (!$("#fd [name=reception_date]").value) $("#fd [name=reception_date]").value = today();
+  renderDupAlert();
 }
 
 function renderArchive() {
   const q = ($("#dq").value || "").trim().toLowerCase();
   const z = $("#dz").value;
-  const rows = DOSSIERS.filter(d =>
+  const rows = DOSSIERS.map((d, idx) => ({ d, idx })).filter(({ d }) =>
     (!z || d.zone === z) &&
-    (!q || [d.dossier_no, d.farmer_name, d.zone, d.culture, d.phone, d.secteur].join(" ").toLowerCase().includes(q))
+    (!q || [d.dossier_no, d.farmer_card_no, d.farmer_name, d.zone, d.culture, d.phone, d.secteur, d.camp].join(" ").toLowerCase().includes(q))
   );
   const totalArea = DOSSIERS.reduce((s, d) => s + (Number(d.superficie) > 0 ? Number(d.superficie) : 0), 0);
   $("#dCards").innerHTML = [
@@ -154,19 +335,22 @@ function renderArchive() {
   ].map(([l, v]) => `<div class="card"><b>${esc(v)}</b><span>${l}</span></div>`).join("");
 
   $("#dT").innerHTML = tbl(
-    ["رقم الملف", "التاريخ", "المنطقة", "اسم الفلاح", "الزراعة", "الهاتف", "المساحة", "القطاع", "إجراءات"],
-    [...rows].reverse().map(d => [
+    ["رقم الملف", "بطاقة الفلاح", "التاريخ", "المنطقة", "اسم الفلاح", "الزراعة", "الموسم", "الهاتف", "المساحة", "القطاع", "إجراءات"],
+    [...rows].reverse().map(({ d, idx }) => [
       `<b>${esc(d.dossier_no)}</b>`,
+      esc(d.farmer_card_no || "-"),
       esc(d.reception_date),
       esc(d.zone || "-"),
       esc(d.farmer_name),
       esc(d.culture || "-"),
+      esc(d.camp || "2026/2027"),
       esc(d.phone || "-"),
       d.superficie !== "" && d.superficie != null ? n(d.superficie) : "-",
       esc(d.secteur || "/"),
-      `<div style="display:flex;gap:4px">
-        <button type="button" class="f" data-slip="${esc(d.dossier_no)}">طباعة الوصل</button>
-        <button type="button" class="p" data-del="${esc(d.dossier_no)}" style="background:var(--bad);padding:6px 10px">حذف</button>
+      `<div style="display:flex;gap:4px;flex-wrap:wrap">
+        <button type="button" class="f" data-edit="${idx}">تعديل</button>
+        <button type="button" class="f" data-slip="${idx}">طباعة الوصل</button>
+        <button type="button" class="p" data-del="${idx}" style="background:var(--bad);padding:6px 10px">حذف</button>
       </div>`
     ])
   );
@@ -194,6 +378,7 @@ function buildSlipHtml(d) {
         <div><b>N° :</b><span>${esc(d.dossier_no)}</span></div>
         <div><b>SECTEUR :</b><span>${esc(d.secteur || "/")}</span></div>
         <div><b>NOM DE L'AGRICULTEUR :</b><span>${esc(d.farmer_name)}</span></div>
+        <div><b>N° CARTE FELLAH :</b><span>${esc(d.farmer_card_no || "—")}</span></div>
         <div><b>DATE :</b><span>${esc(dt || d.reception_date)}</span></div>
         <div><b>ZONE :</b><span>${esc(d.zone || "—")}</span></div>
         <div><b>SUPERFICIE :</b><span>${esc(sup)}</span></div>
@@ -201,28 +386,107 @@ function buildSlipHtml(d) {
         <div><b>N° DE TELEPHONE :</b><span>${esc(d.phone || "—")}</span></div>
       </div>
       <div class="slip-foot">
-        <span>SIGNATURE DE L'AGRICULTEUR</span>
-        <span>S/DSAP</span>
+        <div class="slip-sign">
+          <span>SIGNATURE DE L'AGRICULTEUR</span>
+          <div style="height:48px"></div>
+        </div>
+        <div class="slip-sign">
+          <span>S/DSAP</span>
+          <div style="height:48px"></div>
+        </div>
       </div>
     </div>`;
   return copy() + '<hr class="slip-cut">' + copy();
 }
 
 function showSlip(d) {
+  currentSlipDossierNo = d?.dossier_no || "";
   $("#accusePrint").innerHTML = buildSlipHtml(d);
   $("#accuseBox").hidden = false;
   $("#accuseBox").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
+function syncSubmitLabel() {
+  const btn = $("#submitDossierBtn");
+  if (!btn) return;
+  btn.textContent = editingIdx !== null
+    ? "حفظ التعديلات وتحديث الوصل"
+    : "حفظ في قاعدة البيانات وإصدار الوصل";
+}
+
+function startEdit(idx) {
+  const d = DOSSIERS[idx];
+  if (!d) return;
+  editingIdx = idx;
+  $("#fd [name=dossier_no]").value = d.dossier_no || "";
+  $("#fd [name=secteur]").value = d.secteur || "/";
+  $("#fd [name=farmer_card_no]").value = d.farmer_card_no || "";
+  $("#fd [name=farmer_name]").value = d.farmer_name || "";
+  $("#fd [name=reception_date]").value = d.reception_date || today();
+  $("#fd [name=superficie]").value = d.superficie !== "" && d.superficie != null ? d.superficie : "";
+  $("#fd [name=zone]").value = d.zone || "";
+  $("#fd [name=culture]").value = d.culture || "BLE";
+  $("#fd [name=phone]").value = d.phone || "";
+  $("#fd [name=camp]").value = d.camp || "2026/2027";
+  $("#editBannerText").innerHTML = `<strong>وضع التعديل:</strong> تعديل بيانات الملف رقم <b>${esc(d.dossier_no)}</b> — <b>${esc(d.farmer_name)}</b>`;
+  $("#editBanner").hidden = false;
+  syncSubmitLabel();
+  renderDupAlert();
+  $("#receptionSec").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelEdit(skipReset) {
+  editingIdx = null;
+  $("#editBanner").hidden = true;
+  $("#editBannerText").textContent = "";
+  if (!skipReset) {
+    $("#fd").reset();
+    $("#fd [name=reception_date]").value = today();
+    $("#fd [name=culture]").value = "BLE";
+    $("#fd [name=secteur]").value = "/";
+    $("#fd [name=camp]").value = "2026/2027";
+    suggestNextNo();
+  }
+  syncSubmitLabel();
+  requestAnimationFrame(syncSubmitLabel);
+  renderDupAlert();
+}
+
+$("#cancelEditBtn").onclick = () => cancelEdit(false);
+
+$("#fd [name=farmer_card_no]").addEventListener("change", e => {
+  const card = normCard(e.target.value);
+  if (!card) return;
+  const match = DOSSIERS.find(x => normCard(x.farmer_card_no) === card);
+  if (!match) return;
+  if (match.farmer_name && !$("#fd [name=farmer_name]").value) $("#fd [name=farmer_name]").value = match.farmer_name;
+  if (match.zone && !$("#fd [name=zone]").value) $("#fd [name=zone]").value = match.zone;
+  if (match.phone && !$("#fd [name=phone]").value) $("#fd [name=phone]").value = match.phone;
+  if (match.secteur) $("#fd [name=secteur]").value = match.secteur;
+  renderDupAlert();
+});
+
 $("#fd [name=farmer_name]").addEventListener("change", e => {
   const val = e.target.value.trim().toUpperCase();
   const f = FARMERS.find(x => x.farmer_name === val);
   if (!f) return;
+  if (f.farmer_card_no && !$("#fd [name=farmer_card_no]").value) $("#fd [name=farmer_card_no]").value = f.farmer_card_no;
   if (f.zone && !$("#fd [name=zone]").value) $("#fd [name=zone]").value = f.zone;
   if (f.phone && !$("#fd [name=phone]").value) $("#fd [name=phone]").value = f.phone;
   if (f.culture) $("#fd [name=culture]").value = f.culture;
   if (f.superficie !== "" && f.superficie != null && !$("#fd [name=superficie]").value) $("#fd [name=superficie]").value = f.superficie;
   if (f.secteur) $("#fd [name=secteur]").value = f.secteur;
+  renderDupAlert();
+});
+
+$("#fd").addEventListener("input", renderDupAlert);
+$("#fd").addEventListener("change", renderDupAlert);
+
+$("#dupAlert").addEventListener("click", e => {
+  const btn = e.target.closest("[data-preview-idx]");
+  if (!btn) return;
+  const d = DOSSIERS[Number(btn.dataset.previewIdx)];
+  if (d) showSlip(d);
 });
 
 $("#fd").onsubmit = async e => {
@@ -230,26 +494,103 @@ $("#fd").onsubmit = async e => {
   const f = Object.fromEntries(new FormData(e.target));
   const item = {
     dossier_no: f.dossier_no.trim(),
+    farmer_card_no: (f.farmer_card_no || "").trim().toUpperCase(),
     reception_date: f.reception_date,
     zone: (f.zone || "").trim().toUpperCase(),
-    farmer_name: f.farmer_name.trim().toUpperCase(),
-    culture: (f.culture || "").trim().toUpperCase(),
+    farmer_name: normText(f.farmer_name),
+    culture: normText(f.culture),
     phone: (f.phone || "").trim(),
     superficie: f.superficie !== "" ? Number(f.superficie) : "",
     secteur: (f.secteur || "/").trim() || "/",
     camp: (f.camp || "2026/2027").trim()
   };
 
+  let targetId = editingIdx !== null ? DOSSIERS[editingIdx]?.id : null;
+  if (hasRemoteDb) {
+    try {
+      const latest = await fetchRemoteDossiers();
+      if (latest.ok) {
+        DOSSIERS = latest.data;
+        writeLocalDossiers(DOSSIERS);
+        if (editingIdx !== null && targetId != null) {
+          const foundIdx = DOSSIERS.findIndex(x => String(x.id) === String(targetId));
+          if (foundIdx >= 0) editingIdx = foundIdx;
+        }
+      }
+    } catch (_) {}
+  }
+
+  const dup = checkDuplicateRegistration(item, editingIdx);
+  renderDupAlert();
+  if (dup.blocking.length) {
+    const msg = dup.cardSameCropCamp.length
+      ? `رقم بطاقة الفلاح (${item.farmer_card_no}) مسجّل من قبل في نفس المحصول (${dup.dCrop}) والموسم (${dup.dCamp})`
+      : `الفلاح (${item.farmer_name}) مسجّل من قبل في نفس المحصول (${dup.dCrop}) والموسم (${dup.dCamp})`;
+    toast(msg, 1);
+    $("#dupAlert").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    return;
+  }
+
+  if (editingIdx !== null) {
+    const existing = DOSSIERS[editingIdx];
+    if (!existing) {
+      cancelEdit(false);
+      return;
+    }
+    if (hasRemoteDb && existing.id) {
+      const payload = {
+        ...item,
+        farmer_card_no: item.farmer_card_no || null,
+        superficie: item.superficie === "" ? null : item.superficie
+      };
+      let { data, error } = await sb.from("dossier_receptions").update(payload).eq("id", existing.id).select().single();
+      let missingCardCol = false;
+      if (error && /farmer_card_no/i.test(error.message || "")) {
+        missingCardCol = true;
+        const { farmer_card_no, ...fallbackPayload } = payload;
+        const retry = await sb.from("dossier_receptions").update(fallbackPayload).eq("id", existing.id).select().single();
+        data = retry.data ? { ...retry.data, farmer_card_no: item.farmer_card_no } : null;
+        error = retry.error;
+      }
+      if (error) return toast("تعذّر تعديل الملف في قاعدة البيانات: " + error.message, 1);
+      DOSSIERS[editingIdx] = data || { ...existing, ...item };
+      toast(missingCardCol
+        ? "تم تعديل الملف؛ نفّذ supabase-dossiers.sql لمزامنة عمود بطاقة الفلاح"
+        : "تم تعديل بيانات الملف بنجاح وتحديث الوصل");
+    } else {
+      DOSSIERS[editingIdx] = { ...existing, ...item };
+      toast("تم تعديل بيانات الملف محلياً وتحديث الوصل");
+    }
+    const updatedItem = DOSSIERS[editingIdx];
+    writeLocalDossiers(DOSSIERS);
+    syncLists();
+    renderArchive();
+    cancelEdit(false);
+    showSlip(updatedItem);
+    return;
+  }
+
   if (hasRemoteDb) {
     const payload = {
       ...item,
+      farmer_card_no: item.farmer_card_no || null,
       superficie: item.superficie === "" ? null : item.superficie,
       created_by: ME?.full_name || ME?.email || null
     };
-    const { data, error } = await sb.from("dossier_receptions").insert(payload).select().single();
+    let { data, error } = await sb.from("dossier_receptions").insert(payload).select().single();
+    let missingCardCol = false;
+    if (error && /farmer_card_no/i.test(error.message || "")) {
+      missingCardCol = true;
+      const { farmer_card_no, ...fallbackPayload } = payload;
+      const retry = await sb.from("dossier_receptions").insert(fallbackPayload).select().single();
+      data = retry.data ? { ...retry.data, farmer_card_no: item.farmer_card_no } : null;
+      error = retry.error;
+    }
     if (error) return toast("تعذّر الحفظ في قاعدة البيانات: " + error.message, 1);
     DOSSIERS.push(data);
-    toast("تم حفظ الملف في قاعدة البيانات وإصدار وصل الاستلام");
+    toast(missingCardCol
+      ? "تم الحفظ؛ نفّذ supabase-dossiers.sql لإضافة عمود بطاقة الفلاح في Supabase"
+      : "تم حفظ الملف في قاعدة البيانات وإصدار وصل الاستلام");
   } else {
     const nextId = DOSSIERS.reduce((m, x) => Math.max(m, Number(x.id || 0)), 0) + 1;
     DOSSIERS.push({ id: nextId, ...item });
@@ -266,6 +607,7 @@ $("#fd").onsubmit = async e => {
   $("#fd [name=secteur]").value = "/";
   $("#fd [name=camp]").value = "2026/2027";
   suggestNextNo();
+  renderDupAlert();
 };
 
 $("#previewBtn").onclick = () => {
@@ -273,12 +615,52 @@ $("#previewBtn").onclick = () => {
   if (!f.farmer_name && !f.dossier_no) return toast("أدخل رقم الملف أو اسم الفلاح أولاً", 1);
   showSlip(f);
 };
-$("#doPrintBtn").onclick = () => window.print();
+$("#doPrintBtn").onclick = async () => {
+  if (!$("#accusePrint").innerHTML.trim()) return toast("لا يوجد وصل جاهز للطباعة", 1);
+  document.body.classList.remove("printing-list");
+  $("#accuseBox").hidden = false;
+  let printed = false;
+  const onBeforePrint = () => { printed = true; };
+  window.addEventListener("beforeprint", onBeforePrint, { once: true });
+  try {
+    window.print();
+    setTimeout(async () => {
+      window.removeEventListener("beforeprint", onBeforePrint);
+      if (!printed && window.exportSlipPdf) {
+        try {
+          await window.exportSlipPdf($("#accusePrint"), currentSlipDossierNo);
+          toast("تم تجهيز وتحميل الوصل بصيغة PDF جاهز للطباعة");
+        } catch (err) {
+          toast(err?.message || "تعذّر الطباعة، استخدم زر تحميل الوصل PDF", 1);
+        }
+      }
+    }, 450);
+  } catch (_) {
+    window.removeEventListener("beforeprint", onBeforePrint);
+    if (window.exportSlipPdf) {
+      await window.exportSlipPdf($("#accusePrint"), currentSlipDossierNo);
+      toast("تم تحميل الوصل بصيغة PDF جاهز للطباعة");
+    }
+  }
+};
+$("#pdfSlipBtn").onclick = async () => {
+  if (!$("#accusePrint").innerHTML.trim()) return toast("لا يوجد وصل جاهز للتحميل", 1);
+  const b = $("#pdfSlipBtn"), orig = b.textContent;
+  b.disabled = true; b.textContent = "جارٍ تجهيز PDF...";
+  try {
+    await window.exportSlipPdf($("#accusePrint"), currentSlipDossierNo);
+    toast("تم تحميل الوصل بصيغة PDF بنجاح");
+  } catch (err) {
+    toast(err?.message || "تعذّر إنشاء ملف PDF للوصل", 1);
+  } finally {
+    b.disabled = false; b.textContent = orig;
+  }
+};
 $("#hidePrintBtn").onclick = () => { $("#accuseBox").hidden = true; };
 ["#dq", "#dz"].forEach(s => $(s).addEventListener("input", renderArchive));
 $("#xd").onclick = () => csv("dossiers-2026-2027",
-  ["رقم الملف", "التاريخ", "المنطقة", "اسم الفلاح", "الزراعة", "رقم الهاتف", "المساحة", "القطاع"],
-  DOSSIERS.map(d => [d.dossier_no, d.reception_date, d.zone, d.farmer_name, d.culture, d.phone, d.superficie, d.secteur]));
+  ["رقم الملف", "بطاقة الفلاح", "التاريخ", "المنطقة", "اسم الفلاح", "الزراعة", "الموسم", "رقم الهاتف", "المساحة", "القطاع"],
+  DOSSIERS.map(d => [d.dossier_no, d.farmer_card_no || "", d.reception_date, d.zone, d.farmer_name, d.culture, d.camp || "2026/2027", d.phone, d.superficie, d.secteur]));
 $("#pdfDossiers").onclick = async () => {
   if (!DOSSIERS.length) return toast("لا توجد ملفات مسجلة للتصدير", 1);
   const b = $("#pdfDossiers"), orig = b.textContent;
@@ -298,25 +680,34 @@ $("#printDossiers").onclick = () => {
 };
 
 $("#dT").onclick = async e => {
+  const editBtn = e.target.closest("[data-edit]");
+  if (editBtn) {
+    startEdit(Number(editBtn.dataset.edit));
+    return;
+  }
   const slipBtn = e.target.closest("[data-slip]");
   if (slipBtn) {
-    const d = DOSSIERS.find(x => String(x.dossier_no) === slipBtn.dataset.slip);
+    const d = DOSSIERS[Number(slipBtn.dataset.slip)];
     if (d) showSlip(d);
     return;
   }
   const delBtn = e.target.closest("[data-del]");
   if (delBtn) {
-    const no = delBtn.dataset.del;
-    if (!confirm(`حذف الملف رقم ${no}؟`)) return;
-    const target = DOSSIERS.find(x => String(x.dossier_no) === no);
-    if (hasRemoteDb && target?.id) {
+    const idx = Number(delBtn.dataset.del);
+    const target = DOSSIERS[idx];
+    if (!target) return;
+    if (!confirm(`حذف الملف رقم ${target.dossier_no} (${target.farmer_name})؟`)) return;
+    if (hasRemoteDb && target.id) {
       const { error } = await sb.from("dossier_receptions").delete().eq("id", target.id);
       if (error) return toast(error.message, 1);
     }
-    DOSSIERS = DOSSIERS.filter(x => String(x.dossier_no) !== no);
+    DOSSIERS.splice(idx, 1);
+    if (editingIdx === idx) cancelEdit(false);
+    else if (editingIdx !== null && idx < editingIdx) editingIdx -= 1;
     writeLocalDossiers(DOSSIERS);
     syncLists();
     renderArchive();
+    renderDupAlert();
     toast("تم حذف الملف");
   }
 };

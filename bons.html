@@ -50,8 +50,9 @@
   <div id="bonPreviewBox" style="margin-top:16px" hidden>
     <div class="no-print" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
       <strong>معاينة إذن الخروج (BON DE SORTIE)</strong>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button type="button" class="p" id="printBonBtn">طباعة إذن الخروج</button>
+        <button type="button" class="p" id="pdfBonBtn" style="background:var(--ac);color:#1d2b22">تحميل الإذن PDF</button>
         <button type="button" class="f" id="hideBonBtn">إخفاء</button>
       </div>
     </div>
@@ -88,9 +89,11 @@
 <script src="common.js"></script>
 <script src="dossiers-data.js"></script>
 <script src="bons-data.js"></script>
+<script src="dist/dossiers-pdf.js"></script>
 <script>
 let BONS = [];
 let hasRemoteBons = false;
+let currentBonNo = "";
 
 function addBonLine(init) {
   if ($("#bonLines").children.length >= 4) return toast("الحد الأقصى 4 مواد في الإذن الواحد", 1);
@@ -254,8 +257,14 @@ function buildBonHtml(header, lines) {
         <tr><td>IMMATRICULATION:</td><td>${esc(header.truck_no || "—")}</td></tr>
       </table>
       <div class="bon-signs">
-        <span>MAGASINIER</span>
-        <span>AGRICULTEUR :</span>
+        <div class="bon-sign">
+          <span>MAGASINIER</span>
+          <div style="height:78px"></div>
+        </div>
+        <div class="bon-sign">
+          <span>AGRICULTEUR :</span>
+          <div style="height:78px"></div>
+        </div>
       </div>
     </div>`;
 }
@@ -263,6 +272,7 @@ function buildBonHtml(header, lines) {
 function showBon(bonNo) {
   const lines = BONS.filter(b => String(b.bon_no) === String(bonNo));
   if (!lines.length) return;
+  currentBonNo = bonNo;
   $("#bonPrintArea").innerHTML = buildBonHtml(lines[0], lines);
   $("#bonPreviewBox").hidden = false;
   $("#bonPreviewBox").scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -316,6 +326,7 @@ $("#fb").onsubmit = async e => {
   writeLocalBons(BONS);
   syncBonLists();
   renderEtat();
+  currentBonNo = records[0]?.bon_no || "";
   $("#bonPrintArea").innerHTML = buildBonHtml(records[0], lines);
   $("#bonPreviewBox").hidden = false;
   e.target.reset();
@@ -333,10 +344,51 @@ $("#previewBonBtn").onclick = () => {
     qty: Number(el.querySelector("[data-q]").value || 0)
   })).filter(x => x.designation || x.qty);
   if (!f.farmer_name && !f.bon_no) return toast("أدخل رقم الإذن واسم الفلاح أولاً", 1);
+  currentBonNo = f.bon_no || "";
   $("#bonPrintArea").innerHTML = buildBonHtml(f, lines);
   $("#bonPreviewBox").hidden = false;
 };
-$("#printBonBtn").onclick = () => window.print();
+$("#printBonBtn").onclick = async () => {
+  if (!$("#bonPrintArea").innerHTML.trim()) return toast("لا يوجد إذن جاهز للطباعة", 1);
+  document.body.classList.remove("printing-list");
+  $("#bonPreviewBox").hidden = false;
+  let printed = false;
+  const onBeforePrint = () => { printed = true; };
+  window.addEventListener("beforeprint", onBeforePrint, { once: true });
+  try {
+    window.print();
+    setTimeout(async () => {
+      window.removeEventListener("beforeprint", onBeforePrint);
+      if (!printed && window.exportSlipPdf) {
+        try {
+          await window.exportSlipPdf($("#bonPrintArea"), currentBonNo, "bon-sortie");
+          toast("تم تجهيز وتحميل إذن الخروج بصيغة PDF للطباعة");
+        } catch (err) {
+          toast(err?.message || "تعذّر الطباعة، استخدم زر تحميل الإذن PDF", 1);
+        }
+      }
+    }, 450);
+  } catch (_) {
+    window.removeEventListener("beforeprint", onBeforePrint);
+    if (window.exportSlipPdf) {
+      await window.exportSlipPdf($("#bonPrintArea"), currentBonNo, "bon-sortie");
+      toast("تم تحميل إذن الخروج بصيغة PDF للطباعة");
+    }
+  }
+};
+$("#pdfBonBtn").onclick = async () => {
+  if (!$("#bonPrintArea").innerHTML.trim()) return toast("لا يوجد إذن جاهز للتحميل", 1);
+  const b = $("#pdfBonBtn"), orig = b.textContent;
+  b.disabled = true; b.textContent = "جارٍ تجهيز PDF...";
+  try {
+    await window.exportSlipPdf($("#bonPrintArea"), currentBonNo, "bon-sortie");
+    toast("تم تحميل إذن الخروج بصيغة PDF بنجاح");
+  } catch (err) {
+    toast(err?.message || "تعذّر إنشاء ملف PDF للإذن", 1);
+  } finally {
+    b.disabled = false; b.textContent = orig;
+  }
+};
 $("#hideBonBtn").onclick = () => { $("#bonPreviewBox").hidden = true; };
 
 ["#bq", "#bz", "#bd1", "#bd2"].forEach(s => $(s).addEventListener("input", renderEtat));

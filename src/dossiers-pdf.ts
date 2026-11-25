@@ -3,6 +3,7 @@ import html2canvas from "html2canvas";
 
 export interface DossierPdfItem {
   dossier_no?: string;
+  farmer_card_no?: string;
   reception_date?: string;
   zone?: string;
   farmer_name?: string;
@@ -10,6 +11,7 @@ export interface DossierPdfItem {
   phone?: string;
   superficie?: number | string | null;
   secteur?: string;
+  camp?: string;
 }
 
 function escHtml(s: unknown): string {
@@ -52,6 +54,7 @@ export function buildDossiersReportHtml(
       (d) => `
       <tr style="break-inside:avoid;">
         <td style="border:1px solid #cfd8dc;padding:6px 8px;text-align:center;font-weight:700;color:#1f5a3d;">${escHtml(d.dossier_no)}</td>
+        <td style="border:1px solid #cfd8dc;padding:6px 8px;text-align:center;white-space:nowrap;">${escHtml(d.farmer_card_no || "—")}</td>
         <td style="border:1px solid #cfd8dc;padding:6px 8px;text-align:center;white-space:nowrap;">${escHtml(d.reception_date || "—")}</td>
         <td style="border:1px solid #cfd8dc;padding:6px 8px;text-align:right;">${escHtml(d.zone || "—")}</td>
         <td style="border:1px solid #cfd8dc;padding:6px 8px;text-align:right;font-weight:600;">${escHtml(d.farmer_name || "—")}</td>
@@ -78,6 +81,7 @@ export function buildDossiersReportHtml(
         <thead>
           <tr style="background:#e8f2ec;color:#1f5a3d;">
             <th style="border:1px solid #b8c9be;padding:7px 8px;text-align:center;">رقم الملف</th>
+            <th style="border:1px solid #b8c9be;padding:7px 8px;text-align:center;">بطاقة الفلاح</th>
             <th style="border:1px solid #b8c9be;padding:7px 8px;text-align:center;">التاريخ</th>
             <th style="border:1px solid #b8c9be;padding:7px 8px;text-align:right;">المنطقة</th>
             <th style="border:1px solid #b8c9be;padding:7px 8px;text-align:right;">اسم الفلاح / المنتج</th>
@@ -175,12 +179,61 @@ function printDossiersList(items: DossierPdfItem[]): void {
   window.print();
 }
 
+async function exportSlipPdf(sourceEl: HTMLElement | null, fileSuffix?: string, filePrefix = "accuse-dossier"): Promise<void> {
+  if (!sourceEl || !sourceEl.innerHTML.trim()) {
+    throw new Error("لا يوجد وصل جاهز للطباعة أو التحميل");
+  }
+
+  const host = document.createElement("div");
+  host.style.cssText =
+    "position:fixed;left:-10000px;top:0;width:794px;background:#ffffff;color:#111111;padding:18px;box-sizing:border-box;z-index:-1;direction:ltr;text-align:left;";
+  host.innerHTML = `<div class="slip-wrap">${sourceEl.innerHTML}</div>`;
+  document.body.appendChild(host);
+
+  try {
+    const imgs = Array.from(host.querySelectorAll("img"));
+    await Promise.all(
+      imgs.map((img) =>
+        img.complete
+          ? Promise.resolve()
+          : new Promise<void>((res) => {
+              img.onload = () => res();
+              img.onerror = () => res();
+            })
+      )
+    );
+
+    const canvas = await html2canvas(host, {
+      scale: 2,
+      backgroundColor: "#ffffff",
+      useCORS: true,
+      logging: false,
+    });
+
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const ratio = Math.min(pageW / canvas.width, pageH / canvas.height);
+    const renderW = canvas.width * ratio;
+    const renderH = canvas.height * ratio;
+    const offsetX = (pageW - renderW) / 2;
+
+    pdf.addImage(canvas.toDataURL("image/png"), "PNG", offsetX, 0, renderW, renderH);
+    const cleanSuffix = String(fileSuffix || "").replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-|-$/g, "");
+    pdf.save(`${filePrefix}${cleanSuffix ? "-" + cleanSuffix : ""}.pdf`);
+  } finally {
+    host.remove();
+  }
+}
+
 declare global {
   interface Window {
     exportDossiersPdf?: (items: DossierPdfItem[]) => Promise<void>;
     printDossiersList?: (items: DossierPdfItem[]) => void;
+    exportSlipPdf?: (sourceEl: HTMLElement | null, fileSuffix?: string, filePrefix?: string) => Promise<void>;
   }
 }
 
 window.exportDossiersPdf = exportDossiersPdf;
 window.printDossiersList = printDossiersList;
+window.exportSlipPdf = exportSlipPdf;
