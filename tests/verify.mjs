@@ -484,7 +484,7 @@ const bonsMigrationSql = fs.readFileSync(path.join(ROOT, "supabase-bons.sql"), "
 assert.match(opsSql, /truck_photo/);
 assert.match(opsSql, /photo_note/);
 assert.match(opsSql, /normal_loss_pct/);
-assert.match(bonsSql, /truck_photo/);
+assert.match(bonsMigrationSql, /truck_photo/);
 
 assert.match(warehouseHtml, /normal_loss_pct/);
 assert.match(warehouseHtml, /adjTolerancePreview/);
