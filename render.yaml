@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: ccls-adrar
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: security-and-stability
+    buildCommand: npm install --no-audit --no-fund && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: DIRECTOR_SECRET
+        generateValue: true
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false

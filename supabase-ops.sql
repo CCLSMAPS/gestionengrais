@@ -78,14 +78,25 @@ create index if not exists idx_stock_adjustments_type on public.stock_adjustment
 alter table public.stock_adjustments enable row level security;
 
 drop policy if exists "active users read stock_adjustments" on public.stock_adjustments;
-create policy "active users read stock_adjustments" on public.stock_adjustments
-  for select to authenticated using (public.is_active_user());
-
 drop policy if exists "active users write stock_adjustments" on public.stock_adjustments;
-create policy "active users write stock_adjustments" on public.stock_adjustments
-  for all to authenticated
-  using (public.is_active_user())
-  with check (public.is_active_user());
+drop policy if exists "permission read stock_adjustments" on public.stock_adjustments;
+drop policy if exists "permission insert stock_adjustments" on public.stock_adjustments;
+drop policy if exists "permission update stock_adjustments" on public.stock_adjustments;
+drop policy if exists "permission delete stock_adjustments" on public.stock_adjustments;
+
+create policy "permission read stock_adjustments" on public.stock_adjustments
+  for select to authenticated using (public.has_app_permission('page:warehouse') or public.has_app_permission('page:index') or public.has_app_permission('page:analytics'));
+
+create policy "permission insert stock_adjustments" on public.stock_adjustments
+  for insert to authenticated with check ((public.has_app_permission('page:warehouse')) and public.has_app_permission('btn:create'));
+
+create policy "permission update stock_adjustments" on public.stock_adjustments
+  for update to authenticated
+  using ((public.has_app_permission('page:warehouse')) and public.has_app_permission('btn:edit'))
+  with check ((public.has_app_permission('page:warehouse')) and public.has_app_permission('btn:edit'));
+
+create policy "permission delete stock_adjustments" on public.stock_adjustments
+  for delete to authenticated using ((public.has_app_permission('page:warehouse')) and public.has_app_permission('btn:delete'));
 
 -- ============================================================
 -- 3) جدول المواعيد وأرقام الدور لتخفيف الازدحام أمام المخزن
@@ -115,14 +126,25 @@ create index if not exists idx_pickup_appointments_status on public.pickup_appoi
 alter table public.pickup_appointments enable row level security;
 
 drop policy if exists "active users read pickup_appointments" on public.pickup_appointments;
-create policy "active users read pickup_appointments" on public.pickup_appointments
-  for select to authenticated using (public.is_active_user());
-
 drop policy if exists "active users write pickup_appointments" on public.pickup_appointments;
-create policy "active users write pickup_appointments" on public.pickup_appointments
-  for all to authenticated
-  using (public.is_active_user())
-  with check (public.is_active_user());
+drop policy if exists "permission read pickup_appointments" on public.pickup_appointments;
+drop policy if exists "permission insert pickup_appointments" on public.pickup_appointments;
+drop policy if exists "permission update pickup_appointments" on public.pickup_appointments;
+drop policy if exists "permission delete pickup_appointments" on public.pickup_appointments;
+
+create policy "permission read pickup_appointments" on public.pickup_appointments
+  for select to authenticated using (public.has_app_permission('page:index'));
+
+create policy "permission insert pickup_appointments" on public.pickup_appointments
+  for insert to authenticated with check ((public.has_app_permission('page:index')) and public.has_app_permission('btn:create'));
+
+create policy "permission update pickup_appointments" on public.pickup_appointments
+  for update to authenticated
+  using ((public.has_app_permission('page:index')) and public.has_app_permission('btn:edit'))
+  with check ((public.has_app_permission('page:index')) and public.has_app_permission('btn:edit'));
+
+create policy "permission delete pickup_appointments" on public.pickup_appointments
+  for delete to authenticated using ((public.has_app_permission('page:index')) and public.has_app_permission('btn:delete'));
 
 -- ============================================================
 -- 4) سجل إشعارات الفلاحين (SMS / واتساب)
@@ -146,14 +168,25 @@ create index if not exists idx_farmer_notifications_created on public.farmer_not
 alter table public.farmer_notifications enable row level security;
 
 drop policy if exists "active users read farmer_notifications" on public.farmer_notifications;
-create policy "active users read farmer_notifications" on public.farmer_notifications
-  for select to authenticated using (public.is_active_user());
-
 drop policy if exists "active users write farmer_notifications" on public.farmer_notifications;
-create policy "active users write farmer_notifications" on public.farmer_notifications
-  for all to authenticated
-  using (public.is_active_user())
-  with check (public.is_active_user());
+drop policy if exists "permission read farmer_notifications" on public.farmer_notifications;
+drop policy if exists "permission insert farmer_notifications" on public.farmer_notifications;
+drop policy if exists "permission update farmer_notifications" on public.farmer_notifications;
+drop policy if exists "permission delete farmer_notifications" on public.farmer_notifications;
+
+create policy "permission read farmer_notifications" on public.farmer_notifications
+  for select to authenticated using (public.has_app_permission('page:index'));
+
+create policy "permission insert farmer_notifications" on public.farmer_notifications
+  for insert to authenticated with check ((public.has_app_permission('page:index')) and public.has_app_permission('btn:create'));
+
+create policy "permission update farmer_notifications" on public.farmer_notifications
+  for update to authenticated
+  using ((public.has_app_permission('page:index')) and public.has_app_permission('btn:edit'))
+  with check ((public.has_app_permission('page:index')) and public.has_app_permission('btn:edit'));
+
+create policy "permission delete farmer_notifications" on public.farmer_notifications
+  for delete to authenticated using ((public.has_app_permission('page:index')) and public.has_app_permission('btn:delete'));
 
 -- ============================================================
 -- 5) جدول أذون الخروج (bon_sorties) واستقبال الملفات (dossier_receptions) + التحقق العام الآمن
@@ -186,14 +219,25 @@ create index if not exists idx_bon_sorties_date on public.bon_sorties (sortie_da
 alter table public.bon_sorties enable row level security;
 
 drop policy if exists "authenticated read bons" on public.bon_sorties;
-create policy "authenticated read bons" on public.bon_sorties
-  for select to authenticated using (public.is_active_user());
-
 drop policy if exists "authenticated write bons" on public.bon_sorties;
-create policy "authenticated write bons" on public.bon_sorties
-  for all to authenticated
-  using (public.is_active_user())
-  with check (public.is_active_user());
+drop policy if exists "permission read bon_sorties" on public.bon_sorties;
+drop policy if exists "permission insert bon_sorties" on public.bon_sorties;
+drop policy if exists "permission update bon_sorties" on public.bon_sorties;
+drop policy if exists "permission delete bon_sorties" on public.bon_sorties;
+
+create policy "permission read bon_sorties" on public.bon_sorties
+  for select to authenticated using ((public.has_app_permission('page:bons') or public.has_app_permission('page:gate')));
+
+create policy "permission insert bon_sorties" on public.bon_sorties
+  for insert to authenticated with check ((public.has_app_permission('page:bons')) and public.has_app_permission('btn:create'));
+
+create policy "permission update bon_sorties" on public.bon_sorties
+  for update to authenticated
+  using ((public.has_app_permission('page:bons')) and public.has_app_permission('btn:edit'))
+  with check ((public.has_app_permission('page:bons')) and public.has_app_permission('btn:edit'));
+
+create policy "permission delete bon_sorties" on public.bon_sorties
+  for delete to authenticated using ((public.has_app_permission('page:bons')) and public.has_app_permission('btn:delete'));
 
 create table if not exists public.dossier_receptions (
   id bigint generated by default as identity primary key,
@@ -221,14 +265,25 @@ create index if not exists idx_dossier_receptions_card on public.dossier_recepti
 alter table public.dossier_receptions enable row level security;
 
 drop policy if exists "authenticated read dossiers" on public.dossier_receptions;
-create policy "authenticated read dossiers" on public.dossier_receptions
-  for select to authenticated using (public.is_active_user());
-
 drop policy if exists "authenticated write dossiers" on public.dossier_receptions;
-create policy "authenticated write dossiers" on public.dossier_receptions
-  for all to authenticated
-  using (public.is_active_user())
-  with check (public.is_active_user());
+drop policy if exists "permission read dossier_receptions" on public.dossier_receptions;
+drop policy if exists "permission insert dossier_receptions" on public.dossier_receptions;
+drop policy if exists "permission update dossier_receptions" on public.dossier_receptions;
+drop policy if exists "permission delete dossier_receptions" on public.dossier_receptions;
+
+create policy "permission read dossier_receptions" on public.dossier_receptions
+  for select to authenticated using (public.has_app_permission('page:reception') or public.has_app_permission('page:analytics'));
+
+create policy "permission insert dossier_receptions" on public.dossier_receptions
+  for insert to authenticated with check ((public.has_app_permission('page:reception')) and public.has_app_permission('btn:create'));
+
+create policy "permission update dossier_receptions" on public.dossier_receptions
+  for update to authenticated
+  using ((public.has_app_permission('page:reception')) and public.has_app_permission('btn:edit'))
+  with check ((public.has_app_permission('page:reception')) and public.has_app_permission('btn:edit'));
+
+create policy "permission delete dossier_receptions" on public.dossier_receptions
+  for delete to authenticated using ((public.has_app_permission('page:reception')) and public.has_app_permission('btn:delete'));
 
 create or replace function public.verify_bon_public(p_bon_no text)
 returns table (
@@ -290,14 +345,25 @@ create index if not exists idx_warehouse_transfers_wh on public.warehouse_transf
 alter table public.warehouse_transfers enable row level security;
 
 drop policy if exists "active users read warehouse_transfers" on public.warehouse_transfers;
-create policy "active users read warehouse_transfers" on public.warehouse_transfers
-  for select to authenticated using (public.is_active_user());
-
 drop policy if exists "active users write warehouse_transfers" on public.warehouse_transfers;
-create policy "active users write warehouse_transfers" on public.warehouse_transfers
-  for all to authenticated
-  using (public.is_active_user())
-  with check (public.is_active_user());
+drop policy if exists "permission read warehouse_transfers" on public.warehouse_transfers;
+drop policy if exists "permission insert warehouse_transfers" on public.warehouse_transfers;
+drop policy if exists "permission update warehouse_transfers" on public.warehouse_transfers;
+drop policy if exists "permission delete warehouse_transfers" on public.warehouse_transfers;
+
+create policy "permission read warehouse_transfers" on public.warehouse_transfers
+  for select to authenticated using (public.has_app_permission('page:warehouse') or public.has_app_permission('page:index') or public.has_app_permission('page:analytics'));
+
+create policy "permission insert warehouse_transfers" on public.warehouse_transfers
+  for insert to authenticated with check ((public.has_app_permission('page:warehouse')) and public.has_app_permission('btn:create'));
+
+create policy "permission update warehouse_transfers" on public.warehouse_transfers
+  for update to authenticated
+  using ((public.has_app_permission('page:warehouse')) and public.has_app_permission('btn:edit'))
+  with check ((public.has_app_permission('page:warehouse')) and public.has_app_permission('btn:edit'));
+
+create policy "permission delete warehouse_transfers" on public.warehouse_transfers
+  for delete to authenticated using ((public.has_app_permission('page:warehouse')) and public.has_app_permission('btn:delete'));
 
 -- ============================================================
 -- 8) سجل الناقلين والسائقين
@@ -320,14 +386,25 @@ create index if not exists idx_drivers_registry_name on public.drivers_registry 
 alter table public.drivers_registry enable row level security;
 
 drop policy if exists "active users read drivers_registry" on public.drivers_registry;
-create policy "active users read drivers_registry" on public.drivers_registry
-  for select to authenticated using (public.is_active_user());
-
 drop policy if exists "active users write drivers_registry" on public.drivers_registry;
-create policy "active users write drivers_registry" on public.drivers_registry
-  for all to authenticated
-  using (public.is_active_user())
-  with check (public.is_active_user());
+drop policy if exists "permission read drivers_registry" on public.drivers_registry;
+drop policy if exists "permission insert drivers_registry" on public.drivers_registry;
+drop policy if exists "permission update drivers_registry" on public.drivers_registry;
+drop policy if exists "permission delete drivers_registry" on public.drivers_registry;
+
+create policy "permission read drivers_registry" on public.drivers_registry
+  for select to authenticated using (public.has_app_permission('page:warehouse') or public.has_app_permission('page:index') or public.has_app_permission('page:bons'));
+
+create policy "permission insert drivers_registry" on public.drivers_registry
+  for insert to authenticated with check ((public.has_app_permission('page:warehouse')) and public.has_app_permission('btn:create'));
+
+create policy "permission update drivers_registry" on public.drivers_registry
+  for update to authenticated
+  using ((public.has_app_permission('page:warehouse')) and public.has_app_permission('btn:edit'))
+  with check ((public.has_app_permission('page:warehouse')) and public.has_app_permission('btn:edit'));
+
+create policy "permission delete drivers_registry" on public.drivers_registry
+  for delete to authenticated using ((public.has_app_permission('page:warehouse')) and public.has_app_permission('btn:delete'));
 
 -- ============================================================
 -- 9) سلة المحذوفات للحذف الناعم (Soft Delete & Restore)
@@ -351,20 +428,35 @@ create index if not exists idx_recycle_bin_table on public.recycle_bin (entity_t
 alter table public.recycle_bin enable row level security;
 
 drop policy if exists "active users read recycle_bin" on public.recycle_bin;
-create policy "active users read recycle_bin" on public.recycle_bin
-  for select to authenticated using (public.is_active_user());
-
 drop policy if exists "active users insert recycle_bin" on public.recycle_bin;
-create policy "active users insert recycle_bin" on public.recycle_bin
-  for insert to authenticated with check (public.is_active_user());
-
 drop policy if exists "active users restore recycle_bin" on public.recycle_bin;
-create policy "active users restore recycle_bin" on public.recycle_bin
-  for update to authenticated using (public.is_active_user()) with check (public.is_active_user());
-
 drop policy if exists "admins purge recycle_bin" on public.recycle_bin;
+drop policy if exists "permission read recycle_bin" on public.recycle_bin;
+drop policy if exists "permission insert recycle_bin" on public.recycle_bin;
+drop policy if exists "permission restore recycle_bin" on public.recycle_bin;
+
+create policy "permission read recycle_bin" on public.recycle_bin
+  for select to authenticated using (public.has_app_permission('page:warehouse'));
+
+create policy "permission insert recycle_bin" on public.recycle_bin
+  for insert to authenticated with check (
+    public.has_app_permission('btn:delete')
+    and (
+      public.has_app_permission('page:index')
+      or public.has_app_permission('page:reception')
+      or public.has_app_permission('page:bons')
+      or public.has_app_permission('page:warehouse')
+      or public.has_app_permission('page:gate')
+    )
+  );
+
+create policy "permission restore recycle_bin" on public.recycle_bin
+  for update to authenticated
+  using (public.has_app_permission('page:warehouse') and public.has_app_permission('btn:edit'))
+  with check (public.has_app_permission('page:warehouse') and public.has_app_permission('btn:edit'));
+
 create policy "admins purge recycle_bin" on public.recycle_bin
-  for delete to authenticated using (public.is_admin() or public.is_active_user());
+  for delete to authenticated using (public.is_admin());
 
 -- ============================================================
 -- 10) سجل جلسات المستخدمين والإنهاء عن بُعد
@@ -424,14 +516,25 @@ create index if not exists idx_invoice_notes_invoice on public.invoice_notes (in
 alter table public.invoice_notes enable row level security;
 
 drop policy if exists "active users read invoice_notes" on public.invoice_notes;
-create policy "active users read invoice_notes" on public.invoice_notes
-  for select to authenticated using (public.is_active_user());
-
 drop policy if exists "active users write invoice_notes" on public.invoice_notes;
-create policy "active users write invoice_notes" on public.invoice_notes
-  for all to authenticated
-  using (public.is_active_user())
-  with check (public.is_active_user());
+drop policy if exists "permission read invoice_notes" on public.invoice_notes;
+drop policy if exists "permission insert invoice_notes" on public.invoice_notes;
+drop policy if exists "permission update invoice_notes" on public.invoice_notes;
+drop policy if exists "permission delete invoice_notes" on public.invoice_notes;
+
+create policy "permission read invoice_notes" on public.invoice_notes
+  for select to authenticated using ((public.has_app_permission('page:index') or public.has_app_permission('page:bons')));
+
+create policy "permission insert invoice_notes" on public.invoice_notes
+  for insert to authenticated with check (((public.has_app_permission('page:index') or public.has_app_permission('page:bons'))) and public.has_app_permission('btn:create'));
+
+create policy "permission update invoice_notes" on public.invoice_notes
+  for update to authenticated
+  using (((public.has_app_permission('page:index') or public.has_app_permission('page:bons'))) and public.has_app_permission('btn:edit'))
+  with check (((public.has_app_permission('page:index') or public.has_app_permission('page:bons'))) and public.has_app_permission('btn:edit'));
+
+create policy "permission delete invoice_notes" on public.invoice_notes
+  for delete to authenticated using (((public.has_app_permission('page:index') or public.has_app_permission('page:bons'))) and public.has_app_permission('btn:delete'));
 
 -- ============================================================
 -- 12) بوابة أعوان الأمن: التحقق، سجل الزوار، البلاغات، المراقبة، والنوبات
@@ -455,12 +558,25 @@ create index if not exists idx_gate_verifications_bon on public.gate_verificatio
 alter table public.gate_verifications enable row level security;
 
 drop policy if exists "active users read gate_verifications" on public.gate_verifications;
-create policy "active users read gate_verifications" on public.gate_verifications
-  for select to authenticated using (public.is_active_user());
-
 drop policy if exists "active users write gate_verifications" on public.gate_verifications;
-create policy "active users write gate_verifications" on public.gate_verifications
-  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
+drop policy if exists "permission read gate_verifications" on public.gate_verifications;
+drop policy if exists "permission insert gate_verifications" on public.gate_verifications;
+drop policy if exists "permission update gate_verifications" on public.gate_verifications;
+drop policy if exists "permission delete gate_verifications" on public.gate_verifications;
+
+create policy "permission read gate_verifications" on public.gate_verifications
+  for select to authenticated using (public.has_app_permission('page:gate'));
+
+create policy "permission insert gate_verifications" on public.gate_verifications
+  for insert to authenticated with check ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:create'));
+
+create policy "permission update gate_verifications" on public.gate_verifications
+  for update to authenticated
+  using ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:edit'))
+  with check ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:edit'));
+
+create policy "permission delete gate_verifications" on public.gate_verifications
+  for delete to authenticated using ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:delete'));
 
 create table if not exists public.gate_visitors (
   id bigint generated by default as identity primary key,
@@ -482,12 +598,25 @@ create index if not exists idx_gate_visitors_status on public.gate_visitors (sta
 alter table public.gate_visitors enable row level security;
 
 drop policy if exists "active users read gate_visitors" on public.gate_visitors;
-create policy "active users read gate_visitors" on public.gate_visitors
-  for select to authenticated using (public.is_active_user());
-
 drop policy if exists "active users write gate_visitors" on public.gate_visitors;
-create policy "active users write gate_visitors" on public.gate_visitors
-  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
+drop policy if exists "permission read gate_visitors" on public.gate_visitors;
+drop policy if exists "permission insert gate_visitors" on public.gate_visitors;
+drop policy if exists "permission update gate_visitors" on public.gate_visitors;
+drop policy if exists "permission delete gate_visitors" on public.gate_visitors;
+
+create policy "permission read gate_visitors" on public.gate_visitors
+  for select to authenticated using (public.has_app_permission('page:gate'));
+
+create policy "permission insert gate_visitors" on public.gate_visitors
+  for insert to authenticated with check ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:create'));
+
+create policy "permission update gate_visitors" on public.gate_visitors
+  for update to authenticated
+  using ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:edit'))
+  with check ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:edit'));
+
+create policy "permission delete gate_visitors" on public.gate_visitors
+  for delete to authenticated using ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:delete'));
 
 create table if not exists public.gate_incidents (
   id bigint generated by default as identity primary key,
@@ -507,12 +636,25 @@ create index if not exists idx_gate_incidents_created on public.gate_incidents (
 alter table public.gate_incidents enable row level security;
 
 drop policy if exists "active users read gate_incidents" on public.gate_incidents;
-create policy "active users read gate_incidents" on public.gate_incidents
-  for select to authenticated using (public.is_active_user());
-
 drop policy if exists "active users write gate_incidents" on public.gate_incidents;
-create policy "active users write gate_incidents" on public.gate_incidents
-  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
+drop policy if exists "permission read gate_incidents" on public.gate_incidents;
+drop policy if exists "permission insert gate_incidents" on public.gate_incidents;
+drop policy if exists "permission update gate_incidents" on public.gate_incidents;
+drop policy if exists "permission delete gate_incidents" on public.gate_incidents;
+
+create policy "permission read gate_incidents" on public.gate_incidents
+  for select to authenticated using (public.has_app_permission('page:gate'));
+
+create policy "permission insert gate_incidents" on public.gate_incidents
+  for insert to authenticated with check ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:create'));
+
+create policy "permission update gate_incidents" on public.gate_incidents
+  for update to authenticated
+  using ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:edit'))
+  with check ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:edit'));
+
+create policy "permission delete gate_incidents" on public.gate_incidents
+  for delete to authenticated using ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:delete'));
 
 create table if not exists public.gate_watchlist (
   id bigint generated by default as identity primary key,
@@ -528,12 +670,25 @@ create index if not exists idx_gate_watchlist_plate on public.gate_watchlist (pl
 alter table public.gate_watchlist enable row level security;
 
 drop policy if exists "active users read gate_watchlist" on public.gate_watchlist;
-create policy "active users read gate_watchlist" on public.gate_watchlist
-  for select to authenticated using (public.is_active_user());
-
 drop policy if exists "active users write gate_watchlist" on public.gate_watchlist;
-create policy "active users write gate_watchlist" on public.gate_watchlist
-  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
+drop policy if exists "permission read gate_watchlist" on public.gate_watchlist;
+drop policy if exists "permission insert gate_watchlist" on public.gate_watchlist;
+drop policy if exists "permission update gate_watchlist" on public.gate_watchlist;
+drop policy if exists "permission delete gate_watchlist" on public.gate_watchlist;
+
+create policy "permission read gate_watchlist" on public.gate_watchlist
+  for select to authenticated using (public.has_app_permission('page:gate'));
+
+create policy "permission insert gate_watchlist" on public.gate_watchlist
+  for insert to authenticated with check ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:create'));
+
+create policy "permission update gate_watchlist" on public.gate_watchlist
+  for update to authenticated
+  using ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:edit'))
+  with check ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:edit'));
+
+create policy "permission delete gate_watchlist" on public.gate_watchlist
+  for delete to authenticated using ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:delete'));
 
 create table if not exists public.gate_shifts (
   id bigint generated by default as identity primary key,
@@ -550,12 +705,25 @@ create index if not exists idx_gate_shifts_date on public.gate_shifts (shift_dat
 alter table public.gate_shifts enable row level security;
 
 drop policy if exists "active users read gate_shifts" on public.gate_shifts;
-create policy "active users read gate_shifts" on public.gate_shifts
-  for select to authenticated using (public.is_active_user());
-
 drop policy if exists "active users write gate_shifts" on public.gate_shifts;
-create policy "active users write gate_shifts" on public.gate_shifts
-  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
+drop policy if exists "permission read gate_shifts" on public.gate_shifts;
+drop policy if exists "permission insert gate_shifts" on public.gate_shifts;
+drop policy if exists "permission update gate_shifts" on public.gate_shifts;
+drop policy if exists "permission delete gate_shifts" on public.gate_shifts;
+
+create policy "permission read gate_shifts" on public.gate_shifts
+  for select to authenticated using (public.has_app_permission('page:gate'));
+
+create policy "permission insert gate_shifts" on public.gate_shifts
+  for insert to authenticated with check ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:create'));
+
+create policy "permission update gate_shifts" on public.gate_shifts
+  for update to authenticated
+  using ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:edit'))
+  with check ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:edit'));
+
+create policy "permission delete gate_shifts" on public.gate_shifts
+  for delete to authenticated using ((public.has_app_permission('page:gate')) and public.has_app_permission('btn:delete'));
 
 insert into public.app_permissions (code, label, sort_order, pages) values
   ('page:gate', 'صفحة: بوابة أعوان الأمن (QR)', 104, array['gate.html'])

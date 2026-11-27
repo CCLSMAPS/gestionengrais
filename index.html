@@ -8,12 +8,16 @@
 <meta property="og:title" content="تسيير مخزون الأسمدة - CCLS ADRAR">
 <meta property="og:description" content="نظام تسيير مخزون الأسمدة والفواتير والتسليمات والمستخدمين.">
 <meta name="theme-color" content="#175236">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="CCLS ADRAR">
+<link rel="apple-touch-icon" href="app-icon.svg">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif">
 <link rel="stylesheet" href="common.css">
 </head>
 <body>
-<header><div style="display:flex;gap:10px;align-items:center"><button class="f" id="menu" aria-label="القائمة">☰</button><h1>إدخال البيانات - الفواتير والوارد</h1></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span id="links" style="display:flex;gap:4px;flex-wrap:wrap"></span><span id="who"></span><button class="f" id="pwb" hidden>الإعدادات</button><button class="f" id="out" hidden>خروج</button></div></header>
+<header><div style="display:flex;gap:10px;align-items:center"><button class="f" id="menu" aria-label="القائمة">☰</button><h1>إدخال البيانات - الفواتير والوارد</h1></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span id="links" style="display:flex;gap:4px;flex-wrap:wrap"></span><span id="who"></span><button class="f" id="pwaInstallBtn" type="button" hidden>＋ تثبيت التطبيق</button><button class="f" id="pwb" hidden>الإعدادات</button><button class="f" id="out" hidden>خروج</button></div></header>
 <main>
 <div id="cfg" class="box" hidden></div>
 <div id="app" hidden>
@@ -2343,6 +2347,45 @@ startApp({
     $("#out")?.addEventListener("click", stopCardCamera);
   }
 });
+</script>
+<script>
+(() => {
+  const installBtn = document.getElementById("pwaInstallBtn");
+  if (!installBtn) return;
+  const isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  if (isStandalone()) return;
+  installBtn.hidden = false;
+  let installPrompt = null;
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    installPrompt = event;
+    installBtn.textContent = "＋ تثبيت التطبيق";
+  });
+  window.addEventListener("appinstalled", () => {
+    installPrompt = null;
+    installBtn.hidden = true;
+  });
+  installBtn.addEventListener("click", async () => {
+    if (installPrompt) {
+      installPrompt.prompt();
+      await installPrompt.userChoice.catch(() => null);
+      installPrompt = null;
+      return;
+    }
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const instructions = isIOS
+      ? "لتثبيت التطبيق على iPhone: افتح الموقع في Safari، اضغط زر المشاركة، ثم اختر «إضافة إلى الشاشة الرئيسية» وبعدها «إضافة»."
+      : "لتثبيت التطبيق: افتح الموقع عبر Chrome أو Edge، ثم افتح قائمة المتصفح واختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية»."; 
+    window.alert(instructions);
+  });
+  if ("serviceWorker" in navigator && window.isSecureContext) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch((error) => {
+        console.warn("PWA service worker registration failed:", error);
+      });
+    }, { once: true });
+  }
+})();
 </script>
 </body>
 </html>

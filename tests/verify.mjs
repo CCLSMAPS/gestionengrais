@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
+import { fetchAllSupabaseRows } from "../supabase-rest.js";
 
 const ROOT = process.cwd();
 
@@ -73,6 +74,9 @@ assert.match(serverSrc, /ALLOWED_ROOT_FILES/);
 assert.match(serverSrc, /ALLOWED_DIST_FILES/);
 assert.match(serverSrc, /X-Content-Type-Options/);
 assert.match(serverSrc, /Content-Security-Policy/);
+const envExample = fs.readFileSync(path.join(ROOT, ".env.example"), "utf8");
+assert.match(envExample, /^DIRECTOR_SECRET=/m);
+assert.match(serverSrc, /DIRECTOR_SECRET is not configured/);
 
 // 6. Validate crop invoices & withdrawals aggregation bundle behavior
 const aggSrc = fs.readFileSync(path.join(ROOT, "src/analytics-aggregator.ts"), "utf8");
@@ -321,6 +325,7 @@ assert.match(serverSrc, /\/api\/director-link/);
 assert.match(serverSrc, /\/api\/director-summary/);
 assert.match(serverSrc, /\/api\/notify/);
 assert.match(serverSrc, /verifySupabaseUser/);
+assert.match(serverSrc, /if \(!profile \|\| profile\.is_blocked === true\) return null;/, "server APIs must reject users without an active profile");
 assert.match(serverSrc, /timingSafeEqual/);
 
 const warehouseHtml = fs.readFileSync(path.join(ROOT, "warehouse.html"), "utf8");
@@ -363,6 +368,12 @@ assert.match(opsSql, /invoice_notes/);
 assert.match(serverSrc, /\/api\/public\/kiosk/);
 assert.match(serverSrc, /\/api\/sessions\/heartbeat/);
 assert.match(serverSrc, /\/api\/sessions\/revoke/);
+assert.match(serverSrc, /fetchAllSupabaseRows\([\s\S]*user_sessions/);
+assert.match(serverSrc, /status=neq\.revoked/);
+assert.match(serverSrc, /session_key غير صالح/);
+assert.match(serverSrc, /hasAppPermission\(auth, "page:bons"\)/);
+assert.match(serverSrc, /hasAppPermission\(auth, \["page:index", "page:warehouse"\]\)/);
+assert.match(serverSrc, /consumeRateLimit/);
 assert.match(serverSrc, /\/api\/sessions/);
 
 assert.match(warehouseHtml, /transferSec/);
@@ -372,6 +383,8 @@ assert.match(usersHtml, /sessionsSec/);
 assert.match(analyticsHtml, /dashKpiSec/);
 assert.match(analyticsHtml, /dashValuationSec/);
 assert.match(analyticsHtml, /dashYoYSec/);
+assert.match(analyticsHtml, /isPaginationSafetyCapError/);
+assert.match(analyticsHtml, /if \(isPaginationSafetyCapError\(error\)\) throw error/);
 
 const directorHtml = fs.readFileSync(path.join(ROOT, "director.html"), "utf8");
 assert.match(directorHtml, /dirValuationSec/);
@@ -472,11 +485,11 @@ assert.match(bonsHtml, /bon-qr-svg/);
 assert.match(bonsHtml, /generateBonQrSvg/);
 assert.match(bonsHtml, /compressTruckPhoto/);
 
-const bonsSql = fs.readFileSync(path.join(ROOT, "supabase-bons.sql"), "utf8");
+const bonsMigrationSql = fs.readFileSync(path.join(ROOT, "supabase-bons.sql"), "utf8");
 assert.match(opsSql, /truck_photo/);
 assert.match(opsSql, /photo_note/);
 assert.match(opsSql, /normal_loss_pct/);
-assert.match(bonsSql, /truck_photo/);
+assert.match(bonsMigrationSql, /truck_photo/);
 
 assert.match(warehouseHtml, /normal_loss_pct/);
 assert.match(warehouseHtml, /adjTolerancePreview/);
@@ -645,5 +658,63 @@ assert.match(opsSql, /gate_shifts/);
 assert.equal(commonSandbox.hasPageAccess(["rbac:v2", "page:gate"], "gate.html"), true);
 assert.equal(commonSandbox.hasPageAccess(["rbac:v2", "page:gate"], "index.html"), false);
 assert.equal(commonSandbox.hasPageAccess(["rbac:v2", "page:gate"], "bons.html"), false);
+
+// Security regression checks: director publishing is admin-only and public kiosk names are anonymized.
+assert.match(serverSrc, /app\.post\("\/api\/director-link"[\s\S]*?if \(!\(await isAdminAuth\(auth\)\)\) return res\.status\(403\)/);
+assert.match(serverSrc, /app\.post\("\/api\/director-snapshot"[\s\S]*?if \(!\(await isAdminAuth\(auth\)\)\) return res\.status\(403\)/);
+assert.ok(serverSrc.includes('display_name: safeStr(t?.queue_no ? `فلاح رقم ${safeNum(t.queue_no)}` : "فلاح", 60)'), "public kiosk display names must be anonymized");
+assert.doesNotMatch(serverSrc, /display_name: safeStr\(t\?\.display_name \|\| t\?\.farmer_name/);
+assert.ok(setupSql.replace(/\s+/g, " ").includes("and exists ( select 1 from public.profiles p where p.user_id = auth.uid() and not coalesce(p.is_blocked, false) )"), "active users must have a non-blocked profile");
+assert.ok(opsSql.includes('for delete to authenticated using (public.is_admin());'), "recycle-bin purge must be admin-only");
+assert.match(setupSql, /create or replace function public\.has_app_permission/);
+assert.match(setupSql, /create or replace function public\.is_admin\(\)[\s\S]*?as \$function\$/);
+assert.match(setupSql, /create or replace function public\.is_active_user\(\)[\s\S]*?as \$function\$/);
+assert.doesNotMatch(setupSql, /\$active_user\$\$/);
+assert.match(opsSql, /permission insert gate_visitors/);
+assert.match(opsSql, /public\.has_app_permission\('page:gate'\)/);
+assert.match(opsSql, /permission insert pickup_appointments/);
+const dossiersMigrationSql = fs.readFileSync(path.join(ROOT, "supabase-dossiers.sql"), "utf8");
+assert.match(bonsMigrationSql, /public\.has_app_permission\('page:bons'\)/);
+assert.match(dossiersMigrationSql, /public\.has_app_permission\('page:reception'\)/);
+assert.match(opsSql, /permission read stock_adjustments[\s\S]*?page:analytics/);
+assert.match(opsSql, /permission read warehouse_transfers[\s\S]*?page:index[\s\S]*?page:analytics/);
+assert.match(opsSql, /permission read drivers_registry[\s\S]*?page:bons/);
+assert.match(opsSql, /permission read dossier_receptions[\s\S]*?page:analytics/);
+assert.doesNotMatch(bonsMigrationSql, /not exists \(\s*select 1 from public\.profiles p\s*where p\.user_id = auth\.uid\(\) and coalesce\(p\.is_blocked, false\)/);
+assert.doesNotMatch(dossiersMigrationSql, /not exists \(\s*select 1 from public\.profiles p\s*where p\.user_id = auth\.uid\(\) and coalesce\(p\.is_blocked, false\)/);
+assert.match(opsSql, /public\.has_app_permission\('btn:create'\)/);
+
+// Exercise the PostgREST paginator with deterministic pages and an injected fetch implementation.
+const pagedFixture = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }];
+const requestedRanges = [];
+const pagedResult = await fetchAllSupabaseRows("https://example.test/rest/v1/items", {}, {
+  pageSize: 2,
+  maxRows: 10,
+  fetchImpl: async (_url, options) => {
+    requestedRanges.push(options.headers.Range);
+    const [from, to] = options.headers.Range.split("-").map(Number);
+    return { ok: true, status: 200, json: async () => pagedFixture.slice(from, to + 1) };
+  }
+});
+assert.deepEqual(pagedResult, pagedFixture);
+assert.deepEqual(requestedRanges, ["0-1", "2-3", "4-5"]);
+await assert.rejects(
+  () => fetchAllSupabaseRows("https://example.test/rest/v1/items", {}, {
+    pageSize: 2,
+    maxRows: 2,
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => [{ id: 1 }, { id: 2 }] })
+  }),
+  /safety cap/
+);
+assert.ok(typeof commonSandbox.window.fetchAllRows === "function", "browser analytics must expose safe pagination");
+const browserRanges = [];
+const browserRows = await commonSandbox.window.fetchAllRows(() => ({
+  range: async (from, to) => {
+    browserRanges.push([from, to]);
+    return { data: pagedFixture.slice(from, to + 1), error: null };
+  }
+}), { pageSize: 2, maxRows: 10 });
+assert.deepEqual(Array.from(browserRows), pagedFixture);
+assert.deepEqual(browserRanges, [[0, 1], [2, 3], [4, 5]]);
 
 console.log(`ALL ${htmlPages.length} PAGES, BUNDLES, MANIFEST, AGGREGATOR, RBAC, SETTINGS, QR-BON, OPS-SUITE, 9-PRO-FEATURES, PHOTO-PROOF, LOSS-TOLERANCE, AND SECURITY CHECKS PASSED`);

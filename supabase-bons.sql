@@ -27,26 +27,25 @@ create index if not exists idx_bon_sorties_date on public.bon_sorties (sortie_da
 alter table public.bon_sorties enable row level security;
 
 drop policy if exists "authenticated read bons" on public.bon_sorties;
-create policy "authenticated read bons" on public.bon_sorties
-  for select to authenticated using (
-    not exists (
-      select 1 from public.profiles p
-      where p.user_id = auth.uid() and coalesce(p.is_blocked, false)
-    )
-  );
-
 drop policy if exists "authenticated write bons" on public.bon_sorties;
-create policy "authenticated write bons" on public.bon_sorties
-  for all to authenticated
-  using (
-    not exists (
-      select 1 from public.profiles p
-      where p.user_id = auth.uid() and coalesce(p.is_blocked, false)
-    )
-  )
-  with check (
-    not exists (
-      select 1 from public.profiles p
-      where p.user_id = auth.uid() and coalesce(p.is_blocked, false)
-    )
-  );
+drop policy if exists "permission read bon_sorties" on public.bon_sorties;
+drop policy if exists "permission insert bon_sorties" on public.bon_sorties;
+drop policy if exists "permission update bon_sorties" on public.bon_sorties;
+drop policy if exists "permission delete bon_sorties" on public.bon_sorties;
+
+create policy "permission read bon_sorties" on public.bon_sorties
+  for select to authenticated
+  using (public.has_app_permission('page:bons') or public.has_app_permission('page:gate'));
+
+create policy "permission insert bon_sorties" on public.bon_sorties
+  for insert to authenticated
+  with check (public.has_app_permission('page:bons') and public.has_app_permission('btn:create'));
+
+create policy "permission update bon_sorties" on public.bon_sorties
+  for update to authenticated
+  using (public.has_app_permission('page:bons') and public.has_app_permission('btn:edit'))
+  with check (public.has_app_permission('page:bons') and public.has_app_permission('btn:edit'));
+
+create policy "permission delete bon_sorties" on public.bon_sorties
+  for delete to authenticated
+  using (public.has_app_permission('page:bons') and public.has_app_permission('btn:delete'));

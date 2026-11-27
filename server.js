@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import zlib from "zlib";
 import { fileURLToPath } from "url";
+import { fetchAllSupabaseRows } from "./supabase-rest.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,11 +21,33 @@ const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imliem5sZHBrZHJxZ2NkbnJ4d25qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5OTUwODUsImV4cCI6MjExMDU3MTA4NX0.LUyefDjCMWnac-cytLMkmOOLIPtgr0GdsPTWAqewJfw";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DIRECTOR_SECRET = process.env.DIRECTOR_SECRET || crypto.randomBytes(32).toString("hex");
+if (!process.env.DIRECTOR_SECRET) {
+  console.warn("DIRECTOR_SECRET is not configured; director share links will be invalidated after a server restart.");
+}
 const NOTIFY_WEBHOOK_URL = process.env.NOTIFY_WEBHOOK_URL || "";
 const NOTIFY_WEBHOOK_TOKEN = process.env.NOTIFY_WEBHOOK_TOKEN || "";
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "256kb" }));
+
+const rateLimitBuckets = new Map();
+
+function consumeRateLimit(key, maxRequests, windowMs) {
+  const now = Date.now();
+  let bucket = rateLimitBuckets.get(key);
+  if (!bucket || now >= bucket.resetAt) {
+    bucket = { count: 0, resetAt: now + windowMs };
+    rateLimitBuckets.set(key, bucket);
+  }
+  if (bucket.count >= maxRequests) return false;
+  bucket.count += 1;
+  if (rateLimitBuckets.size > 10000) {
+    for (const [storedKey, value] of rateLimitBuckets) {
+      if (now >= value.resetAt) rateLimitBuckets.delete(storedKey);
+    }
+  }
+  return true;
+}
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -57,6 +80,8 @@ const ALLOWED_ROOT_FILES = new Map([
   ["/verify.html", "verify.html"],
   ["/kiosk.html", "kiosk.html"],
   ["/manifest.json", "manifest.json"],
+  ["/sw.js", "sw.js"],
+  ["/app-icon.svg", "app-icon.svg"],
   ["/common.css", "common.css"],
   ["/common.js", "common.js"],
   ["/dossiers-data.js", "dossiers-data.js"],
@@ -245,8 +270,8 @@ async function verifySupabaseUser(req) {
     const user = await userResp.json();
     if (!user?.id) return null;
 
-    const profResp = await fetch(
-      `${SUPABASE_URL}/rest/v1/profiles?select=user_id,role,is_blocked,full_name&user_id=eq.${encodeURIComponent(user.id)}&limit=1`,
+    let profResp = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?select=user_id,role,is_blocked,full_name,permissions&user_id=eq.${encodeURIComponent(user.id)}&limit=1`,
       {
         headers: {
           apikey: SUPABASE_ANON_KEY,
@@ -254,12 +279,19 @@ async function verifySupabaseUser(req) {
         },
       }
     );
+    if (!profResp.ok) {
+      profResp = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?select=user_id,role,is_blocked,full_name&user_id=eq.${encodeURIComponent(user.id)}&limit=1`,
+        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } }
+      );
+    }
     let profile = null;
     if (profResp.ok) {
       const rows = await profResp.json();
       profile = Array.isArray(rows) ? rows[0] || null : null;
     }
-    if (profile?.is_blocked === true) return null;
+    // Match the database is_active_user() policy: an auth account without an application profile is not active.
+    if (!profile || profile.is_blocked === true) return null;
     return { user, profile, token };
   } catch {
     return null;
@@ -288,6 +320,28 @@ async function isAdminAuth(auth) {
   return false;
 }
 
+async function hasAppPermission(auth, permissionCodes) {
+  const required = Array.isArray(permissionCodes) ? permissionCodes : [permissionCodes];
+  if (await isAdminAuth(auth)) return true;
+  let permissions = auth?.profile?.permissions;
+  if (!Array.isArray(permissions)) {
+    const role = String(auth?.profile?.role || "").trim();
+    if (!role) return false;
+    try {
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/role_permissions?select=perm_code&role_code=eq.${encodeURIComponent(role)}&limit=1000`,
+        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${auth.token}` } }
+      );
+      if (!response.ok) return false;
+      const rows = await response.json();
+      permissions = Array.isArray(rows) ? rows.map((row) => row.perm_code) : [];
+    } catch {
+      return false;
+    }
+  }
+  return required.some((code) => permissions.includes(code));
+}
+
 async function fetchLiveDirectorStatsFromSupabase() {
   if (!SUPABASE_SERVICE_ROLE_KEY) return null;
   const headers = {
@@ -295,23 +349,15 @@ async function fetchLiveDirectorStatsFromSupabase() {
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
   };
   try {
-    const [invRes, stockRes, adjRes, stockInRes, wRes, dosRes, prodRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/invoice_balance?select=id,qty,taken,remaining,culture,product_name,unit_price,dossier_no,farmer_name,client_name&limit=2000`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/stock_analysis?select=name,warehouse,received,withdrawn,balance&limit=1000`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/stock_adjustments?select=adjustment_type,qty,amount_dzd,product_name&limit=1000`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/stock_in?select=entry_date,qty,products(name)&order=entry_date.asc&limit=2000`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/withdrawals?select=w_date,qty,invoice_id,invoices(dossier_no,farmer_name,client_name,unit_price,products(name))&order=w_date.asc&limit=2000`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/dossier_receptions?select=dossier_no,farmer_name,reception_date&limit=2000`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/products?select=name,normal_loss_pct&limit=500`, { headers }),
+    const [invoices, stock, adjs, stockIn, withdrawals, dossiers, prods] = await Promise.all([
+      fetchAllSupabaseRows(`${SUPABASE_URL}/rest/v1/invoice_balance?select=id,qty,taken,remaining,culture,product_name,unit_price,dossier_no,farmer_name,client_name&order=id.asc`, headers),
+      fetchAllSupabaseRows(`${SUPABASE_URL}/rest/v1/stock_analysis?select=name,warehouse,received,withdrawn,balance&order=name.asc,warehouse.asc`, headers),
+      fetchAllSupabaseRows(`${SUPABASE_URL}/rest/v1/stock_adjustments?select=adjustment_type,qty,amount_dzd,product_name,id&order=id.asc`, headers, { optional: true }),
+      fetchAllSupabaseRows(`${SUPABASE_URL}/rest/v1/stock_in?select=entry_date,qty,products(name),id&order=entry_date.asc,id.asc`, headers, { optional: true }),
+      fetchAllSupabaseRows(`${SUPABASE_URL}/rest/v1/withdrawals?select=w_date,qty,invoice_id,invoices(dossier_no,farmer_name,client_name,unit_price,products(name)),id&order=w_date.asc,id.asc`, headers, { optional: true }),
+      fetchAllSupabaseRows(`${SUPABASE_URL}/rest/v1/dossier_receptions?select=dossier_no,farmer_name,reception_date,id&order=id.asc`, headers, { optional: true }),
+      fetchAllSupabaseRows(`${SUPABASE_URL}/rest/v1/products?select=name,normal_loss_pct,id&order=id.asc`, headers, { optional: true }),
     ]);
-    if (!invRes.ok || !stockRes.ok) return null;
-    const invoices = await invRes.json();
-    const stock = await stockRes.json();
-    const adjs = adjRes.ok ? await adjRes.json() : [];
-    const stockIn = stockInRes.ok ? await stockInRes.json() : [];
-    const withdrawals = wRes.ok ? await wRes.json() : [];
-    const dossiers = dosRes.ok ? await dosRes.json() : [];
-    const prods = prodRes.ok ? await prodRes.json() : [];
 
     // Weighted avg unit price per product
     const priceAcc = new Map();
@@ -496,7 +542,12 @@ app.get("/health", (_req, res) => {
 });
 
 // Public privacy-safe QR verification endpoint (NO PII returned)
-app.get("/api/public/verify-bon", async (req, res) => {
+app.get("/api/public/verify-bon", (req, res, next) => {
+  if (!consumeRateLimit(`verify-bon:${req.ip || req.socket?.remoteAddress || "unknown"}`, 30, 60_000)) {
+    return res.status(429).json({ valid: false, error: "طلبات كثيرة؛ حاول بعد دقيقة" });
+  }
+  next();
+}, async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const bonRaw = String(req.query.bon || "").trim();
   if (!bonRaw || bonRaw.length > 64) {
@@ -587,6 +638,7 @@ app.post("/api/public/bon-register", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const auth = await verifySupabaseUser(req);
   if (!auth) return res.status(401).json({ error: "غير مصرح" });
+  if (!(await hasAppPermission(auth, "page:bons"))) return res.status(403).json({ error: "ليست لديك صلاحية إدارة أذون الخروج" });
   const rows = Array.isArray(req.body?.bons) ? req.body.bons : [];
   const grouped = new Map();
   for (const r of rows.slice(0, 1500)) {
@@ -619,6 +671,7 @@ app.post("/api/director-link", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const auth = await verifySupabaseUser(req);
   if (!auth) return res.status(401).json({ error: "يجب تسجيل الدخول أولاً" });
+  if (!(await isAdminAuth(auth))) return res.status(403).json({ error: "ممنوع: للمسؤول فقط" });
   if (req.body?.snapshot) {
     const cleanSnap = sanitizeDirectorSnapshot(req.body.snapshot);
     if (cleanSnap) latestDirectorSnapshot = cleanSnap;
@@ -642,6 +695,7 @@ app.post("/api/director-snapshot", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const auth = await verifySupabaseUser(req);
   if (!auth) return res.status(401).json({ error: "غير مصرح" });
+  if (!(await isAdminAuth(auth))) return res.status(403).json({ error: "ممنوع: للمسؤول فقط" });
   const cleanSnap = sanitizeDirectorSnapshot(req.body?.snapshot || req.body);
   if (!cleanSnap) return res.status(400).json({ error: "بيانات غير صالحة" });
   latestDirectorSnapshot = cleanSnap;
@@ -678,6 +732,8 @@ app.post("/api/notify", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const auth = await verifySupabaseUser(req);
   if (!auth) return res.status(401).json({ error: "غير مصرح" });
+  if (!(await hasAppPermission(auth, "page:index"))) return res.status(403).json({ error: "ليست لديك صلاحية إرسال إشعارات الفلاحين" });
+  if (!consumeRateLimit(`notify:${auth.user.id}`, 8, 60_000)) return res.status(429).json({ error: "تجاوزت حد إرسال الإشعارات؛ حاول لاحقاً" });
 
   if (!NOTIFY_WEBHOOK_URL) {
     return res.json({ ok: true, mode: "client_link" });
@@ -726,7 +782,8 @@ function sanitizeKioskPayload(raw) {
     ? raw.tickets.slice(0, 60).map((t) => ({
         queue_no: safeNum(t?.queue_no),
         status: ["waiting", "loading", "done", "absent"].includes(t?.status) ? t.status : "waiting",
-        display_name: safeStr(t?.display_name || t?.farmer_name || "", 60),
+        // Public kiosk must never expose a farmer's real name or other identifying text.
+        display_name: safeStr(t?.queue_no ? `فلاح رقم ${safeNum(t.queue_no)}` : "فلاح", 60),
         product_name: safeStr(t?.product_name || "", 60),
         warehouse_name: safeStr(t?.warehouse_name || "", 60),
         qty: safeNum(t?.qty),
@@ -754,6 +811,7 @@ app.post("/api/public/kiosk-sync", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const auth = await verifySupabaseUser(req);
   if (!auth) return res.status(401).json({ error: "غير مصرح" });
+  if (!(await hasAppPermission(auth, ["page:index", "page:warehouse"]))) return res.status(403).json({ error: "ليست لديك صلاحية تحديث شاشة الانتظار" });
   const clean = sanitizeKioskPayload(req.body);
   if (!clean) return res.status(400).json({ error: "بيانات غير صالحة" });
   latestKioskSnapshot = clean;
@@ -804,76 +862,165 @@ app.get("/api/public/kiosk", async (_req, res) => {
 });
 
 // ===== User Session Audit & Remote Termination API =====
+function userSupabaseHeaders(auth, extra = {}) {
+  return {
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${auth.token}`,
+    ...extra,
+  };
+}
+
 app.post("/api/sessions/heartbeat", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const auth = await verifySupabaseUser(req);
   if (!auth) return res.status(401).json({ error: "غير مصرح" });
-  const key = String(req.body?.session_key || "").trim().slice(0, 80);
-  if (!key) return res.status(400).json({ error: "session_key مطلوب" });
+  const key = String(req.body?.session_key || "").trim();
+  if (!/^[A-Za-z0-9_-]{12,80}$/.test(key)) return res.status(400).json({ error: "session_key غير صالح" });
 
   const nowIso = new Date().toISOString();
-  const existing = sessionAuditStore.get(key);
-  if (existing && existing.status === "revoked") {
-    return res.json({ ok: true, status: "revoked", revoked: true, revoked_by: existing.revoked_by || "المسؤول" });
-  }
   const reqStatus = req.body?.status === "ended" ? "ended" : "active";
+  const memoryExisting = sessionAuditStore.get(key);
+  if (memoryExisting && memoryExisting.user_id !== auth.user.id) return res.status(409).json({ error: "معرّف الجلسة مستخدم من حساب آخر" });
+  if (memoryExisting?.status === "revoked") {
+    return res.json({ ok: true, status: "revoked", revoked: true, revoked_by: memoryExisting.revoked_by || "المسؤول" });
+  }
+
+  const query = `user_sessions?select=session_key,user_id,status,revoked_by,login_at,device_label&session_key=eq.${encodeURIComponent(key)}&user_id=eq.${encodeURIComponent(auth.user.id)}&limit=1`;
+  let dbAvailable = false;
+  let dbExisting = null;
+  try {
+    const lookup = await fetch(`${SUPABASE_URL}/rest/v1/${query}`, { headers: userSupabaseHeaders(auth) });
+    if (lookup.ok) {
+      dbAvailable = true;
+      const rows = await lookup.json();
+      dbExisting = Array.isArray(rows) ? rows[0] || null : null;
+    }
+  } catch (_) {}
+
+  if (dbExisting?.status === "revoked") {
+    sessionAuditStore.set(key, { ...dbExisting, status: "revoked" });
+    return res.json({ ok: true, status: "revoked", revoked: true, revoked_by: dbExisting.revoked_by || "المسؤول" });
+  }
+
   const record = {
     session_key: key,
     user_id: auth.user.id,
     user_email: auth.user.email || "",
     full_name: auth.profile?.full_name || auth.user.email?.split("@")[0] || "مستخدم",
     role_code: auth.profile?.role || "",
-    device_label: String(req.body?.device_label || existing?.device_label || "متصفح ويب").slice(0, 80),
+    device_label: String(req.body?.device_label || dbExisting?.device_label || memoryExisting?.device_label || "متصفح ويب").slice(0, 80),
     user_agent: String(req.headers["user-agent"] || "").slice(0, 180),
     status: reqStatus,
-    login_at: existing?.login_at || nowIso,
+    login_at: dbExisting?.login_at || memoryExisting?.login_at || nowIso,
     last_seen_at: nowIso,
-    logout_at: reqStatus === "ended" ? nowIso : existing?.logout_at || null,
-    revoked_by: existing?.revoked_by || null,
+    logout_at: reqStatus === "ended" ? nowIso : dbExisting?.logout_at || memoryExisting?.logout_at || null,
+    revoked_by: null,
   };
+
+  let persisted = false;
+  try {
+    if (dbAvailable && dbExisting) {
+      const patchUrl = `${SUPABASE_URL}/rest/v1/user_sessions?session_key=eq.${encodeURIComponent(key)}&user_id=eq.${encodeURIComponent(auth.user.id)}&status=neq.revoked`;
+      const patch = await fetch(patchUrl, {
+        method: "PATCH",
+        headers: userSupabaseHeaders(auth, { "Content-Type": "application/json", Prefer: "return=representation" }),
+        body: JSON.stringify({
+          user_email: record.user_email, full_name: record.full_name, role_code: record.role_code,
+          device_label: record.device_label, user_agent: record.user_agent, status: record.status,
+          last_seen_at: nowIso, logout_at: record.logout_at,
+        }),
+      });
+      if (patch.ok) {
+        const rows = await patch.json();
+        persisted = Array.isArray(rows) && rows.length > 0;
+      }
+    } else if (dbAvailable && reqStatus === "active") {
+      const insert = await fetch(`${SUPABASE_URL}/rest/v1/user_sessions`, {
+        method: "POST",
+        headers: userSupabaseHeaders(auth, { "Content-Type": "application/json", Prefer: "return=representation" }),
+        body: JSON.stringify(record),
+      });
+      if (insert.ok) {
+        const rows = await insert.json();
+        persisted = Array.isArray(rows) && rows.length > 0;
+      }
+    }
+  } catch (_) {}
+
+  if (!persisted && dbAvailable && (dbExisting || reqStatus === "active")) {
+    try {
+      const check = await fetch(`${SUPABASE_URL}/rest/v1/${query}`, { headers: userSupabaseHeaders(auth) });
+      if (check.ok) {
+        const rows = await check.json();
+        const latest = Array.isArray(rows) ? rows[0] : null;
+        if (latest?.status === "revoked") {
+          sessionAuditStore.set(key, { ...latest, status: "revoked" });
+          return res.json({ ok: true, status: "revoked", revoked: true, revoked_by: latest.revoked_by || "المسؤول" });
+        }
+      }
+    } catch (_) {}
+    return res.status(503).json({ error: "تعذّر حفظ الجلسة في قاعدة البيانات؛ أعد المحاولة" });
+  }
+
   sessionAuditStore.set(key, record);
-  return res.json({ ok: true, status: record.status, revoked: false });
+  return res.json({ ok: true, status: record.status, revoked: false, persisted });
 });
 
 app.get("/api/sessions", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const auth = await verifySupabaseUser(req);
   if (!auth) return res.status(401).json({ error: "غير مصرح" });
-  const adminOk = await isAdminAuth(auth);
-  if (!adminOk) return res.status(403).json({ error: "ممنوع: للمسؤول فقط" });
-  const rows = [...sessionAuditStore.values()].sort((a, b) =>
-    String(b.last_seen_at || "").localeCompare(String(a.last_seen_at || ""))
-  );
-  return res.json({ ok: true, sessions: rows });
+  if (!(await isAdminAuth(auth))) return res.status(403).json({ error: "ممنوع: للمسؤول فقط" });
+
+  try {
+    const rows = await fetchAllSupabaseRows(
+      `${SUPABASE_URL}/rest/v1/user_sessions?select=*&order=last_seen_at.desc`,
+      userSupabaseHeaders(auth),
+      { pageSize: 500, maxRows: 10000, optional: true }
+    );
+    rows.forEach((row) => sessionAuditStore.set(row.session_key, row));
+    return res.json({ ok: true, sessions: rows, source: "database" });
+  } catch (_) {
+    const rows = [...sessionAuditStore.values()].sort((a, b) =>
+      String(b.last_seen_at || "").localeCompare(String(a.last_seen_at || ""))
+    );
+    return res.json({ ok: true, sessions: rows, source: "memory_fallback" });
+  }
 });
 
 app.post("/api/sessions/revoke", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const auth = await verifySupabaseUser(req);
   if (!auth) return res.status(401).json({ error: "غير مصرح" });
-  const adminOk = await isAdminAuth(auth);
-  if (!adminOk) return res.status(403).json({ error: "ممنوع: للمسؤول فقط" });
-  const key = String(req.body?.session_key || "").trim().slice(0, 80);
-  if (!key) return res.status(400).json({ error: "session_key مطلوب" });
+  if (!(await isAdminAuth(auth))) return res.status(403).json({ error: "ممنوع: للمسؤول فقط" });
+  const key = String(req.body?.session_key || "").trim();
+  if (!/^[A-Za-z0-9_-]{12,80}$/.test(key)) return res.status(400).json({ error: "session_key غير صالح" });
 
   const nowIso = new Date().toISOString();
-  const existing = sessionAuditStore.get(key) || {
-    session_key: key,
-    user_id: String(req.body?.user_id || ""),
-    user_email: String(req.body?.user_email || ""),
-    full_name: String(req.body?.full_name || "مستخدم"),
-    role_code: String(req.body?.role_code || ""),
-    device_label: String(req.body?.device_label || "جهاز آخر"),
-    login_at: nowIso,
-  };
-  const updated = {
-    ...existing,
-    status: "revoked",
-    logout_at: nowIso,
-    revoked_by: auth.profile?.full_name || auth.user.email || "المسؤول",
-  };
+  const revokedBy = auth.profile?.full_name || auth.user.email || "المسؤول";
+  try {
+    const response = await fetch(
+      `${SUPABASE_URL}/rest/v1/user_sessions?session_key=eq.${encodeURIComponent(key)}`,
+      {
+        method: "PATCH",
+        headers: userSupabaseHeaders(auth, { "Content-Type": "application/json", Prefer: "return=representation" }),
+        body: JSON.stringify({ status: "revoked", logout_at: nowIso, revoked_by: revokedBy }),
+      }
+    );
+    if (response.ok) {
+      const rows = await response.json();
+      if (Array.isArray(rows) && rows.length) {
+        sessionAuditStore.set(key, rows[0]);
+        return res.json({ ok: true, session: rows[0], persisted: true });
+      }
+    }
+  } catch (_) {}
+
+  const existing = sessionAuditStore.get(key);
+  if (!existing) return res.status(404).json({ error: "الجلسة غير موجودة أو لم تُسجل بعد" });
+  const updated = { ...existing, status: "revoked", logout_at: nowIso, revoked_by: revokedBy };
   sessionAuditStore.set(key, updated);
-  return res.json({ ok: true, session: updated });
+  return res.json({ ok: true, session: updated, persisted: false });
 });
 
 function resolveSafePath(reqPath) {

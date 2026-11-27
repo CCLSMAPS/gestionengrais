@@ -7,7 +7,7 @@
     "dev": "npm run build && node server.js",
     "start": "node server.js",
     "build": "node build.mjs",
-    "lint": "tsc --noEmit && node --check server.js && node --check common.js && node --check dossiers-data.js && node --check bons-data.js && node --check build.mjs",
+    "lint": "tsc --noEmit && node --check server.js && node --check common.js && node --check dossiers-data.js && node --check bons-data.js && node --check build.mjs && node --check supabase-rest.js",
     "test": "node tests/verify.mjs"
   },
   "dependencies": {

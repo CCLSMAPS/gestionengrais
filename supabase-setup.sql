@@ -10,7 +10,8 @@ alter table public.profiles drop constraint if exists profiles_role_check;
 
 -- 3) دوال مساعدة آمنة (SECURITY DEFINER مع search_path فارغ لمنع التلاعب بالمخطط)
 create or replace function public.is_admin() returns boolean
-language sql stable security definer set search_path = '' as $$
+language sql stable security definer set search_path = ''
+as $function$
   select exists (
     select 1 from public.profiles p
     where p.user_id = auth.uid()
@@ -20,17 +21,54 @@ language sql stable security definer set search_path = '' as $$
       )
       and not coalesce(p.is_blocked, false)
   );
-$$;
+$function$;
 
 create or replace function public.is_active_user() returns boolean
-language sql stable security definer set search_path = '' as $$
+language sql stable security definer set search_path = ''
+as $function$
   select auth.uid() is not null
-    and not exists (
+    and exists (
       select 1 from public.profiles p
       where p.user_id = auth.uid()
-        and coalesce(p.is_blocked, false)
+        and not coalesce(p.is_blocked, false)
     );
-$$;
+$function$;
+
+-- Enforce the same explicit permissions used by the UI at the database boundary.
+create or replace function public.has_app_permission(p_perm_code text) returns boolean
+language sql stable security definer set search_path = ''
+as $function$
+  select auth.uid() is not null
+    and p_perm_code is not null
+    and exists (
+      select 1
+      from public.profiles p
+      where p.user_id = auth.uid()
+        and not coalesce(p.is_blocked, false)
+        and (
+          p.role = 'admin'
+          or exists (
+            select 1 from public.roles r
+            where r.code = p.role and coalesce(r.is_admin, false)
+          )
+          or (p.permissions is not null and p_perm_code = any(p.permissions))
+          or (
+            p.permissions is null
+            and exists (
+              select 1 from public.role_permissions rp
+              where rp.role_code = p.role and rp.perm_code = p_perm_code
+            )
+          )
+        )
+    );
+$function$;
+
+revoke all on function public.has_app_permission(text) from public;
+revoke all on function public.has_app_permission(text) from anon;
+grant execute on function public.has_app_permission(text) to authenticated;
+
+create index if not exists idx_role_permissions_role_perm
+  on public.role_permissions (role_code, perm_code);
 
 -- 4) المسؤول يقرأ وينشئ ويعدّل كل الملفات الشخصية
 drop policy if exists "admin manage profiles" on public.profiles;
