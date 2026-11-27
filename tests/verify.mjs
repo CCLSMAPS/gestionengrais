@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
+import { fetchAllSupabaseRows } from "../supabase-rest.js";
 
 const ROOT = process.cwd();
 
@@ -651,7 +652,40 @@ assert.equal(commonSandbox.hasPageAccess(["rbac:v2", "page:gate"], "bons.html"),
 assert.equal((serverSrc.match(/if \(!\(await isAdminAuth\(auth\)\)\) return res\.status\(403\)/g) || []).length, 2);
 assert.ok(serverSrc.includes('display_name: safeStr(t?.queue_no ? `فلاح رقم ${safeNum(t.queue_no)}` : "فلاح", 60)'), "public kiosk display names must be anonymized");
 assert.doesNotMatch(serverSrc, /display_name: safeStr\(t\?\.display_name \|\| t\?\.farmer_name/);
-assert.match(setupSql, /and exists\\s*\\(\\s*select 1 from public\\.profiles p\\s+where p\\.user_id = auth\\.uid\\(\\)\\s+and not coalesce\\(p\\.is_blocked, false\\)\\s*\\)/, "active users must have a non-blocked profile");
+assert.ok(setupSql.replace(/\s+/g, " ").includes("and exists ( select 1 from public.profiles p where p.user_id = auth.uid() and not coalesce(p.is_blocked, false) )"), "active users must have a non-blocked profile");
 assert.ok(opsSql.includes('for delete to authenticated using (public.is_admin());'), "recycle-bin purge must be admin-only");
+
+// Exercise the PostgREST paginator with deterministic pages and an injected fetch implementation.
+const pagedFixture = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }];
+const requestedRanges = [];
+const pagedResult = await fetchAllSupabaseRows("https://example.test/rest/v1/items", {}, {
+  pageSize: 2,
+  maxRows: 10,
+  fetchImpl: async (_url, options) => {
+    requestedRanges.push(options.headers.Range);
+    const [from, to] = options.headers.Range.split("-").map(Number);
+    return { ok: true, status: 200, json: async () => pagedFixture.slice(from, to + 1) };
+  }
+});
+assert.deepEqual(pagedResult, pagedFixture);
+assert.deepEqual(requestedRanges, ["0-1", "2-3", "4-5"]);
+await assert.rejects(
+  () => fetchAllSupabaseRows("https://example.test/rest/v1/items", {}, {
+    pageSize: 2,
+    maxRows: 2,
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => [{ id: 1 }, { id: 2 }] })
+  }),
+  /safety cap/
+);
+assert.ok(typeof commonSandbox.window.fetchAllRows === "function", "browser analytics must expose safe pagination");
+const browserRanges = [];
+const browserRows = await commonSandbox.window.fetchAllRows(() => ({
+  range: async (from, to) => {
+    browserRanges.push([from, to]);
+    return { data: pagedFixture.slice(from, to + 1), error: null };
+  }
+}), { pageSize: 2, maxRows: 10 });
+assert.deepEqual(Array.from(browserRows), pagedFixture);
+assert.deepEqual(browserRanges, [[0, 1], [2, 3], [4, 5]]);
 
 console.log(`ALL ${htmlPages.length} PAGES, BUNDLES, MANIFEST, AGGREGATOR, RBAC, SETTINGS, QR-BON, OPS-SUITE, 9-PRO-FEATURES, PHOTO-PROOF, LOSS-TOLERANCE, AND SECURITY CHECKS PASSED`);

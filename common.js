@@ -927,6 +927,25 @@ function csv(name, h, rows) {
 
 // ===== مشترك: الاتصال، الصلاحيات، الدخول، التنقل =====
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Read every PostgREST page instead of silently stopping at the default row cap.
+async function fetchAllRows(queryFactory, options = {}) {
+  const pageSize = Number(options.pageSize) || 1000;
+  const maxRows = Number(options.maxRows) || 50000;
+  if (typeof queryFactory !== "function" || !Number.isInteger(pageSize) || pageSize < 1 || !Number.isInteger(maxRows) || maxRows < pageSize) {
+    throw new TypeError("Invalid paginated query configuration");
+  }
+  const rows = [];
+  for (let offset = 0; offset < maxRows; offset += pageSize) {
+    const { data, error } = await queryFactory().range(offset, Math.min(offset + pageSize - 1, maxRows - 1));
+    if (error) throw error;
+    if (!Array.isArray(data)) throw new TypeError("Paginated Supabase query returned no row array");
+    rows.push(...data);
+    if (data.length < pageSize) return rows;
+  }
+  throw new Error(`تجاوزت النتائج الحد الآمن (${maxRows} سجل)؛ أوقفنا التحليل حتى لا نعرض أرقاماً ناقصة`);
+}
+window.fetchAllRows = fetchAllRows;
 // المناصب والصلاحيات تأتي من قاعدة البيانات (جداول roles و app_permissions و role_permissions)
 const ROLES = {}, PERMS = {}, DEFAULTS = {}, PERM_PAGES = {};
 let ADMIN_ROLES = new Set();

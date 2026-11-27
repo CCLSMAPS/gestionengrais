@@ -735,13 +735,15 @@ function scheduleDirectorSnapshotSync(adjTotals, valuationRes, kpiRes) {
 
 async function fetchWithdrawalsWithContext() {
   const richSelect = "id, w_date, qty, invoice_id, invoices(id, invoice_no, invoice_year, dossier_no, farmer_card_no, farmer_name, client_name, culture, region, unit_price, product_id, warehouse_id, products(name))";
-  const richRes = await sb.from("withdrawals").select(richSelect).order("w_date", { ascending: true }).limit(2000);
-  if (!richRes.error) return richRes;
-  return sb
-    .from("withdrawals")
-    .select("id, w_date, qty, invoice_id, invoices(product_id, warehouse_id, products(name))")
-    .order("w_date", { ascending: true })
-    .limit(2000);
+  try {
+    return { data: await fetchAllRows(() => sb.from("withdrawals").select(richSelect).order("w_date", { ascending: true }).order("id", { ascending: true })), error: null };
+  } catch (richError) {
+    try {
+      return { data: await fetchAllRows(() => sb.from("withdrawals").select("id, w_date, qty, invoice_id, invoices(product_id, warehouse_id, products(name))").order("w_date", { ascending: true }).order("id", { ascending: true })), error: null };
+    } catch (error) {
+      return { data: null, error: error || richError };
+    }
+  }
 }
 
 function computeStockFallback(stockIn, withdrawals, warehouses) {
@@ -802,55 +804,51 @@ function subscribeLiveDb() {
 }
 
 async function fetchStockInSafe() {
-  const rich = await sb
-    .from("stock_in")
-    .select("id, product_id, qty, unit_price, entry_date, warehouse_id, products(name)")
-    .order("entry_date", { ascending: true })
-    .limit(2000);
-  if (!rich.error) return rich;
-  return sb
-    .from("stock_in")
-    .select("id, product_id, qty, entry_date, warehouse_id, products(name)")
-    .order("entry_date", { ascending: true })
-    .limit(2000);
+  try {
+    return { data: await fetchAllRows(() => sb.from("stock_in").select("id, product_id, qty, unit_price, entry_date, warehouse_id, products(name)").order("entry_date", { ascending: true }).order("id", { ascending: true })), error: null };
+  } catch (richError) {
+    try {
+      return { data: await fetchAllRows(() => sb.from("stock_in").select("id, product_id, qty, entry_date, warehouse_id, products(name)").order("entry_date", { ascending: true }).order("id", { ascending: true })), error: null };
+    } catch (error) {
+      return { data: null, error: error || richError };
+    }
+  }
 }
 
 async function fetchProductsSafe() {
-  const full = await sb.from("products").select("id, name, unit_price, normal_loss_pct").order("name");
-  if (!full.error && Array.isArray(full.data)) {
+  try {
+    const full = { data: await fetchAllRows(() => sb.from("products").select("id, name, unit_price, normal_loss_pct").order("name").order("id")), error: null };
     if (typeof saveProductLossPctMap === "function") saveProductLossPctMap(full.data);
     return full;
+  } catch (fullError) {
+    try {
+      const rich = { data: await fetchAllRows(() => sb.from("products").select("id, name, unit_price").order("name").order("id")), error: null };
+      const map = typeof readProductLossPctMap === "function" ? readProductLossPctMap() : {};
+      rich.data = rich.data.map(p => ({ ...p, normal_loss_pct: typeof getProductNormalLossPct === "function" ? getProductNormalLossPct(p, map) : 0 }));
+      return rich;
+    } catch (richError) {
+      try {
+        const basic = { data: await fetchAllRows(() => sb.from("products").select("id, name").order("name").order("id")), error: null };
+        const map = typeof readProductLossPctMap === "function" ? readProductLossPctMap() : {};
+        basic.data = basic.data.map(p => ({ ...p, normal_loss_pct: typeof getProductNormalLossPct === "function" ? getProductNormalLossPct(p, map) : 0 }));
+        return basic;
+      } catch (error) {
+        return { data: null, error: error || richError || fullError };
+      }
+    }
   }
-  const rich = await sb.from("products").select("id, name, unit_price").order("name");
-  if (!rich.error && Array.isArray(rich.data)) {
-    const map = typeof readProductLossPctMap === "function" ? readProductLossPctMap() : {};
-    rich.data = rich.data.map(p => ({
-      ...p,
-      normal_loss_pct: typeof getProductNormalLossPct === "function" ? getProductNormalLossPct(p, map) : 0
-    }));
-    return rich;
-  }
-  const basic = await sb.from("products").select("id, name").order("name");
-  if (!basic.error && Array.isArray(basic.data)) {
-    const map = typeof readProductLossPctMap === "function" ? readProductLossPctMap() : {};
-    basic.data = basic.data.map(p => ({
-      ...p,
-      normal_loss_pct: typeof getProductNormalLossPct === "function" ? getProductNormalLossPct(p, map) : 0
-    }));
-  }
-  return basic;
 }
 
 async function fetchDossiersSafe() {
-  const rich = await sb
-    .from("dossier_receptions")
-    .select("dossier_no, farmer_card_no, farmer_name, culture, reception_date")
-    .limit(2000);
-  if (!rich.error) return rich;
-  return sb
-    .from("dossier_receptions")
-    .select("dossier_no, farmer_card_no, farmer_name, culture")
-    .limit(2000);
+  try {
+    return { data: await fetchAllRows(() => sb.from("dossier_receptions").select("dossier_no, farmer_card_no, farmer_name, culture, reception_date, id").order("id")), error: null };
+  } catch (richError) {
+    try {
+      return { data: await fetchAllRows(() => sb.from("dossier_receptions").select("dossier_no, farmer_card_no, farmer_name, culture, id").order("id")), error: null };
+    } catch (error) {
+      return { data: null, error: error || richError };
+    }
+  }
 }
 
 async function loadDashboardData(forceReload = false) {
@@ -861,7 +859,7 @@ async function loadDashboardData(forceReload = false) {
   setStatus("جارٍ تحميل بيانات الاستهلاك والأرصدة المتبقية من قاعدة البيانات...", false);
   try {
     const [invRes, stockRes, wRes, whRes, prodRes] = await Promise.all([
-      sb.from("invoice_balance").select("*").order("id", { ascending: false }).limit(2000),
+      fetchAllRows(() => sb.from("invoice_balance").select("*").order("id", { ascending: false })).then(data => ({ data, error: null })).catch(error => ({ data: null, error })),
       fetchStockInSafe(),
       fetchWithdrawalsWithContext(),
       sb.from("warehouses").select("id, name").order("name"),
@@ -878,8 +876,7 @@ async function loadDashboardData(forceReload = false) {
 
     RAW_ADJUSTMENTS = [];
     try {
-      const { data: adjData, error: adjErr } = await sb.from("stock_adjustments").select("*").limit(500);
-      if (!adjErr && Array.isArray(adjData)) RAW_ADJUSTMENTS = adjData;
+      RAW_ADJUSTMENTS = await fetchAllRows(() => sb.from("stock_adjustments").select("*").order("id"));
     } catch (_) {}
     if (!RAW_ADJUSTMENTS.length) {
       try { RAW_ADJUSTMENTS = JSON.parse(localStorage.getItem("ccls_stock_adjustments_v1") || "[]") || []; } catch (_) {}
@@ -887,8 +884,7 @@ async function loadDashboardData(forceReload = false) {
 
     RAW_TRANSFERS = [];
     try {
-      const { data: trData, error: trErr } = await sb.from("warehouse_transfers").select("*").limit(500);
-      if (!trErr && Array.isArray(trData)) RAW_TRANSFERS = trData;
+      RAW_TRANSFERS = await fetchAllRows(() => sb.from("warehouse_transfers").select("*").order("id"));
     } catch (_) {}
     if (!RAW_TRANSFERS.length) {
       try { RAW_TRANSFERS = JSON.parse(localStorage.getItem("ccls_warehouse_transfers_v1") || "[]") || []; } catch (_) {}
@@ -928,10 +924,8 @@ async function loadDashboardData(forceReload = false) {
 
     RAW_STOCK_ANALYSIS = [];
     try {
-      const { data: saData, error: saErr } = await sb.from("stock_analysis").select("*").order("name");
-      if (!saErr && Array.isArray(saData) && saData.length) {
-        RAW_STOCK_ANALYSIS = saData;
-      }
+      const saData = await fetchAllRows(() => sb.from("stock_analysis").select("*").order("name").order("warehouse"));
+      if (Array.isArray(saData) && saData.length) RAW_STOCK_ANALYSIS = saData;
     } catch (_) {}
     if (!RAW_STOCK_ANALYSIS.length && (RAW_STOCK_IN.length || RAW_WITHDRAWALS.length)) {
       RAW_STOCK_ANALYSIS = computeStockFallback(RAW_STOCK_IN, RAW_WITHDRAWALS, RAW_WAREHOUSES);

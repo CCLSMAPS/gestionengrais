@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import zlib from "zlib";
 import { fileURLToPath } from "url";
+import { fetchAllSupabaseRows } from "./supabase-rest.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -296,23 +297,15 @@ async function fetchLiveDirectorStatsFromSupabase() {
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
   };
   try {
-    const [invRes, stockRes, adjRes, stockInRes, wRes, dosRes, prodRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/invoice_balance?select=id,qty,taken,remaining,culture,product_name,unit_price,dossier_no,farmer_name,client_name&limit=2000`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/stock_analysis?select=name,warehouse,received,withdrawn,balance&limit=1000`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/stock_adjustments?select=adjustment_type,qty,amount_dzd,product_name&limit=1000`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/stock_in?select=entry_date,qty,products(name)&order=entry_date.asc&limit=2000`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/withdrawals?select=w_date,qty,invoice_id,invoices(dossier_no,farmer_name,client_name,unit_price,products(name))&order=w_date.asc&limit=2000`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/dossier_receptions?select=dossier_no,farmer_name,reception_date&limit=2000`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/products?select=name,normal_loss_pct&limit=500`, { headers }),
+    const [invoices, stock, adjs, stockIn, withdrawals, dossiers, prods] = await Promise.all([
+      fetchAllSupabaseRows(`${SUPABASE_URL}/rest/v1/invoice_balance?select=id,qty,taken,remaining,culture,product_name,unit_price,dossier_no,farmer_name,client_name&order=id.asc`, headers),
+      fetchAllSupabaseRows(`${SUPABASE_URL}/rest/v1/stock_analysis?select=name,warehouse,received,withdrawn,balance&order=name.asc,warehouse.asc`, headers),
+      fetchAllSupabaseRows(`${SUPABASE_URL}/rest/v1/stock_adjustments?select=adjustment_type,qty,amount_dzd,product_name,id&order=id.asc`, headers, { optional: true }),
+      fetchAllSupabaseRows(`${SUPABASE_URL}/rest/v1/stock_in?select=entry_date,qty,products(name),id&order=entry_date.asc,id.asc`, headers, { optional: true }),
+      fetchAllSupabaseRows(`${SUPABASE_URL}/rest/v1/withdrawals?select=w_date,qty,invoice_id,invoices(dossier_no,farmer_name,client_name,unit_price,products(name)),id&order=w_date.asc,id.asc`, headers, { optional: true }),
+      fetchAllSupabaseRows(`${SUPABASE_URL}/rest/v1/dossier_receptions?select=dossier_no,farmer_name,reception_date,id&order=id.asc`, headers, { optional: true }),
+      fetchAllSupabaseRows(`${SUPABASE_URL}/rest/v1/products?select=name,normal_loss_pct,id&order=id.asc`, headers, { optional: true }),
     ]);
-    if (!invRes.ok || !stockRes.ok) return null;
-    const invoices = await invRes.json();
-    const stock = await stockRes.json();
-    const adjs = adjRes.ok ? await adjRes.json() : [];
-    const stockIn = stockInRes.ok ? await stockInRes.json() : [];
-    const withdrawals = wRes.ok ? await wRes.json() : [];
-    const dossiers = dosRes.ok ? await dosRes.json() : [];
-    const prods = prodRes.ok ? await prodRes.json() : [];
 
     // Weighted avg unit price per product
     const priceAcc = new Map();
