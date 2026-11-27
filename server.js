@@ -259,7 +259,8 @@ async function verifySupabaseUser(req) {
       const rows = await profResp.json();
       profile = Array.isArray(rows) ? rows[0] || null : null;
     }
-    if (profile?.is_blocked === true) return null;
+    // Match the database is_active_user() policy: an auth account without an application profile is not active.
+    if (!profile || profile.is_blocked === true) return null;
     return { user, profile, token };
   } catch {
     return null;
