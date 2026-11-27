@@ -365,6 +365,12 @@ assert.match(opsSql, /invoice_notes/);
 assert.match(serverSrc, /\/api\/public\/kiosk/);
 assert.match(serverSrc, /\/api\/sessions\/heartbeat/);
 assert.match(serverSrc, /\/api\/sessions\/revoke/);
+assert.match(serverSrc, /fetchAllSupabaseRows\([\s\S]*user_sessions/);
+assert.match(serverSrc, /status=neq\.revoked/);
+assert.match(serverSrc, /session_key غير صالح/);
+assert.match(serverSrc, /hasAppPermission\(auth, "page:bons"\)/);
+assert.match(serverSrc, /hasAppPermission\(auth, \["page:index", "page:warehouse"\]\)/);
+assert.match(serverSrc, /consumeRateLimit/);
 assert.match(serverSrc, /\/api\/sessions/);
 
 assert.match(warehouseHtml, /transferSec/);
@@ -654,6 +660,11 @@ assert.ok(serverSrc.includes('display_name: safeStr(t?.queue_no ? `فلاح رق
 assert.doesNotMatch(serverSrc, /display_name: safeStr\(t\?\.display_name \|\| t\?\.farmer_name/);
 assert.ok(setupSql.replace(/\s+/g, " ").includes("and exists ( select 1 from public.profiles p where p.user_id = auth.uid() and not coalesce(p.is_blocked, false) )"), "active users must have a non-blocked profile");
 assert.ok(opsSql.includes('for delete to authenticated using (public.is_admin());'), "recycle-bin purge must be admin-only");
+assert.match(setupSql, /create or replace function public\.has_app_permission/);
+assert.match(opsSql, /permission insert gate_visitors/);
+assert.match(opsSql, /public\.has_app_permission\('page:gate'\)/);
+assert.match(opsSql, /permission insert pickup_appointments/);
+assert.match(opsSql, /public\.has_app_permission\('btn:create'\)/);
 
 // Exercise the PostgREST paginator with deterministic pages and an injected fetch implementation.
 const pagedFixture = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }];
