@@ -650,5 +650,7 @@ assert.equal(commonSandbox.hasPageAccess(["rbac:v2", "page:gate"], "bons.html"),
 assert.equal((serverSrc.match(/if \(!\(await isAdminAuth\(auth\)\)\) return res\.status\(403\)/g) || []).length, 2);
 assert.match(serverSrc, /display_name: safeStr\(t\?\.queue_no \? `فلاح رقم \\u\{?\$\{/);
 assert.doesNotMatch(serverSrc, /display_name: safeStr\(t\?\.display_name \|\| t\?\.farmer_name/);
+assert.match(setupSql, /and exists \(\s*select 1 from public\\.profiles p\\s*where p\\.user_id = auth\\.uid\(\)\\s*and not coalesce\(p\\.is_blocked, false\)\\s*\)/);
+assert.match(opsSql, /create policy "admins purge recycle_bin" on public\\.recycle_bin\\s+for delete to authenticated using \(public\\.is_admin\(\)\);/);
 
 console.log(`ALL ${htmlPages.length} PAGES, BUNDLES, MANIFEST, AGGREGATOR, RBAC, SETTINGS, QR-BON, OPS-SUITE, 9-PRO-FEATURES, PHOTO-PROOF, LOSS-TOLERANCE, AND SECURITY CHECKS PASSED`);
