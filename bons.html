@@ -1397,49 +1397,68 @@ $("#verifyForm").onsubmit = e => {
 
 $("#startCamBtn").onclick = async () => {
   const statusEl = $("#verifyCamStatus");
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    statusEl.textContent = "المتصفح لا يدعم تشغيل الكاميرا هنا. يمكنك استخدام قارئ QR اليدوي أو رفع صورة QR.";
-    statusEl.style.color = "var(--bad)";
-    return;
-  }
   try {
-    statusEl.textContent = "جارٍ تشغيل الكاميرا...";
+    statusEl.textContent = "جارٍ تشغيل الكاميرا وتهيئة قارئ QR...";
     statusEl.style.color = "var(--mu)";
-    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
+    const [stream, decoderOk] = await Promise.all([
+      typeof window.openQrCameraStream === "function"
+        ? window.openQrCameraStream()
+        : navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false }),
+      typeof window.ensureQrDecoderReady === "function" ? window.ensureQrDecoderReady() : Promise.resolve(true)
+    ]);
+    camStream = stream;
     const video = $("#verifyVideo");
+    video.setAttribute("playsinline", "true");
+    video.muted = true;
     video.srcObject = camStream;
     await video.play();
     $("#verifyCamBox").hidden = false;
     $("#stopCamBtn").hidden = false;
     $("#startCamBtn").hidden = true;
-    statusEl.textContent = "وجّه الكاميرا نحو رمز QR الموجود على إذن الخروج...";
-    statusEl.style.color = "var(--pr)";
+    statusEl.textContent = decoderOk
+      ? "وجّه الكاميرا نحو رمز QR الموجود على إذن الخروج..."
+      : "تم فتح الكاميرا (تنبيه: تعذّر تحميل محرك قراءة QR دون إنترنت — يمكنك استخدام القارئ أو إدخال الرقم).";
+    statusEl.style.color = decoderOk ? "var(--pr)" : "var(--ac)";
 
     const canvas = $("#verifyCanvas");
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    const tick = () => {
+    let tickCount = 0;
+    let scanningBusy = false;
+    const tick = async () => {
       if (!camStream) return;
-      if (video.readyState >= 2 && video.videoWidth && video.videoHeight && ctx) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const decoded = typeof window.decodeQrFromImageData === "function"
-          ? window.decodeQrFromImageData(imgData.data, canvas.width, canvas.height)
-          : null;
-        if (decoded) {
-          stopGateCamera();
-          statusEl.textContent = "تمت قراءة رمز QR بنجاح ✓";
-          verifyBonCode(decoded);
-          return;
+      if (!scanningBusy && video.readyState >= 2 && video.videoWidth && video.videoHeight) {
+        scanningBusy = true;
+        try {
+          let decoded = null;
+          if (typeof window.decodeBonQrFromVideo === "function") {
+            decoded = await window.decodeBonQrFromVideo(video, canvas, tickCount++);
+          } else {
+            const ctx = canvas.getContext("2d", { willReadFrequently: true });
+            if (ctx) {
+              canvas.width = video.videoWidth;
+              canvas.height = video.videoHeight;
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+              const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              decoded = window.decodeQrFromImageData?.(imgData.data, canvas.width, canvas.height) || null;
+            }
+          }
+          if (decoded) {
+            stopGateCamera();
+            statusEl.textContent = "تمت قراءة رمز QR بنجاح ✓";
+            statusEl.style.color = "var(--pr)";
+            verifyBonCode(decoded);
+            return;
+          }
+        } catch (_) {
+        } finally {
+          scanningBusy = false;
         }
       }
-      camTimer = setTimeout(tick, 140);
+      if (camStream) camTimer = setTimeout(tick, 140);
     };
     tick();
   } catch (err) {
     stopGateCamera();
-    statusEl.textContent = "تعذّر فتح الكاميرا (قد تكون محجوبة في نافذة المعاينة). استخدم «فحص من صورة QR» أو قارئ QR اليدوي.";
+    statusEl.textContent = err?.message || "تعذّر فتح الكاميرا (قد تكون محجوبة في نافذة المعاينة). استخدم «فحص من صورة QR» أو قارئ QR اليدوي.";
     statusEl.style.color = "var(--bad)";
   }
 };
@@ -1455,10 +1474,12 @@ $("#verifyQrFile").onchange = async e => {
   e.target.value = "";
   if (!file) return;
   const statusEl = $("#verifyCamStatus");
+  statusEl.textContent = "جارٍ تحليل صورة رمز QR...";
+  statusEl.style.color = "var(--mu)";
   try {
-    const decoded = typeof window.decodeQrFromFile === "function"
-      ? await window.decodeQrFromFile(file)
-      : null;
+    const decoded = typeof window.decodeBonQrFromImageFile === "function"
+      ? await window.decodeBonQrFromImageFile(file)
+      : (typeof window.decodeQrFromFile === "function" ? await window.decodeQrFromFile(file) : null);
     if (!decoded) {
       statusEl.textContent = "لم يتم العثور على رمز QR واضح داخل هذه الصورة.";
       statusEl.style.color = "var(--bad)";
@@ -1468,6 +1489,8 @@ $("#verifyQrFile").onchange = async e => {
     statusEl.style.color = "var(--pr)";
     verifyBonCode(decoded);
   } catch (err) {
+    statusEl.textContent = err?.message || "تعذّر قراءة الصورة.";
+    statusEl.style.color = "var(--bad)";
     toast(err?.message || "تعذّر قراءة الصورة", 1);
   }
 };

@@ -566,4 +566,55 @@ assert.equal(
   `https://cclsmaps.github.io/gestionengrais/verify.html?bon=${longBon}`
 );
 
+// 15. Validate Farmer Card Camera Capture & Invoice Attachment
+assert.match(indexHtml, /openCardCamBtn/);
+assert.match(indexHtml, /snapCardCamBtn/);
+assert.match(indexHtml, /cardCamVideo/);
+assert.match(indexHtml, /cardPhotoInput/);
+assert.match(indexHtml, /cardPhotoModal/);
+assert.match(indexHtml, /farmer_card_photo/);
+assert.match(indexHtml, /compressCanvasToCardJpeg/);
+const setupSql = fs.readFileSync(path.join(ROOT, "supabase-setup.sql"), "utf8");
+assert.match(setupSql, /farmer_card_photo/);
+assert.match(opsSql, /farmer_card_photo/);
+assert.match(commonSrc, /ccls_invoice_card_photos_v1/);
+
+// 16. Validate Resilient Camera QR Decoder (BarcodeDetector + jsQR fallback without dist/)
+assert.equal(typeof commonSandbox.window.decodeBonQrFromVideo, "function");
+assert.equal(typeof commonSandbox.window.decodeBonQrFromImageFile, "function");
+assert.equal(typeof commonSandbox.window.openQrCameraStream, "function");
+assert.match(bonsHtml, /decodeBonQrFromVideo/);
+assert.match(bonsHtml, /openQrCameraStream/);
+const verifyHtml = fs.readFileSync(path.join(ROOT, "verify.html"), "utf8");
+assert.match(verifyHtml, /BarcodeDetector/);
+assert.match(verifyHtml, /openPubCameraStream/);
+
+// Test BarcodeDetector decoding directly from video element
+commonSandbox.window.BarcodeDetector = class FakeBarcodeDetector {
+  static async getSupportedFormats() { return ["qr_code"]; }
+  async detect() { return [{ rawValue: "https://cclsmaps.github.io/gestionengrais/verify.html?bon=1692" }]; }
+};
+const bdDecoded = await commonSandbox.window.decodeBonQrFromVideo({ readyState: 2, videoWidth: 1280, videoHeight: 720 }, null, 0);
+assert.equal(bdDecoded, "https://cclsmaps.github.io/gestionengrais/verify.html?bon=1692");
+
+// Test jsQR scaled canvas fallback when BarcodeDetector returns no hit
+commonSandbox.window.BarcodeDetector = class EmptyBarcodeDetector {
+  static async getSupportedFormats() { return ["qr_code"]; }
+  async detect() { return []; }
+};
+let seenScanSize = null;
+commonSandbox.window.jsQR = (data, w, h) => { seenScanSize = { w, h }; return { data: "BON:1692" }; };
+const fakeCanvas = {
+  width: 0,
+  height: 0,
+  getContext: () => ({
+    drawImage: () => {},
+    getImageData: (_x, _y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }),
+  }),
+};
+const scaledDecoded = await commonSandbox.window.decodeBonQrFromVideo({ readyState: 4, videoWidth: 1920, videoHeight: 1080 }, fakeCanvas, 0);
+assert.equal(scaledDecoded, "BON:1692");
+assert.equal(seenScanSize.w, 720);
+assert.equal(seenScanSize.h, 405);
+
 console.log(`ALL ${htmlPages.length} PAGES, BUNDLES, MANIFEST, AGGREGATOR, RBAC, SETTINGS, QR-BON, OPS-SUITE, 9-PRO-FEATURES, PHOTO-PROOF, LOSS-TOLERANCE, AND SECURITY CHECKS PASSED`);

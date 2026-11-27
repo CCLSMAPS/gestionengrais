@@ -10,6 +10,7 @@ const DEFAULT_LOW_STOCK = 5;
 const THEME_KEY = "ccls_theme";
 const APP_SETTINGS_KEY = "ccls_app_settings";
 const APP_VERSION = "2.4.0";
+const FARMER_CARD_PHOTOS_KEY = "ccls_invoice_card_photos_v1";
 
 const DEFAULT_APP_SETTINGS = {
   theme: "auto",
@@ -1600,7 +1601,7 @@ function startApp({ page, tabs, ready }) {
       "ccls_dossiers_2026_2027", "ccls_invoice_meta", "ccls_bons_2026_2027", "ccls_stock_in_expiry",
       "ccls_stock_adjustments_v1", "ccls_pickup_queue_v1", "ccls_farmer_notifications_v1",
       "ccls_warehouse_transfers_v1", "ccls_drivers_registry_v1", PRODUCT_LOSS_PCT_KEY, BON_PHOTOS_KEY,
-      RECYCLE_BIN_KEY, INVOICE_NOTES_KEY
+      FARMER_CARD_PHOTOS_KEY, RECYCLE_BIN_KEY, INVOICE_NOTES_KEY
     ];
     const data = {};
     keys.forEach(k => {
@@ -1629,7 +1630,7 @@ function startApp({ page, tabs, ready }) {
         "ccls_dossiers_2026_2027", "ccls_invoice_meta", "ccls_bons_2026_2027", "ccls_stock_in_expiry",
         "ccls_stock_adjustments_v1", "ccls_pickup_queue_v1", "ccls_farmer_notifications_v1",
         "ccls_warehouse_transfers_v1", "ccls_drivers_registry_v1", PRODUCT_LOSS_PCT_KEY, BON_PHOTOS_KEY,
-        RECYCLE_BIN_KEY, INVOICE_NOTES_KEY
+        FARMER_CARD_PHOTOS_KEY, RECYCLE_BIN_KEY, INVOICE_NOTES_KEY
       ]);
       Object.entries(parsed.data).forEach(([k, v]) => {
         if (allowedKeys.has(k) && typeof v === "string") localStorage.setItem(k, v);
@@ -1665,7 +1666,7 @@ function startApp({ page, tabs, ready }) {
       "ccls_dossiers_2026_2027", "ccls_invoice_meta", "ccls_bons_2026_2027", "ccls_stock_in_expiry",
       "ccls_stock_adjustments_v1", "ccls_pickup_queue_v1", "ccls_farmer_notifications_v1",
       "ccls_warehouse_transfers_v1", "ccls_drivers_registry_v1", PRODUCT_LOSS_PCT_KEY, BON_PHOTOS_KEY,
-      RECYCLE_BIN_KEY, INVOICE_NOTES_KEY
+      FARMER_CARD_PHOTOS_KEY, RECYCLE_BIN_KEY, INVOICE_NOTES_KEY
     ].forEach(k => {
       try { localStorage.removeItem(k); } catch (_) {}
     });
@@ -2118,6 +2119,193 @@ function startApp({ page, tabs, ready }) {
     return `<svg width="78" height="78" viewBox="0 0 ${full} ${full}" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="QR Code"><rect width="${full}" height="${full}" fill="#ffffff"/><path fill="#14221a" d="${paths.join("")}"/></svg>`;
   }
 
+  let qrDetectorPromise = null;
+  let qrDetectorCtor = null;
+  let jsQrLoadPromise = null;
+
+  async function getQrBarcodeDetector() {
+    if (typeof window.BarcodeDetector !== "function") return null;
+    if (!qrDetectorPromise || qrDetectorCtor !== window.BarcodeDetector) {
+      qrDetectorCtor = window.BarcodeDetector;
+      qrDetectorPromise = (async () => {
+        try {
+          if (typeof window.BarcodeDetector.getSupportedFormats === "function") {
+            const fmts = await window.BarcodeDetector.getSupportedFormats();
+            if (!Array.isArray(fmts) || !fmts.includes("qr_code")) return null;
+          }
+          return new window.BarcodeDetector({ formats: ["qr_code"] });
+        } catch (_) {
+          return null;
+        }
+      })();
+    }
+    return qrDetectorPromise;
+  }
+
+  function loadJsQrCdn() {
+    if (typeof window.decodeQrFromImageData === "function" || typeof window.jsQR === "function") {
+      return Promise.resolve(true);
+    }
+    if (jsQrLoadPromise) return jsQrLoadPromise;
+    if (typeof document === "undefined" || !document.head) return Promise.resolve(false);
+    jsQrLoadPromise = new Promise(resolve => {
+      let settled = false;
+      const done = ok => { if (!settled) { settled = true; resolve(ok); } };
+      const timer = setTimeout(() => done(false), 6000);
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js";
+      s.async = true;
+      s.onload = () => { clearTimeout(timer); done(typeof window.jsQR === "function"); };
+      s.onerror = () => { clearTimeout(timer); done(false); };
+      document.head.appendChild(s);
+    });
+    return jsQrLoadPromise;
+  }
+
+  async function ensureQrDecoderReady() {
+    const [det, hasJsQr] = await Promise.all([getQrBarcodeDetector(), loadJsQrCdn()]);
+    return Boolean(det || hasJsQr || typeof window.decodeQrFromImageData === "function");
+  }
+
+  function decodePixelsWithAvailableLib(data, w, h) {
+    if (!data || !w || !h) return null;
+    if (typeof window.decodeQrFromImageData === "function") {
+      const hit = window.decodeQrFromImageData(data, w, h);
+      if (hit) return hit;
+    }
+    if (typeof window.jsQR === "function") {
+      const hit = window.jsQR(data, w, h, { inversionAttempts: "attemptBoth" });
+      if (hit && hit.data) return hit.data;
+    }
+    return null;
+  }
+
+  async function decodeBonQrFromVideo(videoEl, canvasEl, frameTick = 0) {
+    if (!videoEl || videoEl.readyState < 2 || !videoEl.videoWidth || !videoEl.videoHeight) return null;
+
+    const det = await getQrBarcodeDetector();
+    if (det) {
+      try {
+        const hits = await det.detect(videoEl);
+        if (Array.isArray(hits) && hits[0]?.rawValue) return String(hits[0].rawValue).trim();
+      } catch (_) {}
+    }
+
+    if (typeof window.decodeQrFromImageData !== "function" && typeof window.jsQR !== "function") {
+      return null;
+    }
+
+    const canvas = canvasEl || document.createElement("canvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+
+    const vw = videoEl.videoWidth;
+    const vh = videoEl.videoHeight;
+    const useCrop = frameTick % 2 === 1 && Math.min(vw, vh) >= 360;
+    let sx = 0, sy = 0, sw = vw, sh = vh;
+    if (useCrop) {
+      const side = Math.round(Math.min(vw, vh) * 0.68);
+      sx = Math.round((vw - side) / 2);
+      sy = Math.round((vh - side) / 2);
+      sw = side;
+      sh = side;
+    }
+    const maxDim = 720;
+    const scale = Math.min(1, maxDim / Math.max(sw, sh));
+    const dw = Math.max(1, Math.round(sw * scale));
+    const dh = Math.max(1, Math.round(sh * scale));
+    canvas.width = dw;
+    canvas.height = dh;
+    ctx.drawImage(videoEl, sx, sy, sw, sh, 0, 0, dw, dh);
+    try {
+      const imgData = ctx.getImageData(0, 0, dw, dh);
+      return decodePixelsWithAvailableLib(imgData.data, dw, dh);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function decodeBonQrFromImageFile(file) {
+    if (!file) return null;
+    if (typeof window.decodeQrFromFile === "function") {
+      try {
+        const hit = await window.decodeQrFromFile(file);
+        if (hit) return hit;
+      } catch (_) {}
+    }
+    const det = await getQrBarcodeDetector();
+    if (det && typeof window.createImageBitmap === "function") {
+      try {
+        const bmp = await window.createImageBitmap(file);
+        try {
+          const hits = await det.detect(bmp);
+          if (Array.isArray(hits) && hits[0]?.rawValue) return String(hits[0].rawValue).trim();
+        } finally {
+          bmp.close?.();
+        }
+      } catch (_) {}
+    }
+    await loadJsQrCdn();
+    if (typeof window.decodeQrFromImageData !== "function" && typeof window.jsQR !== "function") {
+      return null;
+    }
+    const objUrl = URL.createObjectURL(file);
+    try {
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () => reject(new Error("تعذّر قراءة ملف الصورة"));
+        img.src = objUrl;
+      });
+      const maxDim = 1200;
+      const scale = Math.min(1, maxDim / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+      const w = Math.max(1, Math.round((img.naturalWidth || 1) * scale));
+      const h = Math.max(1, Math.round((img.naturalHeight || 1) * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return null;
+      ctx.drawImage(img, 0, 0, w, h);
+      const imgData = ctx.getImageData(0, 0, w, h);
+      return decodePixelsWithAvailableLib(imgData.data, w, h);
+    } finally {
+      URL.revokeObjectURL(objUrl);
+    }
+  }
+
+  async function openQrCameraStream() {
+    if (typeof window !== "undefined" && window.isSecureContext === false) {
+      throw new Error("تشغيل الكاميرا يتطلب فتح الموقع عبر HTTPS آمن.");
+    }
+    if (!navigator?.mediaDevices?.getUserMedia) {
+      throw new Error("المتصفح لا يدعم تشغيل الكاميرا هنا. يمكنك استخدام قارئ QR اليدوي أو رفع صورة QR.");
+    }
+    const attempts = [
+      { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+      { video: { facingMode: "environment" }, audio: false },
+      { video: true, audio: false }
+    ];
+    let lastErr = null;
+    for (const constraints of attempts) {
+      try {
+        return await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (err) {
+        lastErr = err;
+        if (err && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError" || err.name === "SecurityError")) {
+          break;
+        }
+      }
+    }
+    if (lastErr?.name === "NotAllowedError" || lastErr?.name === "PermissionDeniedError") {
+      throw new Error("تم رفض إذن الكاميرا. اسمح للكاميرا من أيقونة القفل في شريط المتصفح أو افتح الصفحة في نافذة مستقلة.");
+    }
+    if (lastErr?.name === "NotFoundError" || lastErr?.name === "DevicesNotFoundError") {
+      throw new Error("لم يتم العثور على كاميرا متصلة بهذا الجهاز. يمكنك استخدام قارئ QR أو رفع صورة.");
+    }
+    throw new Error("تعذّر فتح الكاميرا (قد تكون مستخدمة من تطبيق آخر أو محجوبة في نافذة المعاينة). استخدم «فحص من صورة QR».");
+  }
+
   if (typeof window.buildBonQrPayload !== "function") {
     window.buildBonQrPayload = buildBonQrPayloadFallback;
   }
@@ -2125,5 +2313,10 @@ function startApp({ page, tabs, ready }) {
     window.extractBonNoFromScan = extractBonNoFromScanFallback;
   }
   window.generateBonQrSvgFallback = generateBonQrSvgFallback;
+  window.ensureQrDecoderReady = ensureQrDecoderReady;
+  window.decodeBonQrFromVideo = decodeBonQrFromVideo;
+  window.decodeBonQrFromImageFile = decodeBonQrFromImageFile;
+  window.openQrCameraStream = openQrCameraStream;
 })();
+
 

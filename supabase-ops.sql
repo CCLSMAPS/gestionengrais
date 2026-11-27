@@ -263,6 +263,7 @@ grant execute on function public.verify_bon_public(text) to anon, authenticated;
 alter table public.products add column if not exists unit_price numeric default 0;
 alter table public.products add column if not exists normal_loss_pct numeric default 0;
 alter table public.stock_in add column if not exists unit_price numeric default 0;
+alter table public.invoices add column if not exists farmer_card_photo text;
 
 -- ============================================================
 -- 7) جدول التحويل بين المخازن وسجل الحركات

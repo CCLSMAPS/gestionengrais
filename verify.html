@@ -146,16 +146,89 @@ $("#pubVerifyForm").onsubmit = e => {
   runPublicVerify($("#pubVerifyInput").value);
 };
 
+let pubDetectorPromise = null;
+let pubJsQrPromise = null;
+
+async function getPubQrDetector() {
+  if (typeof window.BarcodeDetector !== "function") return null;
+  if (!pubDetectorPromise) {
+    pubDetectorPromise = (async () => {
+      try {
+        if (typeof window.BarcodeDetector.getSupportedFormats === "function") {
+          const fmts = await window.BarcodeDetector.getSupportedFormats();
+          if (!Array.isArray(fmts) || !fmts.includes("qr_code")) return null;
+        }
+        return new window.BarcodeDetector({ formats: ["qr_code"] });
+      } catch (_) {
+        return null;
+      }
+    })();
+  }
+  return pubDetectorPromise;
+}
+
+function loadPubJsQrCdn() {
+  if (typeof window.decodeQrFromImageData === "function" || typeof window.jsQR === "function") {
+    return Promise.resolve(true);
+  }
+  if (pubJsQrPromise) return pubJsQrPromise;
+  pubJsQrPromise = new Promise(resolve => {
+    let settled = false;
+    const done = ok => { if (!settled) { settled = true; resolve(ok); } };
+    const timer = setTimeout(() => done(false), 6000);
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js";
+    s.async = true;
+    s.onload = () => { clearTimeout(timer); done(typeof window.jsQR === "function"); };
+    s.onerror = () => { clearTimeout(timer); done(false); };
+    document.head.appendChild(s);
+  });
+  return pubJsQrPromise;
+}
+
+function decodePubPixels(data, w, h) {
+  if (typeof window.decodeQrFromImageData === "function") {
+    const hit = window.decodeQrFromImageData(data, w, h);
+    if (hit) return hit;
+  }
+  if (typeof window.jsQR === "function") {
+    const hit = window.jsQR(data, w, h, { inversionAttempts: "attemptBoth" });
+    if (hit?.data) return hit.data;
+  }
+  return null;
+}
+
+async function openPubCameraStream() {
+  if (window.isSecureContext === false) throw new Error("تشغيل الكاميرا يتطلب فتح الصفحة عبر HTTPS.");
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error("الكاميرا غير متاحة في هذا المتصفح؛ استخدم رفع صورة QR أو أدخل الرقم يدوياً.");
+  const attempts = [
+    { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+    { video: { facingMode: "environment" }, audio: false },
+    { video: true, audio: false }
+  ];
+  let lastErr = null;
+  for (const c of attempts) {
+    try { return await navigator.mediaDevices.getUserMedia(c); } catch (e) {
+      lastErr = e;
+      if (e && (e.name === "NotAllowedError" || e.name === "PermissionDeniedError")) break;
+    }
+  }
+  if (lastErr?.name === "NotAllowedError" || lastErr?.name === "PermissionDeniedError") {
+    throw new Error("تم رفض إذن الكاميرا. فعّله من إعدادات المتصفح أو استخدم رفع صورة QR.");
+  }
+  throw new Error("تعذّر فتح الكاميرا. يمكنك رفع صورة QR أو كتابة رقم الإذن.");
+}
+
 $("#pubStartCam").onclick = async () => {
   const statusEl = $("#pubCamStatus");
-  if (!navigator.mediaDevices?.getUserMedia) {
-    statusEl.textContent = "الكاميرا غير متاحة في هذا المتصفح؛ استخدم رفع صورة QR أو أدخل الرقم يدوياً.";
-    statusEl.style.color = "var(--bad)";
-    return;
-  }
   try {
-    pubStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
+    statusEl.textContent = "جارٍ تشغيل الكاميرا وتهيئة قارئ QR...";
+    statusEl.style.color = "var(--mu)";
+    const [stream] = await Promise.all([openPubCameraStream(), loadPubJsQrCdn(), getPubQrDetector()]);
+    pubStream = stream;
     const v = $("#pubVideo");
+    v.setAttribute("playsinline", "true");
+    v.muted = true;
     v.srcObject = pubStream;
     await v.play();
     $("#pubCamBox").hidden = false;
@@ -165,27 +238,53 @@ $("#pubStartCam").onclick = async () => {
     statusEl.style.color = "var(--pr)";
     const canvas = $("#pubCanvas");
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    const tick = () => {
+    let tickCount = 0;
+    let busy = false;
+    const tick = async () => {
       if (!pubStream) return;
-      if (v.readyState >= 2 && v.videoWidth && v.videoHeight && ctx) {
-        canvas.width = v.videoWidth;
-        canvas.height = v.videoHeight;
-        ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
-        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = window.decodeQrFromImageData?.(img.data, canvas.width, canvas.height);
-        if (code) {
-          stopPubCam();
-          statusEl.textContent = "تمت قراءة الرمز بنجاح ✓";
-          runPublicVerify(code);
-          return;
+      if (!busy && v.readyState >= 2 && v.videoWidth && v.videoHeight) {
+        busy = true;
+        try {
+          let code = null;
+          const det = await getPubQrDetector();
+          if (det) {
+            try {
+              const hits = await det.detect(v);
+              if (hits?.[0]?.rawValue) code = String(hits[0].rawValue).trim();
+            } catch (_) {}
+          }
+          if (!code && ctx && (typeof window.decodeQrFromImageData === "function" || typeof window.jsQR === "function")) {
+            const vw = v.videoWidth, vh = v.videoHeight;
+            const crop = (tickCount++ % 2 === 1) && Math.min(vw, vh) >= 360;
+            const side = crop ? Math.round(Math.min(vw, vh) * 0.68) : 0;
+            const sx = crop ? Math.round((vw - side) / 2) : 0;
+            const sy = crop ? Math.round((vh - side) / 2) : 0;
+            const sw = crop ? side : vw, sh = crop ? side : vh;
+            const scale = Math.min(1, 720 / Math.max(sw, sh));
+            canvas.width = Math.max(1, Math.round(sw * scale));
+            canvas.height = Math.max(1, Math.round(sh * scale));
+            ctx.drawImage(v, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+            const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            code = decodePubPixels(img.data, canvas.width, canvas.height);
+          }
+          if (code) {
+            stopPubCam();
+            statusEl.textContent = "تمت قراءة الرمز بنجاح ✓";
+            statusEl.style.color = "var(--pr)";
+            runPublicVerify(code);
+            return;
+          }
+        } catch (_) {
+        } finally {
+          busy = false;
         }
       }
-      pubTimer = setTimeout(tick, 140);
+      if (pubStream) pubTimer = setTimeout(tick, 140);
     };
     tick();
-  } catch (_) {
+  } catch (err) {
     stopPubCam();
-    statusEl.textContent = "تعذّر فتح الكاميرا. يمكنك رفع صورة QR أو كتابة رقم الإذن.";
+    statusEl.textContent = err?.message || "تعذّر فتح الكاميرا. يمكنك رفع صورة QR أو كتابة رقم الإذن.";
     statusEl.style.color = "var(--bad)";
   }
 };
@@ -199,7 +298,38 @@ $("#pubQrFile").onchange = async e => {
   const file = e.target.files?.[0];
   e.target.value = "";
   if (!file) return;
-  const code = await window.decodeQrFromFile?.(file).catch(() => null);
+  let code = await window.decodeQrFromFile?.(file).catch(() => null);
+  if (!code) {
+    const det = await getPubQrDetector();
+    if (det && typeof window.createImageBitmap === "function") {
+      try {
+        const bmp = await window.createImageBitmap(file);
+        try {
+          const hits = await det.detect(bmp);
+          if (hits?.[0]?.rawValue) code = String(hits[0].rawValue).trim();
+        } finally { bmp.close?.(); }
+      } catch (_) {}
+    }
+  }
+  if (!code) {
+    await loadPubJsQrCdn();
+    if (typeof window.jsQR === "function") {
+      const objUrl = URL.createObjectURL(file);
+      try {
+        const img = new Image();
+        await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = objUrl; });
+        const scale = Math.min(1, 1200 / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+        const c = $("#pubCanvas");
+        c.width = Math.max(1, Math.round((img.naturalWidth || 1) * scale));
+        c.height = Math.max(1, Math.round((img.naturalHeight || 1) * scale));
+        const ctx = c.getContext("2d", { willReadFrequently: true });
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, c.width, c.height);
+          code = decodePubPixels(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
+        }
+      } catch (_) {} finally { URL.revokeObjectURL(objUrl); }
+    }
+  }
   if (!code) {
     $("#pubCamStatus").textContent = "لم يتم العثور على رمز QR واضح في الصورة.";
     $("#pubCamStatus").style.color = "var(--bad)";

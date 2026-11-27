@@ -40,9 +40,10 @@ create policy "admin manage profiles" on public.profiles
 -- 5) عيّن أول مسؤول (بعد إنشاء حسابه من Authentication > Users)
 -- update public.profiles set role = 'admin' where email = 'admin@cclsadrar.com';
 
--- 6) أعمدة رقم بطاقة الفلاح ونوع المحصول لجدول الفواتير (للتحقق الفوري)
+-- 6) أعمدة رقم بطاقة الفلاح ونوع المحصول وصورة البطاقة لجدول الفواتير
 alter table public.invoices add column if not exists farmer_card_no text;
 alter table public.invoices add column if not exists culture text;
+alter table public.invoices add column if not exists farmer_card_photo text;
 
 -- 7) عمود تاريخ انتهاء صلاحية المنتج لجدول الوارد (stock_in)
 alter table public.stock_in add column if not exists expiry_date date;

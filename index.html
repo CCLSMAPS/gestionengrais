@@ -36,6 +36,41 @@
     <label>المنطقة (Région)<input name="region" list="zl"></label>
     <label>هاتف الفلاح<input name="phone" type="tel"></label>
     <label>ملاحظات<input name="notes"></label>
+    <div class="bon-photo-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <strong>صورة بطاقة الفلاح (مرفق الفاتورة)</strong>
+          <div style="font-size:.79rem;color:var(--mu)">افتح الكاميرا لالتقاط صورة واضحة لبطاقة الفلاح أو ارفع صورة محفوظة، وتُحفظ تلقائياً كمرفق مع الفاتورة.</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button type="button" class="p" id="openCardCamBtn">فتح الكاميرا لالتقاط البطاقة</button>
+          <label class="f" style="display:inline-flex;flex-direction:row;align-items:center;gap:6px;margin:0;cursor:pointer;padding:8px 14px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx);min-height:40px">
+            <span>رفع / اختيار صورة</span>
+            <input type="file" id="cardPhotoInput" accept="image/*" capture="environment" hidden>
+          </label>
+        </div>
+      </div>
+      <div id="cardCamStatus" style="font-size:.82rem;color:var(--mu)" hidden></div>
+      <div id="cardCamWrap" hidden>
+        <div class="verify-cam-box" style="max-width:420px">
+          <video id="cardCamVideo" playsinline muted></video>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <button type="button" class="p" id="snapCardCamBtn">التقاط الصورة وحفظها بالمرفق</button>
+          <button type="button" class="f btn-danger" id="closeCardCamBtn">إغلاق الكاميرا</button>
+        </div>
+      </div>
+      <div id="cardPhotoPreviewWrap" class="bon-photo-preview-row" hidden>
+        <img id="cardPhotoPreviewImg" class="bon-photo-preview-img" alt="معاينة بطاقة الفلاح">
+        <div style="display:grid;gap:6px">
+          <span id="cardPhotoInfo" style="font-size:.82rem;color:var(--pr);font-weight:700"></span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button type="button" class="f" id="viewCardPhotoBtn">تكبير المرفق</button>
+            <button type="button" class="f btn-danger" id="clearCardPhotoBtn">إزالة المرفق</button>
+          </div>
+        </div>
+      </div>
+    </div>
     <div id="lines" style="grid-column:1/-1;display:grid;gap:8px"></div>
     <button type="button" class="f" id="addLine" style="justify-self:start">+ إضافة منتج</button>
     <button class="p" id="submitInvBtn">حفظ الفاتورة</button>
@@ -204,6 +239,18 @@
 </div>
 </main>
 <div id="queuePrintArea" hidden></div>
+<div id="cardPhotoModal" class="sticky-modal-backdrop" hidden>
+  <div class="sticky-modal" role="dialog" aria-modal="true" aria-labelledby="cardPhotoModalTitle">
+    <div class="sticky-modal-head">
+      <div>
+        <strong id="cardPhotoModalTitle" style="font-size:1.05rem">مرفق الفاتورة — صورة بطاقة الفلاح</strong>
+        <div id="cardPhotoModalMeta" style="font-size:.84rem;color:var(--mu);margin-top:2px"></div>
+      </div>
+      <button type="button" class="f" id="closeCardPhotoModalBtn">إغلاق</button>
+    </div>
+    <div id="cardPhotoModalBody" style="margin-top:12px;display:grid;gap:10px"></div>
+  </div>
+</div>
 <div id="toast" role="status"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="common.js"></script>
@@ -395,11 +442,265 @@ function saveInvMeta(invoiceNo, invoiceYear, meta) {
   } catch (_) {}
 }
 
+const INV_CARD_PHOTOS_KEY = "ccls_invoice_card_photos_v1";
+let pendingCardPhoto = "";
+let cardCamStream = null;
+let remoteCardPhotosById = new Map();
+
+function isSafeCardPhotoUrl(raw) {
+  return typeof raw === "string" && /^data:image\/(?:jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/i.test(raw.trim());
+}
+
+function readCardPhotoMap() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(INV_CARD_PHOTOS_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveCardPhotoLocal(invNo, invYear, invIds, dataUrl) {
+  const key = invNo && invYear ? `${String(invNo).trim()}|${invYear}` : "";
+  const idList = Array.isArray(invIds) ? invIds : (invIds != null ? [invIds] : []);
+  const map = readCardPhotoMap();
+  if (isSafeCardPhotoUrl(dataUrl)) {
+    const entry = { photo: dataUrl.trim(), savedAt: new Date().toISOString() };
+    if (key) map[key] = entry;
+    idList.forEach(id => {
+      if (id != null) {
+        map[`id:${id}`] = entry;
+        remoteCardPhotosById.set(String(id), entry.photo);
+      }
+    });
+  } else {
+    if (key) delete map[key];
+    idList.forEach(id => {
+      if (id != null) {
+        delete map[`id:${id}`];
+        remoteCardPhotosById.delete(String(id));
+      }
+    });
+  }
+  try {
+    localStorage.setItem(INV_CARD_PHOTOS_KEY, JSON.stringify(map));
+  } catch (_) {}
+}
+
+function getCardPhotoForInvoice(row) {
+  if (!row) return "";
+  if (isSafeCardPhotoUrl(row.farmer_card_photo)) return row.farmer_card_photo.trim();
+  const byRemote = row.id != null ? remoteCardPhotosById.get(String(row.id)) : "";
+  if (isSafeCardPhotoUrl(byRemote)) return byRemote.trim();
+  const map = readCardPhotoMap();
+  const byId = row.id != null ? map[`id:${row.id}`] : null;
+  if (byId && isSafeCardPhotoUrl(byId.photo)) return byId.photo.trim();
+  const invKey = row.invoice_no && row.invoice_year ? `${String(row.invoice_no).trim()}|${row.invoice_year}` : "";
+  const byInv = invKey ? map[invKey] : null;
+  if (byInv && isSafeCardPhotoUrl(byInv.photo)) return byInv.photo.trim();
+  return "";
+}
+
+function setPendingCardPhoto(dataUrl) {
+  pendingCardPhoto = isSafeCardPhotoUrl(dataUrl) ? dataUrl.trim() : "";
+  const wrap = $("#cardPhotoPreviewWrap");
+  const img = $("#cardPhotoPreviewImg");
+  const info = $("#cardPhotoInfo");
+  if (pendingCardPhoto && wrap && img) {
+    img.src = pendingCardPhoto;
+    const kb = Math.max(1, Math.round((pendingCardPhoto.length * 0.75) / 1024));
+    if (info) info.textContent = `بطاقة الفلاح مرفقة وجاهزة للحفظ (~${kb} KB) ✓`;
+    wrap.hidden = false;
+  } else if (wrap && img) {
+    img.removeAttribute("src");
+    if (info) info.textContent = "";
+    wrap.hidden = true;
+  }
+}
+
+function stopCardCamera() {
+  if (cardCamStream) {
+    cardCamStream.getTracks().forEach(t => t.stop());
+    cardCamStream = null;
+  }
+  const v = $("#cardCamVideo");
+  if (v) v.srcObject = null;
+  if ($("#cardCamWrap")) $("#cardCamWrap").hidden = true;
+  if ($("#openCardCamBtn")) $("#openCardCamBtn").hidden = false;
+}
+
+function compressCanvasToCardJpeg(canvasEl, srcW, srcH) {
+  const maxDim = 1100;
+  const scale = Math.min(1, maxDim / Math.max(srcW || 1, srcH || 1));
+  const w = Math.max(1, Math.round((srcW || 1) * scale));
+  const h = Math.max(1, Math.round((srcH || 1) * scale));
+  const out = document.createElement("canvas");
+  out.width = w;
+  out.height = h;
+  const ctx = out.getContext("2d");
+  if (!ctx) throw new Error("تعذّر معالجة الصورة في المتصفح");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(canvasEl, 0, 0, w, h);
+  let dataUrl = out.toDataURL("image/jpeg", 0.8);
+  if (dataUrl.length > 420000) dataUrl = out.toDataURL("image/jpeg", 0.62);
+  if (!isSafeCardPhotoUrl(dataUrl)) throw new Error("صيغة الصورة غير صالحة");
+  return dataUrl;
+}
+
+async function compressCardPhotoFile(file) {
+  if (!file || !String(file.type || "").startsWith("image/")) {
+    throw new Error("يرجى اختيار ملف صورة صالح (JPG / PNG / WebP)");
+  }
+  const objUrl = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error("تعذّر قراءة الصورة"));
+      img.src = objUrl;
+    });
+    return compressCanvasToCardJpeg(img, img.naturalWidth || 1, img.naturalHeight || 1);
+  } finally {
+    URL.revokeObjectURL(objUrl);
+  }
+}
+
+function openCardPhotoModal(inv, overridePhoto) {
+  const photo = overridePhoto && isSafeCardPhotoUrl(overridePhoto) ? overridePhoto : getCardPhotoForInvoice(inv);
+  const modal = $("#cardPhotoModal");
+  const metaEl = $("#cardPhotoModalMeta");
+  const bodyEl = $("#cardPhotoModalBody");
+  if (!modal || !bodyEl) return;
+  const farmerLabel = inv ? `${inv.client_name || ""} ${inv.farmer_name || ""}`.trim() : "";
+  const invLabel = inv?.invoice_no ? `فاتورة ${inv.invoice_no}/${inv.invoice_year || ""}` : "معاينة قبل الحفظ";
+  if (metaEl) {
+    metaEl.textContent = [
+      invLabel,
+      farmerLabel ? `الفلاح: ${farmerLabel}` : "",
+      inv?.farmer_card_no ? `رقم البطاقة: ${inv.farmer_card_no}` : ""
+    ].filter(Boolean).join(" · ");
+  }
+  if (photo) {
+    bodyEl.innerHTML = `
+      <img src="${photo}" class="bon-evidence-img" alt="صورة بطاقة الفلاح">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:.82rem;color:var(--mu)">مرفق رسمي محفوظ مع الفاتورة</span>
+        <a class="f" href="${photo}" download="carte-fellah-${esc(inv?.invoice_no || "preview")}.jpg" style="text-decoration:none">تحميل الصورة</a>
+      </div>`;
+  } else {
+    bodyEl.innerHTML = `<p class="empty-state">لا توجد صورة بطاقة فلاح مرفقة بهذه الفاتورة.</p>`;
+  }
+  modal.hidden = false;
+}
+
+$("#closeCardPhotoModalBtn")?.addEventListener("click", () => { $("#cardPhotoModal").hidden = true; });
+$("#cardPhotoModal")?.addEventListener("click", e => {
+  if (e.target === $("#cardPhotoModal")) $("#cardPhotoModal").hidden = true;
+});
+
+$("#openCardCamBtn")?.addEventListener("click", async () => {
+  const statusEl = $("#cardCamStatus");
+  if (!navigator.mediaDevices?.getUserMedia) {
+    if (statusEl) {
+      statusEl.hidden = false;
+      statusEl.style.color = "var(--bad)";
+      statusEl.textContent = "الكاميرا المباشرة غير متاحة في هذا المتصفح؛ استخدم زر «رفع / اختيار صورة» لالتقاطها أو إرفاقها.";
+    }
+    return toast("الكاميرا غير مدعومة، استخدم زر رفع/اختيار صورة", 1);
+  }
+  try {
+    stopCardCamera();
+    if (statusEl) {
+      statusEl.hidden = false;
+      statusEl.style.color = "var(--pr)";
+      statusEl.textContent = "جارٍ تشغيل الكاميرا... وجّه بطاقة الفلاح داخل الإطار ثم اضغط «التقاط الصورة».";
+    }
+    cardCamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
+    const v = $("#cardCamVideo");
+    v.srcObject = cardCamStream;
+    await v.play();
+    $("#cardCamWrap").hidden = false;
+    $("#openCardCamBtn").hidden = true;
+  } catch (err) {
+    stopCardCamera();
+    if (statusEl) {
+      statusEl.hidden = false;
+      statusEl.style.color = "var(--bad)";
+      statusEl.textContent = "تعذّر الوصول إلى الكاميرا (تحقق من إذن الكاميرا بالمتصفح أو استخدم زر رفع الصورة).";
+    }
+    toast("تعذّر فتح الكاميرا", 1);
+  }
+});
+
+$("#snapCardCamBtn")?.addEventListener("click", () => {
+  const v = $("#cardCamVideo");
+  if (!v || !cardCamStream || !v.videoWidth || !v.videoHeight) {
+    return toast("انتظر ثانية حتى تستقر صورة الكاميرا ثم حاول مجدداً", 1);
+  }
+  try {
+    const dataUrl = compressCanvasToCardJpeg(v, v.videoWidth, v.videoHeight);
+    setPendingCardPhoto(dataUrl);
+    stopCardCamera();
+    if ($("#cardCamStatus")) {
+      $("#cardCamStatus").hidden = false;
+      $("#cardCamStatus").style.color = "var(--pr)";
+      $("#cardCamStatus").textContent = "تم التقاط صورة بطاقة الفلاح بنجاح ✓ وستُحفظ مع الفاتورة.";
+    }
+    toast("تم التقاط صورة بطاقة الفلاح ✓");
+  } catch (err) {
+    toast(err?.message || "تعذّر التقاط الصورة", 1);
+  }
+});
+
+$("#closeCardCamBtn")?.addEventListener("click", () => {
+  stopCardCamera();
+  if ($("#cardCamStatus")) $("#cardCamStatus").hidden = true;
+});
+
+$("#cardPhotoInput")?.addEventListener("change", async e => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) return;
+  try {
+    const dataUrl = await compressCardPhotoFile(file);
+    setPendingCardPhoto(dataUrl);
+    stopCardCamera();
+    if ($("#cardCamStatus")) {
+      $("#cardCamStatus").hidden = false;
+      $("#cardCamStatus").style.color = "var(--pr)";
+      $("#cardCamStatus").textContent = "تم إرفاق صورة بطاقة الفلاح بنجاح ✓";
+    }
+    toast("تم تجهيز صورة بطاقة الفلاح للحفظ ✓");
+  } catch (err) {
+    toast(err?.message || "تعذّر تحميل صورة البطاقة", 1);
+  }
+});
+
+$("#viewCardPhotoBtn")?.addEventListener("click", () => {
+  if (!pendingCardPhoto) return;
+  openCardPhotoModal({
+    invoice_no: $("#fi [name=invoice_no]")?.value || "",
+    invoice_year: $("#fi [name=invoice_year]")?.value || "",
+    client_name: $("#fi [name=client_name]")?.value || "",
+    farmer_name: $("#fi [name=farmer_name]")?.value || "",
+    farmer_card_no: $("#fi [name=farmer_card_no]")?.value || ""
+  }, pendingCardPhoto);
+});
+
+$("#clearCardPhotoBtn")?.addEventListener("click", () => {
+  setPendingCardPhoto("");
+  if ($("#cardCamStatus")) $("#cardCamStatus").hidden = true;
+});
+
 let editingInvId = null;
 let recentInvoices = [];
 
 function cancelInvoiceEdit() {
   editingInvId = null;
+  stopCardCamera();
+  setPendingCardPhoto("");
+  if ($("#cardCamStatus")) $("#cardCamStatus").hidden = true;
   $("#iEditBanner").hidden = true;
   $("#addLine").hidden = false;
   $("#fi").reset();
@@ -451,6 +752,10 @@ async function startEditInvoice(id) {
   fillWh(wSel, pName);
   if (src.warehouse_id != null) wSel.value = String(src.warehouse_id);
 
+  stopCardCamera();
+  setPendingCardPhoto(getCardPhotoForInvoice(src));
+  if ($("#cardCamStatus")) $("#cardCamStatus").hidden = true;
+
   $("#submitInvBtn").textContent = "حفظ التعديل";
   scheduleInvoiceValidation(true);
   $("#invoices").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -460,6 +765,21 @@ async function loadRecentInvoices() {
   const { data, error } = await sb.from("invoice_balance").select("*").order("id", { ascending: false }).limit(80);
   if (error) return;
   recentInvoices = data || [];
+  try {
+    const { data: photoRows, error: photoErr } = await sb
+      .from("invoices")
+      .select("id, invoice_no, invoice_year, farmer_card_photo")
+      .not("farmer_card_photo", "is", null)
+      .order("id", { ascending: false })
+      .limit(120);
+    if (!photoErr && Array.isArray(photoRows)) {
+      photoRows.forEach(p => {
+        if (isSafeCardPhotoUrl(p.farmer_card_photo)) {
+          remoteCardPhotosById.set(String(p.id), p.farmer_card_photo.trim());
+        }
+      });
+    }
+  } catch (_) {}
   drawRecentInvoices();
 }
 
@@ -472,25 +792,44 @@ function drawRecentInvoices() {
     return !q || hay.includes(q);
   });
   $("#iT").innerHTML = tbl(
-    ["رقم الفاتورة", "التاريخ", "الفلاح", "المنتج", "الكمية", "المتبقي", "المخزن", "إجراءات"],
-    rows.map(i => [
-      `<b>${esc(i.invoice_no)}/${esc(i.invoice_year)}</b>`,
-      esc(i.invoice_date || "-"),
-      esc(`${i.client_name || ""} ${i.farmer_name || ""}`.trim()),
-      esc(i.product_name),
-      n(i.qty),
-      `<b>${n(i.remaining)}</b>`,
-      esc(i.warehouse || "-"),
-      `<div class="action-group">
-        <button type="button" class="f" data-inv-notes="${esc(i.id)}">ملاحظات</button>
-        <button type="button" class="f" data-edit-i="${esc(i.id)}">تعديل</button>
-        <button type="button" class="f btn-danger" data-del-i="${esc(i.id)}">حذف</button>
-      </div>`
-    ])
+    ["رقم الفاتورة", "التاريخ", "الفلاح", "المنتج", "الكمية", "المتبقي", "المخزن", "بطاقة الفلاح", "إجراءات"],
+    rows.map(i => {
+      const cardPhoto = getCardPhotoForInvoice(i);
+      const cardCell = cardPhoto
+        ? `<button type="button" class="f" data-card-photo="${esc(i.id)}" style="display:inline-flex;align-items:center;gap:6px;padding:4px 8px">
+            <img src="${cardPhoto}" class="bon-photo-thumb" alt="بطاقة الفلاح">
+            <span>عرض البطاقة</span>
+          </button>`
+        : `<span style="color:var(--mu);font-size:.82rem">—</span>`;
+      return [
+        `<b>${esc(i.invoice_no)}/${esc(i.invoice_year)}</b>`,
+        esc(i.invoice_date || "-"),
+        esc(`${i.client_name || ""} ${i.farmer_name || ""}`.trim()),
+        esc(i.product_name),
+        n(i.qty),
+        `<b>${n(i.remaining)}</b>`,
+        esc(i.warehouse || "-"),
+        cardCell,
+        `<div class="action-group">
+          <button type="button" class="f" data-inv-notes="${esc(i.id)}">ملاحظات</button>
+          <button type="button" class="f" data-edit-i="${esc(i.id)}">تعديل</button>
+          <button type="button" class="f btn-danger" data-del-i="${esc(i.id)}">حذف</button>
+        </div>`
+      ];
+    })
   );
 }
 $("#iq").oninput = drawRecentInvoices;
 $("#iT").onclick = async e => {
+  const cardBtn = e.target.closest("[data-card-photo]");
+  if (cardBtn) {
+    const inv = recentInvoices.find(x => String(x.id) === cardBtn.dataset.cardPhoto);
+    if (inv) {
+      const meta = resolveInvoiceMeta(inv, readInvMeta());
+      openCardPhotoModal({ ...inv, farmer_card_no: meta.farmer_card_no });
+    }
+    return;
+  }
   const noteBtn = e.target.closest("[data-inv-notes]");
   if (noteBtn) {
     const inv = recentInvoices.find(x => String(x.id) === noteBtn.dataset.invNotes);
@@ -543,6 +882,7 @@ $("#fi").onsubmit = async e => {
   for (const k in f) if (f[k] === "") f[k] = null;
   if (f.farmer_card_no) f.farmer_card_no = f.farmer_card_no.trim().toUpperCase();
   if (f.culture) f.culture = f.culture.trim().replace(/\s+/g, " ").toUpperCase();
+  const cardPhotoVal = isSafeCardPhotoUrl(pendingCardPhoto) ? pendingCardPhoto.trim() : null;
   try {
     if (editingInvId != null) {
       const d = $("#lines").children[0];
@@ -551,18 +891,28 @@ $("#fi").onsubmit = async e => {
       const w = d.querySelector("[data-w]");
       const payload = {
         ...f,
+        farmer_card_photo: cardPhotoVal,
         product_id: await productId(d.querySelector("[data-p]").value),
         qty: qLine,
         unit_price: d.querySelector("[data-u]").value || null,
         warehouse_id: w.value || null,
         warehouse: w.value ? w.selectedOptions[0].text : null
       };
-      let { error } = await sb.from("invoices").update(payload).eq("id", editingInvId);
+      let currentPayload = { ...payload };
+      let { error } = await sb.from("invoices").update(currentPayload).eq("id", editingInvId);
       let missingCols = false;
-      if (error && /(farmer_card_no|culture)/i.test(error.message || "")) {
-        missingCols = true;
-        const { farmer_card_no, culture, ...fallbackPayload } = payload;
-        const retry = await sb.from("invoices").update(fallbackPayload).eq("id", editingInvId);
+      let missingPhotoCol = false;
+      for (let attempt = 0; attempt < 2 && error && /(farmer_card_no|culture|farmer_card_photo)/i.test(error.message || ""); attempt++) {
+        if (/farmer_card_photo/i.test(error.message || "")) {
+          missingPhotoCol = true;
+          delete currentPayload.farmer_card_photo;
+        }
+        if (/(farmer_card_no|culture)/i.test(error.message || "")) {
+          missingCols = true;
+          delete currentPayload.farmer_card_no;
+          delete currentPayload.culture;
+        }
+        const retry = await sb.from("invoices").update(currentPayload).eq("id", editingInvId);
         error = retry.error;
       }
       if (error) throw error;
@@ -572,8 +922,13 @@ $("#fi").onsubmit = async e => {
           culture: f.culture || ""
         });
       }
+      saveCardPhotoLocal(f.invoice_no, f.invoice_year, [editingInvId], cardPhotoVal);
       invalidateInvYearCache(f.invoice_year);
-      toast(missingCols ? "تم تعديل الفاتورة (بعض الحقول محفوظة محلياً)" : "تم تعديل الفاتورة");
+      toast(missingPhotoCol && cardPhotoVal
+        ? "تم تعديل الفاتورة (الصورة حُفظت محلياً — نفّذ supabase-setup.sql لحفظها سحابياً)"
+        : missingCols
+        ? "تم تعديل الفاتورة (بعض الحقول محفوظة محلياً)"
+        : "تم تعديل الفاتورة");
       cancelInvoiceEdit();
       loadProducts();
       loadRecentInvoices();
@@ -585,15 +940,33 @@ $("#fi").onsubmit = async e => {
       const w = d.querySelector("[data-w]");
       const qLine = Number(d.querySelector("[data-q]").value);
       if (!Number.isFinite(qLine) || qLine <= 0) return toast("أدخل كمية صالحة أكبر من الصفر لكل منتج", 1);
-      rows.push({ ...f, product_id: await productId(d.querySelector("[data-p]").value), qty: qLine,
-        unit_price: d.querySelector("[data-u]").value || null, warehouse_id: w.value || null, warehouse: w.value ? w.selectedOptions[0].text : null });
+      rows.push({
+        ...f,
+        ...(cardPhotoVal ? { farmer_card_photo: cardPhotoVal } : {}),
+        product_id: await productId(d.querySelector("[data-p]").value),
+        qty: qLine,
+        unit_price: d.querySelector("[data-u]").value || null,
+        warehouse_id: w.value || null,
+        warehouse: w.value ? w.selectedOptions[0].text : null
+      });
     }
-    let { error } = await sb.from("invoices").insert(rows);
+    let currentRows = rows.map(r => ({ ...r }));
+    let { data: insData, error } = await sb.from("invoices").insert(currentRows).select("id");
     let missingCols = false;
-    if (error && /(farmer_card_no|culture)/i.test(error.message || "")) {
-      missingCols = true;
-      const fallbackRows = rows.map(({ farmer_card_no, culture, ...rest }) => rest);
-      const retry = await sb.from("invoices").insert(fallbackRows);
+    let missingPhotoCol = false;
+    for (let attempt = 0; attempt < 2 && error && /(farmer_card_no|culture|farmer_card_photo)/i.test(error.message || ""); attempt++) {
+      const stripPhoto = /farmer_card_photo/i.test(error.message || "");
+      const stripMeta = /(farmer_card_no|culture)/i.test(error.message || "");
+      if (stripPhoto) missingPhotoCol = true;
+      if (stripMeta) missingCols = true;
+      currentRows = currentRows.map(r => {
+        const copy = { ...r };
+        if (stripPhoto) delete copy.farmer_card_photo;
+        if (stripMeta) { delete copy.farmer_card_no; delete copy.culture; }
+        return copy;
+      });
+      const retry = await sb.from("invoices").insert(currentRows).select("id");
+      insData = retry.data;
       error = retry.error;
     }
     if (error) throw error;
@@ -603,8 +976,12 @@ $("#fi").onsubmit = async e => {
         culture: f.culture || ""
       });
     }
+    const insertedIds = Array.isArray(insData) ? insData.map(r => r.id) : [];
+    if (cardPhotoVal) saveCardPhotoLocal(f.invoice_no, f.invoice_year, insertedIds, cardPhotoVal);
     invalidateInvYearCache(f.invoice_year);
-    toast(missingCols
+    toast(missingPhotoCol && cardPhotoVal
+      ? `تم حفظ الفاتورة (${rows.length} منتج) والصورة حُفظت محلياً — نفّذ supabase-setup.sql لحفظها سحابياً`
+      : missingCols
       ? `تم حفظ الفاتورة (${rows.length} منتج)؛ نفّذ supabase-setup.sql لإضافة حقول البطاقة والمحصول في جدول الفواتير`
       : `تم حفظ الفاتورة (${rows.length} منتج)`);
     if (typeof showInvoiceNotifyPrompt === "function") {
@@ -617,6 +994,9 @@ $("#fi").onsubmit = async e => {
         warehouse: rows[0]?.warehouse || ""
       });
     }
+    stopCardCamera();
+    setPendingCardPhoto("");
+    if ($("#cardCamStatus")) $("#cardCamStatus").hidden = true;
     e.target.reset(); $("#lines").innerHTML = ""; addLine(); init2(); loadProducts(); loadRecentInvoices();
     $("#cardDupWarn").hidden = true; $("#nameDupWarn").hidden = true;
   } catch (x) { toast(x.code === "23505" ? "منتج مكرر في الفاتورة أو رقم الفاتورة مسجّل بهذا المنتج من قبل" : x.message, 1); }
@@ -1957,6 +2337,10 @@ startApp({
     syncFeatureVisibility();
     loadDossierAutofill();
     loadRecentInvoices();
+    document.querySelectorAll("nav button").forEach(btn => {
+      if (btn.dataset.t !== "invoices") btn.addEventListener("click", stopCardCamera);
+    });
+    $("#out")?.addEventListener("click", stopCardCamera);
   }
 });
 </script>
