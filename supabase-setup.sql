@@ -10,7 +10,8 @@ alter table public.profiles drop constraint if exists profiles_role_check;
 
 -- 3) دوال مساعدة آمنة (SECURITY DEFINER مع search_path فارغ لمنع التلاعب بالمخطط)
 create or replace function public.is_admin() returns boolean
-language sql stable security definer set search_path = '' as $active_user$$
+language sql stable security definer set search_path = ''
+as $function$
   select exists (
     select 1 from public.profiles p
     where p.user_id = auth.uid()
@@ -20,17 +21,18 @@ language sql stable security definer set search_path = '' as $active_user$$
       )
       and not coalesce(p.is_blocked, false)
   );
-$$;
+$function$;
 
 create or replace function public.is_active_user() returns boolean
-language sql stable security definer set search_path = '' as '
+language sql stable security definer set search_path = ''
+as $function$
   select auth.uid() is not null
     and exists (
       select 1 from public.profiles p
       where p.user_id = auth.uid()
         and not coalesce(p.is_blocked, false)
     );
-';
+$function$;
 
 -- Enforce the same explicit permissions used by the UI at the database boundary.
 create or replace function public.has_app_permission(p_perm_code text) returns boolean

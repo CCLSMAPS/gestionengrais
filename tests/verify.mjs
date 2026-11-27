@@ -662,6 +662,9 @@ assert.doesNotMatch(serverSrc, /display_name: safeStr\(t\?\.display_name \|\| t\
 assert.ok(setupSql.replace(/\s+/g, " ").includes("and exists ( select 1 from public.profiles p where p.user_id = auth.uid() and not coalesce(p.is_blocked, false) )"), "active users must have a non-blocked profile");
 assert.ok(opsSql.includes('for delete to authenticated using (public.is_admin());'), "recycle-bin purge must be admin-only");
 assert.match(setupSql, /create or replace function public\.has_app_permission/);
+assert.match(setupSql, /create or replace function public\.is_admin\(\)[\s\S]*?as \$function\$/);
+assert.match(setupSql, /create or replace function public\.is_active_user\(\)[\s\S]*?as \$function\$/);
+assert.doesNotMatch(setupSql, /\$active_user\$\$/);
 assert.match(opsSql, /permission insert gate_visitors/);
 assert.match(opsSql, /public\.has_app_permission\('page:gate'\)/);
 assert.match(opsSql, /permission insert pickup_appointments/);
