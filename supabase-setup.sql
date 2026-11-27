@@ -23,14 +23,14 @@ language sql stable security definer set search_path = '' as $$
 $$;
 
 create or replace function public.is_active_user() returns boolean
-language sql stable security definer set search_path = '' as $$
+language sql stable security definer set search_path = '' as $
   select auth.uid() is not null
-    and not exists (
+    and exists (
       select 1 from public.profiles p
       where p.user_id = auth.uid()
-        and coalesce(p.is_blocked, false)
+        and not coalesce(p.is_blocked, false)
     );
-$$;
+$;
 
 -- 4) المسؤول يقرأ وينشئ ويعدّل كل الملفات الشخصية
 drop policy if exists "admin manage profiles" on public.profiles;
