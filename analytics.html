@@ -733,6 +733,10 @@ function scheduleDirectorSnapshotSync(adjTotals, valuationRes, kpiRes) {
   }, 500);
 }
 
+function isPaginationSafetyCapError(error) {
+  return /الحد الآمن|safety cap/i.test(String(error?.message || error || ""));
+}
+
 async function fetchWithdrawalsWithContext() {
   const richSelect = "id, w_date, qty, invoice_id, invoices(id, invoice_no, invoice_year, dossier_no, farmer_card_no, farmer_name, client_name, culture, region, unit_price, product_id, warehouse_id, products(name))";
   try {
@@ -821,18 +825,21 @@ async function fetchProductsSafe() {
     if (typeof saveProductLossPctMap === "function") saveProductLossPctMap(full.data);
     return full;
   } catch (fullError) {
+    if (isPaginationSafetyCapError(fullError)) throw fullError;
     try {
       const rich = { data: await fetchAllRows(() => sb.from("products").select("id, name, unit_price").order("name").order("id")), error: null };
       const map = typeof readProductLossPctMap === "function" ? readProductLossPctMap() : {};
       rich.data = rich.data.map(p => ({ ...p, normal_loss_pct: typeof getProductNormalLossPct === "function" ? getProductNormalLossPct(p, map) : 0 }));
       return rich;
     } catch (richError) {
+      if (isPaginationSafetyCapError(richError)) throw richError;
       try {
         const basic = { data: await fetchAllRows(() => sb.from("products").select("id, name").order("name").order("id")), error: null };
         const map = typeof readProductLossPctMap === "function" ? readProductLossPctMap() : {};
         basic.data = basic.data.map(p => ({ ...p, normal_loss_pct: typeof getProductNormalLossPct === "function" ? getProductNormalLossPct(p, map) : 0 }));
         return basic;
       } catch (error) {
+        if (isPaginationSafetyCapError(error)) throw error;
         return { data: null, error: error || richError || fullError };
       }
     }
@@ -877,7 +884,7 @@ async function loadDashboardData(forceReload = false) {
     RAW_ADJUSTMENTS = [];
     try {
       RAW_ADJUSTMENTS = await fetchAllRows(() => sb.from("stock_adjustments").select("*").order("id"));
-    } catch (_) {}
+    } catch (error) { if (isPaginationSafetyCapError(error)) throw error; }
     if (!RAW_ADJUSTMENTS.length) {
       try { RAW_ADJUSTMENTS = JSON.parse(localStorage.getItem("ccls_stock_adjustments_v1") || "[]") || []; } catch (_) {}
     }
@@ -885,7 +892,7 @@ async function loadDashboardData(forceReload = false) {
     RAW_TRANSFERS = [];
     try {
       RAW_TRANSFERS = await fetchAllRows(() => sb.from("warehouse_transfers").select("*").order("id"));
-    } catch (_) {}
+    } catch (error) { if (isPaginationSafetyCapError(error)) throw error; }
     if (!RAW_TRANSFERS.length) {
       try { RAW_TRANSFERS = JSON.parse(localStorage.getItem("ccls_warehouse_transfers_v1") || "[]") || []; } catch (_) {}
     }
@@ -926,7 +933,7 @@ async function loadDashboardData(forceReload = false) {
     try {
       const saData = await fetchAllRows(() => sb.from("stock_analysis").select("*").order("name").order("warehouse"));
       if (Array.isArray(saData) && saData.length) RAW_STOCK_ANALYSIS = saData;
-    } catch (_) {}
+    } catch (error) { if (isPaginationSafetyCapError(error)) throw error; }
     if (!RAW_STOCK_ANALYSIS.length && (RAW_STOCK_IN.length || RAW_WITHDRAWALS.length)) {
       RAW_STOCK_ANALYSIS = computeStockFallback(RAW_STOCK_IN, RAW_WITHDRAWALS, RAW_WAREHOUSES);
     }
@@ -966,10 +973,11 @@ async function loadDashboardData(forceReload = false) {
     let dossierRows = typeof readLocalDossiers === "function" ? readLocalDossiers() : [];
     try {
       const { data: dData, error: dErr } = await fetchDossiersSafe();
+      if (dErr && isPaginationSafetyCapError(dErr)) throw dErr;
       if (!dErr && Array.isArray(dData) && dData.length) {
         dossierRows = dData;
       }
-    } catch (_) {}
+    } catch (error) { if (isPaginationSafetyCapError(error)) throw error; }
     const greenSeedRows = typeof GREEN_SEED_FARMERS !== "undefined" && Array.isArray(GREEN_SEED_FARMERS)
       ? GREEN_SEED_FARMERS
       : [];

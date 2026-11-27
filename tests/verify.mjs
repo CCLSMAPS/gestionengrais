@@ -380,6 +380,8 @@ assert.match(usersHtml, /sessionsSec/);
 assert.match(analyticsHtml, /dashKpiSec/);
 assert.match(analyticsHtml, /dashValuationSec/);
 assert.match(analyticsHtml, /dashYoYSec/);
+assert.match(analyticsHtml, /isPaginationSafetyCapError/);
+assert.match(analyticsHtml, /if \(isPaginationSafetyCapError\(error\)\) throw error/);
 
 const directorHtml = fs.readFileSync(path.join(ROOT, "director.html"), "utf8");
 assert.match(directorHtml, /dirValuationSec/);
