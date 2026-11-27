@@ -576,8 +576,8 @@ assert.match(indexHtml, /cardPhotoModal/);
 assert.match(indexHtml, /farmer_card_photo/);
 assert.match(indexHtml, /compressCanvasToCardJpeg/);
 const setupSql = fs.readFileSync(path.join(ROOT, "supabase-setup.sql"), "utf8");
-assert.match(setupSql, /farmer_card_photo/);
-assert.match(opsSql, /farmer_card_photo/);
+assert.ok(setupSql.includes("and exists (\n    select 1 from public.profiles p\n    where p.user_id = auth.uid()\n      and not coalesce(p.is_blocked, false)\n    )"), "active users must have a non-blocked profile");
+assert.ok(opsSql.includes('for delete to authenticated using (public.is_admin());'), "recycle-bin purge must be admin-only");
 assert.match(commonSrc, /ccls_invoice_card_photos_v1/);
 
 // 16. Validate Resilient Camera QR Decoder (BarcodeDetector + jsQR fallback without dist/)
