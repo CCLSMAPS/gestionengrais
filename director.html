@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>عرض المدير المباشر (قراءة فقط) - CCLS ADRAR</title>
+<meta name="description" content="واجهة عرض مباشرة للمدير فقط (قراءة بلا تعديل) لمتابعة أرصدة المخزون واستهلاك المحاصيل من الهاتف.">
+<meta name="theme-color" content="#175236">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif">
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<header>
+  <div style="display:flex;gap:10px;align-items:center">
+    <img src="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif" alt="CCLS ADRAR" style="height:34px;width:34px;border-radius:6px;object-fit:contain;background:#fff;border:1px solid var(--bd)" onerror="this.style.display='none'">
+    <h1>عرض المدير المباشر (قراءة فقط)</h1>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span id="dirModeMeta" style="font-size:.82rem;color:var(--mu)"></span>
+    <button type="button" class="f" id="dirRefreshBtn" hidden>تحديث الآن</button>
+    <button type="button" class="f" id="dirLogoutBtn" hidden>خروج</button>
+  </div>
+</header>
+<main style="max-width:980px;margin:0 auto;padding:18px 14px 40px">
+  <div id="dirAuthBox" class="box" hidden style="max-width:420px;margin:28px auto">
+    <div class="login-brand">
+      <img src="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif" alt="CCLS ADRAR" onerror="this.style.display='none'">
+      <h2>متابعة المدير (قراءة فقط)</h2>
+      <p>استعمل رابط العرض الموقّع أو سجّل الدخول بحساب متابعة</p>
+    </div>
+    <div id="dirTokenErr" class="alert-bad" hidden></div>
+    <form id="dirLoginForm" style="grid-template-columns:1fr">
+      <label>اسم المستخدم<input name="email" required autocomplete="username" placeholder="مثال: director"></label>
+      <label>كلمة المرور<input name="password" type="password" required></label>
+      <button class="p">دخول للعرض فقط</button>
+    </form>
+  </div>
+
+  <div id="dirContent" hidden>
+    <section>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--bd)">
+        <div>
+          <h2 style="margin:0;padding:0;border:0" id="dirOrgTitle">المؤشرات الحية للمخزون</h2>
+          <span id="dirUpdated" style="font-size:.82rem;color:var(--mu)">وضع القراءة فقط — لا تتوفر أي أزرار تعديل أو حذف</span>
+        </div>
+        <span style="font-size:.82rem;color:var(--pr);font-weight:700">قراءة فقط · مباشر</span>
+      </div>
+      <div class="cards" id="dirCards"></div>
+      <div class="cards" id="dirKpiCards" style="margin-top:8px"></div>
+      <div id="dirAdjBanner" class="info" hidden></div>
+    </section>
+
+    <section id="dirValuationSec" hidden>
+      <h2>تطور قيمة المخزون بالدينار عبر الأشهر</h2>
+      <div class="w" id="dirValuationTbl"></div>
+    </section>
+
+    <section>
+      <h2>توزيع استهلاك الأسمدة حسب المحصول</h2>
+      <div class="w" id="dirCropTbl"></div>
+    </section>
+
+    <section>
+      <h2>الأرصدة المتبقية حسب المخزن والسماد</h2>
+      <div class="w" id="dirStockTbl"></div>
+    </section>
+  </div>
+</main>
+<div id="toast" role="status"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="common.js"></script>
+<script>
+const dtToken = new URLSearchParams(window.location.search).get("dt") || "";
+let refreshTimer = null;
+let dirLiveChannel = null;
+
+function renderDirectorView(snap, sourceLabel) {
+  if (!snap) return;
+  $("#dirAuthBox").hidden = true;
+  $("#dirContent").hidden = false;
+  $("#dirRefreshBtn").hidden = false;
+
+  const unit = snap.unitLabel || "قنطار";
+  $("#dirOrgTitle").textContent = snap.orgName || "المؤشرات الحية للمخزون";
+  const ts = snap.updatedAt ? new Date(snap.updatedAt).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : "";
+  $("#dirUpdated").textContent = `وضع القراءة فقط · ${sourceLabel}${ts ? " · آخر تحديث: " + ts : ""}`;
+
+  const cards = snap.cards || [];
+  $("#dirCards").innerHTML = cards.length
+    ? cards.map(c => `<div class="card"><b>${esc(c.value)}</b><span>${esc(c.label)}</span></div>`).join("")
+    : `<p class="empty-state">بانتظار مزامنة البيانات المباشرة من لوحة التحكم...</p>`;
+
+  const kpi = snap.kpiStats;
+  const kpiCards = [];
+  if (Number.isFinite(Number(snap.totalStockValueDzd))) {
+    kpiCards.push({ label: "قيمة المخزون الحالية بالدينار", value: `${n(snap.totalStockValueDzd || 0)} دج` });
+  }
+  if (kpi) {
+    kpiCards.push({
+      label: `متوسط زمن معالجة الملف (${kpi.processedDossiersCount || 0} ملف)`,
+      value: `${n(kpi.avgProcessingDays || 0)} يوم`
+    });
+    kpiCards.push({
+      label: `الفلاحون المخدومون يومياً (اليوم: ${kpi.farmersToday || 0})`,
+      value: `${n(kpi.avgFarmersPerDay || 0)} فلاح/يوم`
+    });
+    kpiCards.push({
+      label: "إجمالي الفلاحين المخدومين",
+      value: `${kpi.totalFarmersServed || 0} فلاح`
+    });
+  }
+  $("#dirKpiCards").innerHTML = kpiCards
+    .map(c => `<div class="card"><b>${esc(c.value)}</b><span>${esc(c.label)}</span></div>`)
+    .join("");
+
+  const valMonthly = snap.stockValuationMonthly || [];
+  if (valMonthly.length) {
+    $("#dirValuationSec").hidden = false;
+    $("#dirValuationTbl").innerHTML = tbl(
+      ["الشهر", `الرصيد التراكمي (${unit})`, "قيمة المخزون التراكمية (دج)"],
+      valMonthly.map(m => [
+        `<b>${esc(m.label || m.month)}</b>`,
+        n(m.qtyBalance || 0),
+        `<b>${n(m.valueDzd || 0)} دج</b>`
+      ])
+    );
+  } else {
+    $("#dirValuationSec").hidden = true;
+  }
+
+  const adj = snap.adjustments;
+  if (adj && (adj.count > 0 || adj.damagedQty > 0 || adj.lostQty > 0 || adj.returnedQty > 0)) {
+    $("#dirAdjBanner").hidden = false;
+    $("#dirAdjBanner").innerHTML = `<strong>تسويات الجرد (التالف والضائع والمرتجع):</strong> التالف: <b>${n(adj.damagedQty)} ${esc(unit)}</b> · الضائع: <b>${n(adj.lostQty)} ${esc(unit)}</b> · المرتجع: <b>${n(adj.returnedQty)} ${esc(unit)}</b> · القيمة الإجمالية: <b>${n(adj.totalAmountDzd)} دج</b>`;
+  } else {
+    $("#dirAdjBanner").hidden = true;
+  }
+
+  const crops = snap.crops || [];
+  $("#dirCropTbl").innerHTML = tbl(
+    ["المحصول", `المفوتر (${unit})`, `المسحوب (${unit})`, `المتبقي (${unit})`, "السماد الأبرز"],
+    crops.map(r => [
+      `<b>${esc(r.culture)}</b>`,
+      n(r.invoicedQty || 0),
+      `<b>${n(r.withdrawnQty || 0)}</b>`,
+      n(r.remainingQty || 0),
+      esc(r.topProduct || "—")
+    ])
+  );
+
+  const threshold = Number(snap.threshold ?? 5);
+  const stock = snap.stock || [];
+  $("#dirStockTbl").innerHTML = tbl(
+    ["السماد", "المخزن", `الوارد (${unit})`, `المسحوب (${unit})`, `المتبقي (${unit})`, "الحالة"],
+    stock.map(s => {
+      const bal = Number(s.balance || 0);
+      const state = bal <= 0
+        ? `<span class="tag-bad">نفد</span>`
+        : bal < threshold
+        ? `<span class="tag-warn">منخفض</span>`
+        : `<span style="color:var(--pr);font-weight:700">متوفر ✓</span>`;
+      return [
+        `<b>${esc(s.name)}</b>`,
+        esc(s.warehouse || "—"),
+        n(s.received || 0),
+        n(s.withdrawn || 0),
+        `<b>${n(bal)}</b>`,
+        state
+      ];
+    })
+  );
+}
+
+async function loadFromSignedToken() {
+  const resp = await fetch(`/api/director-summary?dt=${encodeURIComponent(dtToken)}`, { cache: "no-store" });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok || !body?.ok) {
+    $("#dirContent").hidden = true;
+    $("#dirAuthBox").hidden = false;
+    $("#dirTokenErr").hidden = false;
+    $("#dirTokenErr").textContent = body?.error || "رابط العرض غير صالح أو منتهي الصلاحية.";
+    return false;
+  }
+  const srcText = body.mode === "live_db" ? "اتصال مباشر بقاعدة البيانات" : "مزامنة مباشرة من النظام";
+  $("#dirModeMeta").textContent = "رابط عرض للمدير (قراءة فقط)";
+  renderDirectorView(body.data, srcText);
+  return true;
+}
+
+async function loadFromSupabaseAuth() {
+  const [invRes, stockRes, adjRes, stockInRes, wRes, dosRes] = await Promise.all([
+    sb.from("invoice_balance").select("id, qty, taken, remaining, culture, product_name, unit_price, dossier_no, farmer_name, client_name").limit(2000),
+    sb.from("stock_analysis").select("wid, name, warehouse, received, withdrawn, balance").order("name"),
+    sb.from("stock_adjustments").select("adjustment_type, qty, amount_dzd, product_name, warehouse_id").limit(1000),
+    sb.from("stock_in").select("entry_date, qty, products(name)").order("entry_date", { ascending: true }).limit(2000),
+    sb.from("withdrawals").select("w_date, qty, invoice_id, invoices(dossier_no, farmer_name, client_name, unit_price, products(name))").order("w_date", { ascending: true }).limit(2000),
+    sb.from("dossier_receptions").select("dossier_no, farmer_name, reception_date").limit(2000)
+  ]);
+  if (invRes.error && stockRes.error) {
+    toast(invRes.error.message || "تعذّر تحميل المؤشرات", 1);
+    return;
+  }
+  const invoices = invRes.data || [];
+  let stock = stockRes.data || [];
+  const adjs = !adjRes.error && Array.isArray(adjRes.data) ? adjRes.data : [];
+  const stockIn = !stockInRes.error && Array.isArray(stockInRes.data) ? stockInRes.data : [];
+  const withdrawals = !wRes.error && Array.isArray(wRes.data) ? wRes.data : [];
+  const dossiers = !dosRes.error && Array.isArray(dosRes.data) ? dosRes.data : [];
+
+  // Weighted average unit price per product
+  const priceAcc = new Map();
+  invoices.forEach(inv => {
+    const pName = String(inv.product_name || "").trim().toUpperCase();
+    const up = Number(inv.unit_price || 0);
+    const q = Number(inv.qty || 1);
+    if (pName && up > 0) {
+      const cur = priceAcc.get(pName) || { sum: 0, w: 0 };
+      cur.sum += up * (q > 0 ? q : 1);
+      cur.w += q > 0 ? q : 1;
+      priceAcc.set(pName, cur);
+    }
+  });
+  const priceOf = name => {
+    const entry = priceAcc.get(String(name || "").trim().toUpperCase());
+    return entry && entry.w > 0 ? entry.sum / entry.w : 0;
+  };
+
+  let transfers = [];
+  try {
+    const trRes = await sb.from("warehouse_transfers").select("from_warehouse_id, to_warehouse_id, to_warehouse_name, product_name, qty").limit(500);
+    if (!trRes.error && Array.isArray(trRes.data)) transfers = trRes.data;
+  } catch (_) {}
+  if (!transfers.length) {
+    try { transfers = JSON.parse(localStorage.getItem("ccls_warehouse_transfers_v1") || "[]") || []; } catch (_) {}
+  }
+
+  const trDelta = new Map();
+  transfers.forEach(t => {
+    const q = Number(t.qty || 0);
+    const pU = String(t.product_name || "").trim().toUpperCase();
+    if (!(q > 0) || !pU) return;
+    if (t.from_warehouse_id != null) trDelta.set(`${t.from_warehouse_id}|${pU}`, (trDelta.get(`${t.from_warehouse_id}|${pU}`) || 0) - q);
+    if (t.to_warehouse_id != null) trDelta.set(`${t.to_warehouse_id}|${pU}`, (trDelta.get(`${t.to_warehouse_id}|${pU}`) || 0) + q);
+  });
+  stock = stock.map(r => {
+    const k = `${r.wid || ""}|${String(r.name || "").trim().toUpperCase()}`;
+    return { ...r, balance: Number((Number(r.balance || 0) + (trDelta.get(k) || 0)).toFixed(2)) };
+  });
+
+  const totalStock = stock.reduce((s, r) => s + Number(r.balance || 0), 0);
+  const totalStockValueDzd = stock.reduce((s, r) => s + Math.max(0, Number(r.balance || 0)) * priceOf(r.name), 0);
+  const totalWithdrawn = invoices.reduce((s, r) => s + Number(r.taken || 0), 0);
+  const totalRem = invoices.reduce((s, r) => s + Number(r.remaining || 0), 0);
+  const activeCount = invoices.filter(r => Number(r.remaining || 0) > 0).length;
+
+  // Monthly stock valuation progression
+  const mDeltas = new Map();
+  stockIn.forEach(r => {
+    const ym = String(r.entry_date || "").slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(ym)) return;
+    const q = Number(r.qty || 0);
+    const cur = mDeltas.get(ym) || { dq: 0, dv: 0 };
+    cur.dq += q;
+    cur.dv += q * priceOf(r.products?.name);
+    mDeltas.set(ym, cur);
+  });
+  withdrawals.forEach(w => {
+    const ym = String(w.w_date || "").slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(ym)) return;
+    const q = Number(w.qty || 0);
+    const up = Number(w.invoices?.unit_price || 0) || priceOf(w.invoices?.products?.name);
+    const cur = mDeltas.get(ym) || { dq: 0, dv: 0 };
+    cur.dq -= q;
+    cur.dv -= q * up;
+    mDeltas.set(ym, cur);
+  });
+  let rQ = 0, rV = 0;
+  const stockValuationMonthly = [...mDeltas.keys()].sort().map(ym => {
+    const d = mDeltas.get(ym);
+    rQ = Math.max(0, rQ + d.dq);
+    rV = Math.max(0, rV + d.dv);
+    return { month: ym, label: ym, qtyBalance: Number(rQ.toFixed(2)), valueDzd: Number(rV.toFixed(2)) };
+  });
+
+  // KPI metrics
+  const dosDateByNo = new Map();
+  dossiers.forEach(d => {
+    if (d.dossier_no && d.reception_date) dosDateByNo.set(String(d.dossier_no).trim().toUpperCase(), d.reception_date);
+  });
+  const firstWByInv = new Map();
+  const farmersPerDay = new Map();
+  const allFarmers = new Set();
+  const todayStr = new Date().toISOString().slice(0, 10);
+  withdrawals.forEach(w => {
+    if (w.invoice_id && w.w_date) {
+      const k = String(w.invoice_id);
+      if (!firstWByInv.has(k) || w.w_date < firstWByInv.get(k)) firstWByInv.set(k, w.w_date);
+    }
+    const fKey = String(`${w.invoices?.client_name || ""} ${w.invoices?.farmer_name || ""}`).trim().toUpperCase() || String(w.invoice_id || "");
+    if (w.w_date && fKey) {
+      if (!farmersPerDay.has(w.w_date)) farmersPerDay.set(w.w_date, new Set());
+      farmersPerDay.get(w.w_date).add(fKey);
+      allFarmers.add(fKey);
+    }
+  });
+  let sumDays = 0, procCount = 0;
+  invoices.forEach(inv => {
+    const firstW = firstWByInv.get(String(inv.id));
+    const recDate = inv.dossier_no ? dosDateByNo.get(String(inv.dossier_no).trim().toUpperCase()) : "";
+    if (firstW && recDate) {
+      const diff = (new Date(firstW).getTime() - new Date(recDate).getTime()) / 86400000;
+      if (Number.isFinite(diff) && diff >= 0 && diff <= 365) { sumDays += diff; procCount += 1; }
+    }
+  });
+  const dayCounts = [...farmersPerDay.values()].map(s => s.size);
+  const kpiStats = {
+    avgProcessingDays: procCount ? Number((sumDays / procCount).toFixed(1)) : 0,
+    processedDossiersCount: procCount,
+    farmersToday: farmersPerDay.get(todayStr)?.size || 0,
+    avgFarmersPerDay: dayCounts.length ? Number((dayCounts.reduce((a, b) => a + b, 0) / dayCounts.length).toFixed(1)) : 0,
+    totalFarmersServed: allFarmers.size
+  };
+
+  const cropMap = new Map();
+  invoices.forEach(r => {
+    const c = String(r.culture || "غير مصنف").trim() || "غير مصنف";
+    const cur = cropMap.get(c) || { culture: c, invoicedQty: 0, withdrawnQty: 0, remainingQty: 0, topProduct: r.product_name || "—" };
+    cur.invoicedQty += Number(r.qty || 0);
+    cur.withdrawnQty += Number(r.taken || 0);
+    cur.remainingQty += Number(r.remaining || 0);
+    cropMap.set(c, cur);
+  });
+
+  let damagedQty = 0, lostQty = 0, returnedQty = 0, totalAmountDzd = 0;
+  adjs.forEach(a => {
+    const q = Number(a.qty || 0);
+    totalAmountDzd += Number(a.amount_dzd || 0);
+    if (a.adjustment_type === "damaged") damagedQty += q;
+    else if (a.adjustment_type === "lost") lostQty += q;
+    else returnedQty += q;
+  });
+
+  const cfg = getAppSettings();
+  renderDirectorView({
+    orgName: cfg.orgName,
+    unitLabel: cfg.unitLabel,
+    threshold: cfg.threshold,
+    updatedAt: new Date().toISOString(),
+    totalStockValueDzd,
+    cards: [
+      { label: "الرصيد المتبقي بالمخازن", value: `${n(totalStock)} ${cfg.unitLabel}` },
+      { label: "الكميات المسحوبة", value: `${n(totalWithdrawn)} ${cfg.unitLabel}` },
+      { label: "المتبقي من الفواتير", value: `${n(totalRem)} ${cfg.unitLabel}` },
+      { label: "فواتير قيد السحب", value: String(activeCount) }
+    ],
+    crops: [...cropMap.values()].sort((a, b) => b.withdrawnQty - a.withdrawnQty),
+    stock,
+    stockValuationMonthly,
+    kpiStats,
+    adjustments: { damagedQty, lostQty, returnedQty, totalAmountDzd, count: adjs.length }
+  }, "حساب متابعة مباشر");
+}
+
+$("#dirRefreshBtn").onclick = () => {
+  if (dtToken) loadFromSignedToken();
+  else loadFromSupabaseAuth();
+};
+
+$("#dirLogoutBtn").onclick = () => sb.auth.signOut();
+
+$("#dirLoginForm").onsubmit = async e => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  let user = String(f.get("email") || "").trim().toLowerCase();
+  if (!user.includes("@")) user += "@" + EMAIL_DOMAIN;
+  const { error } = await sb.auth.signInWithPassword({ email: user, password: String(f.get("password") || "") });
+  if (error) toast("تعذّر الدخول: " + error.message, 1);
+};
+
+if (dtToken) {
+  loadFromSignedToken().then(ok => {
+    if (ok) {
+      clearInterval(refreshTimer);
+      refreshTimer = setInterval(loadFromSignedToken, 20000);
+    }
+  });
+} else {
+  sb.auth.onAuthStateChange((_, s) => {
+    $("#dirLogoutBtn").hidden = !s;
+    if (!s) {
+      $("#dirContent").hidden = true;
+      $("#dirAuthBox").hidden = false;
+      $("#dirRefreshBtn").hidden = true;
+      return;
+    }
+    $("#dirModeMeta").textContent = s.user?.email?.split("@")[0] || "مدير";
+    loadFromSupabaseAuth();
+    if (!dirLiveChannel && typeof sb?.channel === "function") {
+      dirLiveChannel = sb.channel("director-live-ro")
+        .on("postgres_changes", { event: "*", schema: "public", table: "invoices" }, loadFromSupabaseAuth)
+        .on("postgres_changes", { event: "*", schema: "public", table: "withdrawals" }, loadFromSupabaseAuth)
+        .on("postgres_changes", { event: "*", schema: "public", table: "stock_in" }, loadFromSupabaseAuth)
+        .subscribe();
+    }
+  });
+}
+</script>
+</body>
+</html>

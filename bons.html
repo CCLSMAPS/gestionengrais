@@ -4,19 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>أذون الخروج (Bon de sortie) - تسيير مخزون الأسمدة</title>
+<meta name="description" content="إصدار وطباعة أذون خروج الأسمدة ومتابعة حركة الشحنات.">
+<meta name="theme-color" content="#175236">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif">
 <link rel="stylesheet" href="common.css">
 </head>
 <body>
 <header>
   <div style="display:flex;gap:10px;align-items:center">
-    <button class="p" id="menu" aria-label="القائمة" style="background:var(--ac);color:#1d2b22">☰</button>
+    <button class="f" id="menu" aria-label="القائمة">☰</button>
     <h1>أذون الخروج ومتابعة الأسمدة (Bon de sortie)</h1>
   </div>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-    <span id="links" style="display:flex;gap:6px;flex-wrap:wrap"></span>
-    <span id="who" style="font-size:.85rem"></span>
-    <button class="p" id="pwb" hidden style="background:var(--ac);color:#1d2b22">كلمة المرور</button>
-    <button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button>
+    <span id="links" style="display:flex;gap:4px;flex-wrap:wrap"></span>
+    <span id="who"></span>
+    <button class="f" id="pwb" hidden>الإعدادات</button>
+    <button class="f" id="out" hidden>خروج</button>
   </div>
 </header>
 <main>
@@ -37,12 +41,12 @@
     <form id="fb">
       <label>رقم إذن الخروج (BON N°)<input name="bon_no" required autocomplete="off"></label>
       <label>التاريخ (DATE)<input name="sortie_date" type="date" required></label>
-      <label>رقم الفاتورة (N° FACTURE)<input name="invoice_no" autocomplete="off"></label>
+      <label>رقم الفاتورة (N° FACTURE)<input name="invoice_no" autocomplete="off"><div id="bonInvWarn" class="field-alert" hidden></div></label>
       <label>الموسم (CAMP)<input name="camp" value="2025/2026" required></label>
       <label>الفلاح / المستفيد (AGRICULTEUR)<input name="farmer_name" list="bfl" required autocomplete="off"></label>
       <label>رقم بطاقة الفلاح (N° CARTE FELLAH)<input name="carte_fellah" autocomplete="off"></label>
       <label>المنطقة (ZONE)<input name="zone" list="bzl" autocomplete="off"></label>
-      <label>اسم السائق (NOM DE CHAUFFEUR)<input name="driver_name" required autocomplete="off"></label>
+      <label>اسم السائق (NOM DE CHAUFFEUR)<input name="driver_name" list="bdl" required autocomplete="off"></label>
       <label>ترقيم الشاحنة (IMMATRICULATION)<input name="truck_no" required autocomplete="off" placeholder="1128-517-16"></label>
       <div id="bonLines" style="grid-column:1/-1;display:grid;gap:8px"></div>
       <button type="button" class="f" id="addBonLine" style="justify-self:start">+ إضافة مادة أخرى (حتى 4)</button>
@@ -54,13 +58,71 @@
   <div id="bonPreviewBox" style="margin-top:16px" hidden>
     <div class="no-print" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
       <strong>معاينة إذن الخروج (BON DE SORTIE)</strong>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <label style="flex-direction:row;align-items:center;gap:6px;margin:0;font-size:.84rem">
+          <span>صيغة الطباعة:</span>
+          <select id="bonFormatSelect" style="min-height:36px;padding:4px 10px;width:auto">
+            <option value="a4">صفحة كاملة (A4)</option>
+            <option value="half">نصف صفحة (A5 / نصف A4)</option>
+            <option value="2up">نصف صفحة × 2 (نسختان للقص على A4)</option>
+          </select>
+        </label>
         <button type="button" class="p" id="printBonBtn">طباعة إذن الخروج</button>
-        <button type="button" class="p" id="pdfBonBtn" style="background:var(--ac);color:#1d2b22">تحميل الإذن PDF</button>
+        <button type="button" class="f" id="pdfBonBtn">تحميل الإذن PDF</button>
+        <button type="button" class="f" id="verifyFromPreviewBtn">فحص عند البوابة (QR)</button>
         <button type="button" class="f" id="hideBonBtn">إخفاء</button>
       </div>
     </div>
     <div id="bonPrintArea"></div>
+  </div>
+</section>
+
+<section id="verifySec" hidden>
+  <div class="no-print">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <h2 style="margin:0;padding:0;border:0">التحقق من إذن الخروج عند بوابة المخزن (QR)</h2>
+      <span id="verifyDbBadge" style="font-size:.82rem;color:var(--mu)"></span>
+    </div>
+
+    <div class="verify-scanner-grid">
+      <div class="verify-panel">
+        <h3 style="margin-top:0">مسح بالقارئ أو إدخال رقم الإذن</h3>
+        <form id="verifyForm" style="grid-template-columns:1fr auto;gap:8px;align-items:end">
+          <label style="margin:0">رقم الإذن أو رابط QR الممسوح
+            <input id="verifyInput" placeholder="امسح رمز QR بالقارئ أو أدخل رقم الإذن (مثال: 1691)" autocomplete="off">
+          </label>
+          <button type="submit" class="p" id="verifyCheckBtn">تحقق الآن</button>
+        </form>
+        <div style="font-size:.8rem;color:var(--mu);margin-top:8px">
+          يدعم الإدخال المباشر، قارئ الباركود/QR اليدوي (USB)، أو مسح الرمز بكاميرا الهاتف لفتح رابط التحقق مباشرة.
+        </div>
+      </div>
+
+      <div class="verify-panel">
+        <h3 style="margin-top:0">المسح بالكاميرا أو صورة QR</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button type="button" class="p" id="startCamBtn">تشغيل الكاميرا للمسح</button>
+          <button type="button" class="f btn-danger" id="stopCamBtn" hidden>إيقاف الكاميرا</button>
+          <label class="f" style="display:inline-flex;flex-direction:row;align-items:center;gap:6px;margin:0;cursor:pointer;padding:9px 14px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx);min-height:42px">
+            <span>فحص من صورة QR</span>
+            <input type="file" id="verifyQrFile" accept="image/*" hidden>
+          </label>
+        </div>
+        <div id="verifyCamStatus" style="font-size:.81rem;color:var(--mu);margin-top:8px"></div>
+        <div id="verifyCamBox" class="verify-cam-box" hidden>
+          <video id="verifyVideo" playsinline muted></video>
+        </div>
+        <canvas id="verifyCanvas" hidden></canvas>
+      </div>
+    </div>
+
+    <div id="verifyResultBox" hidden></div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:16px 0 8px">
+      <h3 style="margin:0">سجل عمليات التحقق وخروج الشحنات من البوابة</h3>
+      <button type="button" class="f" id="clearGateLogBtn">مسح السجل المحلي</button>
+    </div>
+    <div class="w" id="verifyLogTable"></div>
   </div>
 </section>
 
@@ -85,6 +147,7 @@
 <datalist id="bfl"></datalist>
 <datalist id="bzl"></datalist>
 <datalist id="bpl"></datalist>
+<datalist id="bdl"></datalist>
 </div>
 </main>
 <div id="etatPrintReport" hidden></div>
@@ -98,6 +161,97 @@
 let BONS = [];
 let hasRemoteBons = false;
 let currentBonNo = "";
+let currentPreviewHeader = null;
+let currentPreviewLines = [];
+const BON_FORMAT_KEY = "ccls_bon_print_format";
+const GATE_CHECKS_KEY = "ccls_gate_verifications_v1";
+let pendingUrlVerify = new URLSearchParams(window.location.search).get("verify") || new URLSearchParams(window.location.search).get("bon") || "";
+let camStream = null;
+let camTimer = null;
+let lastVerifiedBonNo = "";
+
+async function syncPublicBonRegistry(rows) {
+  try {
+    if (!Array.isArray(rows) || !rows.length || typeof sb?.auth?.getSession !== "function") return;
+    const sess = await sb.auth.getSession();
+    const token = sess?.data?.session?.access_token;
+    if (!token) return;
+    const safeRows = rows.slice(-400).map(r => ({
+      bon_no: r.bon_no,
+      sortie_date: r.sortie_date,
+      camp: r.camp || "2025/2026",
+      designation: r.designation,
+      qty: Number(r.qty || 0)
+    }));
+    await fetch("/api/public/bon-register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({ bons: safeRows })
+    });
+  } catch (_) {}
+}
+
+let bonInvTimer = null;
+async function checkBonInvoiceRemaining(rawInvNo, formLines, editingBonNo = "") {
+  const warnBox = $("#bonInvWarn");
+  const invRaw = String(rawInvNo || "").trim();
+  if (!invRaw) {
+    if (warnBox) { warnBox.hidden = true; warnBox.innerHTML = ""; }
+    return { blocked: false };
+  }
+  const [invPart, yearPart] = invRaw.split("/");
+  try {
+    let q = sb.from("invoice_balance").select("id, invoice_no, invoice_year, farmer_name, product_name, qty, taken, remaining").eq("invoice_no", invPart.trim());
+    if (yearPart && /^\d{4}$/.test(yearPart.trim())) q = q.eq("invoice_year", Number(yearPart.trim()));
+    const { data, error } = await q;
+    if (error || !Array.isArray(data) || !data.length) {
+      if (warnBox) { warnBox.hidden = true; warnBox.innerHTML = ""; }
+      return { blocked: false };
+    }
+    const oldBonRows = editingBonNo
+      ? BONS.filter(b => String(b.bon_no) === String(editingBonNo) && String(b.invoice_no || "").trim() === invRaw)
+      : [];
+    const oldByProd = new Map();
+    oldBonRows.forEach(r => {
+      const k = String(r.designation || "").trim().toUpperCase();
+      oldByProd.set(k, (oldByProd.get(k) || 0) + Number(r.qty || 0));
+    });
+    const totalInvRem = data.reduce((s, r) => s + Number(r.remaining || 0), 0) +
+      oldBonRows.reduce((s, r) => s + Number(r.qty || 0), 0);
+
+    const lines = Array.isArray(formLines) ? formLines : [];
+    const reqTotal = lines.reduce((s, l) => s + Number(l.qty || 0), 0);
+    const overLines = [];
+    lines.forEach(ln => {
+      const d = String(ln.designation || "").trim().toUpperCase();
+      const matched = data.filter(r => String(r.product_name || "").trim().toUpperCase() === d);
+      if (matched.length) {
+        const avail = matched.reduce((s, r) => s + Number(r.remaining || 0), 0) + (oldByProd.get(d) || 0);
+        if (Number(ln.qty || 0) > avail) {
+          overLines.push(`${ln.designation}: المطلوب ${n(ln.qty)} > المتبقي ${n(avail)}`);
+        }
+      }
+    });
+    const totalOver = reqTotal > 0 && totalInvRem >= 0 && reqTotal > totalInvRem && !overLines.length;
+    const isOver = overLines.length > 0 || totalOver;
+    const strict = typeof getAppSettings !== "function" || getAppSettings().blockOverWithdraw !== false;
+
+    if (warnBox) {
+      warnBox.hidden = false;
+      warnBox.className = `field-alert ${isOver ? "field-alert-bad" : "field-alert-warn"}`;
+      const summaryLines = data.map(r => `${esc(r.product_name || "")}: متبقي <b>${n(r.remaining || 0)}</b> / ${n(r.qty || 0)}`).join(" · ");
+      warnBox.innerHTML = isOver
+        ? `<strong>تنبيه تجاوز الفاتورة:</strong> ${overLines.length ? esc(overLines.join(" | ")) : `الإجمالي المطلوب (${n(reqTotal)}) يتجاوز المتبقي (${n(totalInvRem)})`}<br><small>${summaryLines}</small>`
+        : `رصيد الفاتورة ${esc(invPart)}: ${summaryLines}`;
+    }
+    return { blocked: isOver && strict, msg: overLines[0] || `الكمية المطلوبة (${n(reqTotal)}) تتجاوز المتبقي في الفاتورة (${n(totalInvRem)})` };
+  } catch (_) {
+    return { blocked: false };
+  }
+}
 
 function addBonLine(init) {
   if ($("#bonLines").children.length >= 4) return toast("الحد الأقصى 4 مواد في الإذن الواحد", 1);
@@ -127,9 +281,16 @@ function syncBonLists() {
     ...dossiers.map(d => d.zone)
   ].filter(Boolean))];
   const prods = [...new Set(BONS.map(b => b.designation).filter(Boolean))];
+  let regDrivers = [];
+  try { regDrivers = JSON.parse(localStorage.getItem("ccls_drivers_registry_v1") || "[]") || []; } catch (_) {}
+  const drivers = [...new Set([
+    ...regDrivers.filter(d => d.active !== false).map(d => d.driver_name),
+    ...BONS.map(b => b.driver_name)
+  ].filter(Boolean))];
   $("#bfl").innerHTML = farmers.map(f => `<option value="${esc(f)}">`).join("");
   $("#bzl").innerHTML = zones.map(z => `<option value="${esc(z)}">`).join("");
   $("#bpl").innerHTML = prods.map(p => `<option value="${esc(p)}">`).join("");
+  if ($("#bdl")) $("#bdl").innerHTML = drivers.map(d => `<option value="${esc(d)}">`).join("");
   const curZ = $("#bz").value;
   $("#bz").innerHTML = '<option value="">كل المناطق</option>' + zones.map(z => `<option value="${esc(z)}">${esc(z)}</option>`).join("");
   $("#bz").value = curZ;
@@ -168,11 +329,25 @@ async function loadBons() {
   } catch (_) {
     $("#bonDbBadge").textContent = "حفظ محلي (لتفعيل الحفظ في Supabase نفّذ supabase-bons.sql)";
   }
+  if ($("#verifyDbBadge")) {
+    $("#verifyDbBadge").textContent = hasRemoteBons ? "تحقق حيّ عبر قاعدة البيانات Supabase ✓" : "تحقق محلي (البيانات المخزنة في الجهاز)";
+  }
   syncBonLists();
   renderEtat();
+  renderGateLog();
+  syncPublicBonRegistry(BONS);
   if (!editingOriginalBonNo) {
     if (!$("#fb [name=bon_no]").value) suggestNextBon();
     if (!$("#fb [name=sortie_date]").value) $("#fb [name=sortie_date]").value = today();
+  }
+  if (pendingUrlVerify) {
+    const codeToCheck = pendingUrlVerify;
+    pendingUrlVerify = "";
+    const verifyBtn = document.querySelector('nav button[data-t="verify"]');
+    if (verifyBtn && !verifyBtn.hidden && typeof window.showAppTab === "function") {
+      window.showAppTab("verify");
+    }
+    verifyBonCode(codeToCheck);
   }
 }
 
@@ -212,79 +387,160 @@ function renderEtat() {
       esc(b.driver_name || "-"),
       esc(b.truck_no || "-"),
       esc(b.zone || "-"),
-      `<div style="display:flex;gap:4px;flex-wrap:wrap">
+      `<div class="action-group">
         <button type="button" class="f" data-edit-bon="${esc(b.bon_no)}">تعديل</button>
         <button type="button" class="f" data-bon="${esc(b.bon_no)}">طباعة الإذن</button>
-        <button type="button" class="p" data-del="${esc(b.id || "")}" style="background:var(--bad);padding:6px 10px">حذف</button>
+        <button type="button" class="f btn-danger" data-del="${esc(b.id || "")}">حذف</button>
       </div>`
     ])
   );
 }
 
-function buildBonHtml(header, lines) {
+function getBonPrintFormat() {
+  try {
+    const v = $("#bonFormatSelect")?.value || localStorage.getItem(BON_FORMAT_KEY) || "a4";
+    return v === "half" || v === "2up" ? v : "a4";
+  } catch (_) {
+    return "a4";
+  }
+}
+
+function syncBonPageStyle(fmt) {
+  let st = document.getElementById("bonPrintPageStyle");
+  if (!st) {
+    st = document.createElement("style");
+    st.id = "bonPrintPageStyle";
+    document.head.appendChild(st);
+  }
+  if (fmt === "half") {
+    st.textContent = "@media print { @page { size: A5 landscape; margin: 6mm; } }";
+  } else {
+    st.textContent = "@media print { @page { size: A4 portrait; margin: 8mm; } }";
+  }
+}
+
+function buildSingleBonHtml(header, lines, qrDataUrl, fmt, copyLabel) {
+  const cfg = typeof getAppSettings === "function" ? getAppSettings() : {};
+  const showLogo = cfg.printShowLogo !== false;
+  const unitLabel = cfg.unitLabel === "طن" ? "T" : "Qx";
   const dt = header.sortie_date ? header.sortie_date.split("-").reverse().join("/") : "";
   const zoneText = header.zone || "";
   const padded = [0, 1, 2, 3].map(i => lines[i] || null);
+  const totalQty = lines.reduce((sum, ln) => sum + Number(ln?.qty || 0), 0);
   const rows = padded.map((ln, idx) => `
     <tr>
       <td>${idx + 1}</td>
-      <td>${ln ? esc(ln.designation) : ""}</td>
+      <td style="text-align:left">${ln ? esc(ln.designation) : ""}</td>
       <td>${ln ? n(ln.qty) : ""}</td>
       ${idx === 0 ? `<td rowspan="4" style="vertical-align:middle;font-weight:700">${esc(zoneText)}</td>` : ""}
     </tr>`).join("");
 
+  const logoHtml = showLogo
+    ? `<img class="bon-logo" src="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif" alt="CCLS">`
+    : `<span style="width:42px;display:inline-block"></span>`;
+
+  const qrBlock = qrDataUrl
+    ? `<div class="bon-qr-box">
+        <img class="bon-qr-img" src="${qrDataUrl}" alt="QR ${esc(header.bon_no)}">
+        <span class="bon-qr-code">BON N° ${esc(header.bon_no)}</span>
+        <span class="bon-qr-hint">امسح للتحقق عند البوابة</span>
+      </div>`
+    : `<div class="bon-qr-box"><span class="bon-qr-code">N° ${esc(header.bon_no)}</span></div>`;
+
+  const cls = fmt === "half" || fmt === "2up" ? "bon-doc bon-fmt-half" : "bon-doc bon-fmt-a4";
+
   return `
-    <div class="bon-doc">
+    <div class="${cls}">
+      ${copyLabel ? `<div class="bon-copy-badge">${esc(copyLabel)}</div>` : ""}
       <div class="bon-top">
-        <img src="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif" alt="CCLS">
+        ${logoHtml}
         <div class="bon-meta">
           <h3>OFFICE ALGERIEN INTERPROFESSIONNEL DES CEREALES</h3>
-          <p>Coopérative de Céréales et des légumes secs d'Adrar</p>
-          <p><strong>COMP ${esc(header.camp || "2025/2026")}</strong></p>
+          <p>Coopérative de Céréales et des Légumes Secs d'Adrar (CCLS ADRAR)</p>
+          <p><strong>BON DE SORTIE DES ENGRAIS · CAMP ${esc(header.camp || cfg.activeCampaign || "2025/2026")}</strong></p>
         </div>
-        <img src="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif" alt="CCLS">
+        ${logoHtml}
       </div>
-      <div class="bon-nums">
-        <span>BON DE SORTIE N°:</span><span>${esc(header.bon_no)}</span>
-        <span>DATE:</span><span>${esc(dt)}</span>
-        <span>N° FACTURE:</span><span>${esc(header.invoice_no || "—")}</span>
+      <div class="bon-header-strip">
+        <div class="bon-nums">
+          <span>BON N°:</span><span>${esc(header.bon_no)}</span>
+          <span>DATE:</span><span>${esc(dt)}</span>
+          <span>N° FACTURE:</span><span>${esc(header.invoice_no || "—")}</span>
+          <span>CARTE FELLAH:</span><span>${esc(header.carte_fellah || "—")}</span>
+        </div>
+        ${qrBlock}
       </div>
       <div class="bon-farmer">
-        <div>AGRICULTEUR :</div>
+        <div>AGRICULTEUR / BENEFICIAIRE :</div>
         <div>${esc(header.farmer_name)}</div>
       </div>
       <table class="bon-tbl">
         <thead>
-          <tr><th>N°</th><th>Désignation</th><th>Quantité (Qx)</th><th>ZONE</th></tr>
+          <tr><th style="width:7%">N°</th><th>Désignation</th><th style="width:20%">Quantité (${esc(unitLabel)})</th><th style="width:22%">ZONE</th></tr>
         </thead>
-        <tbody>${rows}</tbody>
+        <tbody>
+          ${rows}
+          <tr style="background:#f4f7f4;font-weight:700">
+            <td colspan="2" style="text-align:right">TOTAL QUANTITÉ (${esc(unitLabel)})</td>
+            <td>${n(totalQty)}</td>
+            <td></td>
+          </tr>
+        </tbody>
       </table>
       <table class="bon-driver">
-        <tr><td style="width:35%">NOM DE CHAUFFEUR:</td><td>${esc(header.driver_name || "—")}</td></tr>
-        <tr><td>IMMATRICULATION:</td><td>${esc(header.truck_no || "—")}</td></tr>
+        <tr>
+          <td style="width:24%">CHAUFFEUR:</td><td style="width:32%">${esc(header.driver_name || "—")}</td>
+          <td style="width:22%">MATRICULE:</td><td style="width:22%">${esc(header.truck_no || "—")}</td>
+        </tr>
       </table>
       <div class="bon-signs">
-        <div class="bon-sign">
-          <span>MAGASINIER</span>
-          <div style="height:78px"></div>
-        </div>
-        <div class="bon-sign">
-          <span>AGRICULTEUR :</span>
-          <div style="height:78px"></div>
-        </div>
+        <div class="bon-sign"><span>MAGASINIER</span></div>
+        <div class="bon-sign"><span>CONTRÔLE PORTAIL (البوابة)</span></div>
+        <div class="bon-sign"><span>AGRICULTEUR / CHAUFFEUR</span></div>
+      </div>
+      <div class="bon-foot-note">
+        <span>${esc(cfg.reportFooter || "CCLS ADRAR - تسيير مخزون الأسمدة")}</span>
+        <span>QR Gate Verification: BON #${esc(header.bon_no)}</span>
       </div>
     </div>`;
 }
 
-function showBon(bonNo) {
+async function renderBonPreview(header, lines) {
+  currentPreviewHeader = header;
+  currentPreviewLines = lines;
+  currentBonNo = header.bon_no || "";
+  const fmt = getBonPrintFormat();
+  syncBonPageStyle(fmt);
+
+  let qrDataUrl = "";
+  if (currentBonNo && typeof window.generateBonQrDataUrl === "function") {
+    try {
+      qrDataUrl = await window.generateBonQrDataUrl(currentBonNo);
+    } catch (_) {}
+  }
+
+  if (fmt === "2up") {
+    const copy1 = buildSingleBonHtml(header, lines, qrDataUrl, "2up", "EXEMPLAIRE 1 : MAGASIN / نسخة المخزن");
+    const copy2 = buildSingleBonHtml(header, lines, qrDataUrl, "2up", "EXEMPLAIRE 2 : PORTAIL & CHAUFFEUR / نسخة بوابة المخزن والسائق");
+    $("#bonPrintArea").innerHTML = `
+      <div class="bon-2up-wrap">
+        ${copy1}
+        <div class="bon-cut-line"><span>✂ قص هنا · DÉCOUPER ICI</span></div>
+        ${copy2}
+      </div>`;
+  } else {
+    $("#bonPrintArea").innerHTML = buildSingleBonHtml(header, lines, qrDataUrl, fmt, "");
+  }
+  $("#bonPreviewBox").hidden = false;
+}
+
+async function showBon(bonNo) {
   const lines = BONS.filter(b => String(b.bon_no) === String(bonNo));
   if (!lines.length) return;
   if ($("#bonSec").hidden && typeof window.showAppTab === "function") {
     window.showAppTab("bon");
   }
-  currentBonNo = bonNo;
-  $("#bonPrintArea").innerHTML = buildBonHtml(lines[0], lines);
-  $("#bonPreviewBox").hidden = false;
+  await renderBonPreview(lines[0], lines);
   requestAnimationFrame(() => $("#bonPreviewBox").scrollIntoView({ behavior: "smooth", block: "nearest" }));
 }
 
@@ -301,6 +557,17 @@ $("#fb [name=farmer_name]").addEventListener("change", e => {
   }
 });
 
+$("#fb [name=driver_name]").addEventListener("change", e => {
+  const val = e.target.value.trim().toUpperCase();
+  let regDrivers = [];
+  try { regDrivers = JSON.parse(localStorage.getItem("ccls_drivers_registry_v1") || "[]") || []; } catch (_) {}
+  const dMatch = regDrivers.find(d => String(d.driver_name || "").trim().toUpperCase() === val)
+    || BONS.find(b => String(b.driver_name || "").trim().toUpperCase() === val);
+  if (dMatch?.truck_no && !$("#fb [name=truck_no]").value) {
+    $("#fb [name=truck_no]").value = dMatch.truck_no;
+  }
+});
+
 let editingOriginalBonNo = "";
 let editingBonIds = [];
 
@@ -314,9 +581,23 @@ function cancelBonEdit() {
   $("#fb [name=sortie_date]").value = today();
   $("#fb [name=camp]").value = "2025/2026";
   suggestNextBon();
+  if ($("#bonInvWarn")) { $("#bonInvWarn").hidden = true; $("#bonInvWarn").innerHTML = ""; }
   requestAnimationFrame(() => { $("#submitBonBtn").textContent = "حفظ وإصدار إذن الخروج"; });
 }
 $("#cancelBonEdit").onclick = cancelBonEdit;
+
+const triggerBonInvCheck = () => {
+  clearTimeout(bonInvTimer);
+  bonInvTimer = setTimeout(() => {
+    const lines = [...$("#bonLines").children].map(el => ({
+      designation: el.querySelector("[data-d]")?.value.trim().toUpperCase() || "",
+      qty: Number(el.querySelector("[data-q]")?.value || 0)
+    }));
+    checkBonInvoiceRemaining($("#fb [name=invoice_no]")?.value, lines, editingOriginalBonNo);
+  }, 220);
+};
+$("#fb [name=invoice_no]")?.addEventListener("input", triggerBonInvCheck);
+$("#bonLines")?.addEventListener("input", triggerBonInvCheck);
 
 function startEditBon(bonNo) {
   const lines = BONS.filter(b => String(b.bon_no) === String(bonNo));
@@ -350,6 +631,13 @@ $("#fb").onsubmit = async e => {
     designation: el.querySelector("[data-d]").value.trim().toUpperCase(),
     qty: Number(el.querySelector("[data-q]").value)
   }));
+  if (!lines.length || lines.some(ln => !ln.designation || !Number.isFinite(ln.qty) || ln.qty <= 0)) {
+    return toast("يرجى إدخال اسم المادة وكمية صالحة أكبر من الصفر", 1);
+  }
+  const invCheck = await checkBonInvoiceRemaining(f.invoice_no, lines, editingOriginalBonNo);
+  if (invCheck.blocked) {
+    return toast(invCheck.msg || "الكمية المطلوبة تتجاوز الكمية المتبقية في الفاتورة", 1);
+  }
   const records = lines.map(ln => ({
     bon_no: f.bon_no.trim(),
     invoice_no: (f.invoice_no || "").trim(),
@@ -399,11 +687,11 @@ $("#fb").onsubmit = async e => {
     }
     toast("تم تعديل إذن الخروج بنجاح");
     writeLocalBons(BONS);
+    syncPublicBonRegistry(BONS);
     syncBonLists();
     renderEtat();
     currentBonNo = records[0]?.bon_no || "";
-    $("#bonPrintArea").innerHTML = buildBonHtml(records[0], lines);
-    $("#bonPreviewBox").hidden = false;
+    await renderBonPreview(records[0], lines);
     cancelBonEdit();
     return;
   }
@@ -420,32 +708,48 @@ $("#fb").onsubmit = async e => {
     toast("تم حفظ إذن الخروج محلياً");
   }
   writeLocalBons(BONS);
+  syncPublicBonRegistry(BONS);
   syncBonLists();
   renderEtat();
   currentBonNo = records[0]?.bon_no || "";
-  $("#bonPrintArea").innerHTML = buildBonHtml(records[0], lines);
-  $("#bonPreviewBox").hidden = false;
+  await renderBonPreview(records[0], lines);
   e.target.reset();
   $("#bonLines").innerHTML = "";
   addBonLine();
   $("#fb [name=sortie_date]").value = today();
   $("#fb [name=camp]").value = "2025/2026";
+  if ($("#bonInvWarn")) { $("#bonInvWarn").hidden = true; $("#bonInvWarn").innerHTML = ""; }
   suggestNextBon();
 };
 
-$("#previewBonBtn").onclick = () => {
+$("#previewBonBtn").onclick = async () => {
   const f = Object.fromEntries(new FormData($("#fb")));
   const lines = [...$("#bonLines").children].map(el => ({
     designation: el.querySelector("[data-d]").value.trim().toUpperCase(),
     qty: Number(el.querySelector("[data-q]").value || 0)
   })).filter(x => x.designation || x.qty);
   if (!f.farmer_name && !f.bon_no) return toast("أدخل رقم الإذن واسم الفلاح أولاً", 1);
-  currentBonNo = f.bon_no || "";
-  $("#bonPrintArea").innerHTML = buildBonHtml(f, lines);
-  $("#bonPreviewBox").hidden = false;
+  await renderBonPreview(f, lines);
 };
+
+$("#bonFormatSelect").onchange = async () => {
+  const fmt = getBonPrintFormat();
+  try { localStorage.setItem(BON_FORMAT_KEY, fmt); } catch (_) {}
+  if (currentPreviewHeader) {
+    await renderBonPreview(currentPreviewHeader, currentPreviewLines);
+  }
+};
+
+$("#verifyFromPreviewBtn").onclick = () => {
+  if (!currentBonNo) return;
+  if (typeof window.showAppTab === "function") window.showAppTab("verify");
+  verifyBonCode(currentBonNo);
+};
+
 $("#printBonBtn").onclick = async () => {
   if (!$("#bonPrintArea").innerHTML.trim()) return toast("لا يوجد إذن جاهز للطباعة", 1);
+  const fmt = getBonPrintFormat();
+  syncBonPageStyle(fmt);
   document.body.classList.remove("printing-list");
   $("#bonPreviewBox").hidden = false;
   let printed = false;
@@ -457,7 +761,7 @@ $("#printBonBtn").onclick = async () => {
       window.removeEventListener("beforeprint", onBeforePrint);
       if (!printed && window.exportSlipPdf) {
         try {
-          await window.exportSlipPdf($("#bonPrintArea"), currentBonNo, "bon-sortie");
+          await window.exportSlipPdf($("#bonPrintArea"), currentBonNo, "bon-sortie", { format: fmt });
           toast("تم تجهيز وتحميل إذن الخروج بصيغة PDF للطباعة");
         } catch (err) {
           toast(err?.message || "تعذّر الطباعة، استخدم زر تحميل الإذن PDF", 1);
@@ -467,17 +771,18 @@ $("#printBonBtn").onclick = async () => {
   } catch (_) {
     window.removeEventListener("beforeprint", onBeforePrint);
     if (window.exportSlipPdf) {
-      await window.exportSlipPdf($("#bonPrintArea"), currentBonNo, "bon-sortie");
+      await window.exportSlipPdf($("#bonPrintArea"), currentBonNo, "bon-sortie", { format: fmt });
       toast("تم تحميل إذن الخروج بصيغة PDF للطباعة");
     }
   }
 };
 $("#pdfBonBtn").onclick = async () => {
   if (!$("#bonPrintArea").innerHTML.trim()) return toast("لا يوجد إذن جاهز للتحميل", 1);
+  const fmt = getBonPrintFormat();
   const b = $("#pdfBonBtn"), orig = b.textContent;
   b.disabled = true; b.textContent = "جارٍ تجهيز PDF...";
   try {
-    await window.exportSlipPdf($("#bonPrintArea"), currentBonNo, "bon-sortie");
+    await window.exportSlipPdf($("#bonPrintArea"), currentBonNo, "bon-sortie", { format: fmt });
     toast("تم تحميل إذن الخروج بصيغة PDF بنجاح");
   } catch (err) {
     toast(err?.message || "تعذّر إنشاء ملف PDF للإذن", 1);
@@ -584,6 +889,279 @@ $("#printEtatBtn").onclick = async () => {
   }
 };
 
+function readGateChecks() {
+  try {
+    const raw = localStorage.getItem(GATE_CHECKS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (_) {}
+  return [];
+}
+
+function writeGateChecks(rows) {
+  try {
+    localStorage.setItem(GATE_CHECKS_KEY, JSON.stringify((rows || []).slice(-200)));
+  } catch (_) {}
+}
+
+function renderGateLog() {
+  const box = $("#verifyLogTable");
+  if (!box) return;
+  const logs = readGateChecks();
+  box.innerHTML = tbl(
+    ["رقم الإذن (N° BON)", "الفلاح", "السائق / الشاحنة", "إجمالي الكمية", "وقت الخروج / التحقق", "مراقب البوابة", "الحالة", "إجراء"],
+    [...logs].reverse().map(x => [
+      `<b>${esc(x.bon_no)}</b>`,
+      esc(x.farmer_name || "-"),
+      `${esc(x.driver_name || "-")} <small>(${esc(x.truck_no || "-")})</small>`,
+      `<b>${n(x.total_qty || 0)}</b>`,
+      esc(x.verified_at_label || x.verified_at || "-"),
+      esc(x.verified_by || "-"),
+      `<span style="color:var(--pr);font-weight:700">تم تأكيد الخروج ✓</span>`,
+      `<button type="button" class="f" data-recheck-bon="${esc(x.bon_no)}">فحص</button>`
+    ])
+  );
+}
+
+function stopGateCamera() {
+  if (camTimer) {
+    clearTimeout(camTimer);
+    camTimer = null;
+  }
+  if (camStream) {
+    camStream.getTracks().forEach(t => t.stop());
+    camStream = null;
+  }
+  const video = $("#verifyVideo");
+  if (video) video.srcObject = null;
+  if ($("#verifyCamBox")) $("#verifyCamBox").hidden = true;
+  if ($("#stopCamBtn")) $("#stopCamBtn").hidden = true;
+  if ($("#startCamBtn")) $("#startCamBtn").hidden = false;
+}
+
+async function verifyBonCode(rawInput) {
+  const cleanNo = typeof window.extractBonNoFromScan === "function"
+    ? window.extractBonNoFromScan(rawInput)
+    : String(rawInput || "").trim();
+  if (!cleanNo) {
+    toast("أدخل رقم الإذن أو امسح رمز QR أولاً", 1);
+    return;
+  }
+  if ($("#verifyInput")) $("#verifyInput").value = cleanNo;
+
+  let lines = [];
+  if (hasRemoteBons) {
+    try {
+      const { data, error } = await sb.from("bon_sorties").select("*").eq("bon_no", cleanNo).order("id", { ascending: true });
+      if (!error && Array.isArray(data) && data.length) {
+        lines = data;
+      }
+    } catch (_) {}
+  }
+  if (!lines.length) {
+    lines = BONS.filter(b => String(b.bon_no).trim().toLowerCase() === cleanNo.toLowerCase());
+  }
+
+  const box = $("#verifyResultBox");
+  box.hidden = false;
+
+  if (!lines.length) {
+    lastVerifiedBonNo = "";
+    box.innerHTML = `
+      <div class="verify-card verify-bad">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <strong style="font-size:1.05rem;color:var(--bad)">✕ إذن خروج غير صالح أو غير مسجل في النظام</strong>
+          <span class="tag-bad">مرفوض عند البوابة</span>
+        </div>
+        <p style="margin:0;font-size:.92rem">لم يتم العثور على أي إذن خروج برقم <b>${esc(cleanNo)}</b> في قاعدة البيانات أو السجل المحلي. يرجى مراجعة مصلحة الفوترة قبل السماح بالخروج.</p>
+      </div>`;
+    toast(`الإذن رقم ${cleanNo} غير موجود في النظام`, 1);
+    return;
+  }
+
+  const h = lines[0];
+  lastVerifiedBonNo = String(h.bon_no);
+  const totalQty = lines.reduce((s, r) => s + Number(r.qty || 0), 0);
+  const prevExit = [...readGateChecks()].reverse().find(x => String(x.bon_no).trim().toLowerCase() === String(h.bon_no).trim().toLowerCase());
+  const dt = h.sortie_date ? h.sortie_date.split("-").reverse().join("/") : "—";
+
+  const itemsHtml = lines.map((ln, idx) => `
+    <tr>
+      <td>${idx + 1}</td>
+      <td>${esc(ln.designation)}</td>
+      <td><b>${n(ln.qty)}</b></td>
+    </tr>`).join("");
+
+  const cardClass = prevExit ? "verify-card verify-warn" : "verify-card verify-valid";
+  const statusHeadline = prevExit
+    ? `⚠ تنبيه: تم تسجيل خروج الإذن رقم ${esc(h.bon_no)} عند البوابة مسبقاً!`
+    : `✓ إذن خروج صالح ومعتمد — مسموح بالعبور (N° ${esc(h.bon_no)})`;
+  const statusSub = prevExit
+    ? `<div class="field-alert field-alert-warn" style="margin-bottom:10px">تم مسح وتأكيد خروج هذا الإذن سابقاً بتاريخ <b>${esc(prevExit.verified_at_label || prevExit.verified_at)}</b> بواسطة <b>${esc(prevExit.verified_by || "مراقب البوابة")}</b>. تحقق من عدم تكرار نفس الوثيقة.</div>`
+    : "";
+
+  box.innerHTML = `
+    <div class="${cardClass}">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <strong style="font-size:1.06rem;color:${prevExit ? "var(--ac)" : "var(--pr)"}">${statusHeadline}</strong>
+        <span style="font-family:var(--font-mono);font-size:.86rem;font-weight:700">BON N° ${esc(h.bon_no)}</span>
+      </div>
+      ${statusSub}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,185px),1fr));gap:8px 14px;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:12px;margin-bottom:12px;font-size:.9rem">
+        <div><span style="color:var(--mu)">الفلاح / المستفيد:</span><br><b>${esc(h.farmer_name || "—")}</b></div>
+        <div><span style="color:var(--mu)">تاريخ الإذن:</span><br><b>${esc(dt)}</b></div>
+        <div><span style="color:var(--mu)">رقم الفاتورة:</span><br><b>${esc(h.invoice_no || "—")}</b></div>
+        <div><span style="color:var(--mu)">المنطقة:</span><br><b>${esc(h.zone || "—")}</b></div>
+        <div><span style="color:var(--mu)">السائق:</span><br><b>${esc(h.driver_name || "—")}</b></div>
+        <div><span style="color:var(--mu)">ترقيم الشاحنة:</span><br><b style="color:var(--pr);font-family:var(--font-mono)">${esc(h.truck_no || "—")}</b></div>
+        <div><span style="color:var(--mu)">بطاقة الفلاح:</span><br><b>${esc(h.carte_fellah || "—")}</b></div>
+        <div><span style="color:var(--mu)">الموسم:</span><br><b>${esc(h.camp || "2025/2026")}</b></div>
+      </div>
+      <div class="w" style="margin-bottom:12px">
+        <table>
+          <thead><tr><th>#</th><th>المادة (Désignation)</th><th>الكمية</th></tr></thead>
+          <tbody>
+            ${itemsHtml}
+            <tr style="background:var(--surface-2);font-weight:700">
+              <td colspan="2">الإجمالي المصرّح بخروجه</td>
+              <td>${n(totalQty)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="p" id="confirmGateExitBtn">
+          ${prevExit ? "تسجيل تحقق/عبور إضافي عند البوابة" : "تأكيد خروج الشاحنة من البوابة ✓"}
+        </button>
+        <button type="button" class="f" data-bon="${esc(h.bon_no)}" id="previewVerifiedBonBtn">عرض / طباعة الإذن</button>
+      </div>
+    </div>`;
+
+  const confirmBtn = $("#confirmGateExitBtn");
+  if (confirmBtn) {
+    confirmBtn.onclick = () => {
+      const checks = readGateChecks();
+      const nowLabel = new Date().toLocaleString("fr-FR", {
+        year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"
+      });
+      checks.push({
+        bon_no: String(h.bon_no),
+        farmer_name: h.farmer_name || "",
+        driver_name: h.driver_name || "",
+        truck_no: h.truck_no || "",
+        total_qty: totalQty,
+        verified_at: new Date().toISOString(),
+        verified_at_label: nowLabel,
+        verified_by: ME?.full_name || ME?.email || "مراقب البوابة"
+      });
+      writeGateChecks(checks);
+      renderGateLog();
+      verifyBonCode(h.bon_no);
+      toast(`تم تأكيد خروج الإذن رقم ${h.bon_no} عند بوابة المخزن ✓`);
+    };
+  }
+  const prevBtn = $("#previewVerifiedBonBtn");
+  if (prevBtn) {
+    prevBtn.onclick = () => showBon(h.bon_no);
+  }
+}
+
+$("#verifyForm").onsubmit = e => {
+  e.preventDefault();
+  verifyBonCode($("#verifyInput").value);
+};
+
+$("#startCamBtn").onclick = async () => {
+  const statusEl = $("#verifyCamStatus");
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    statusEl.textContent = "المتصفح لا يدعم تشغيل الكاميرا هنا. يمكنك استخدام قارئ QR اليدوي أو رفع صورة QR.";
+    statusEl.style.color = "var(--bad)";
+    return;
+  }
+  try {
+    statusEl.textContent = "جارٍ تشغيل الكاميرا...";
+    statusEl.style.color = "var(--mu)";
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
+    const video = $("#verifyVideo");
+    video.srcObject = camStream;
+    await video.play();
+    $("#verifyCamBox").hidden = false;
+    $("#stopCamBtn").hidden = false;
+    $("#startCamBtn").hidden = true;
+    statusEl.textContent = "وجّه الكاميرا نحو رمز QR الموجود على إذن الخروج...";
+    statusEl.style.color = "var(--pr)";
+
+    const canvas = $("#verifyCanvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const tick = () => {
+      if (!camStream) return;
+      if (video.readyState >= 2 && video.videoWidth && video.videoHeight && ctx) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const decoded = typeof window.decodeQrFromImageData === "function"
+          ? window.decodeQrFromImageData(imgData.data, canvas.width, canvas.height)
+          : null;
+        if (decoded) {
+          stopGateCamera();
+          statusEl.textContent = "تمت قراءة رمز QR بنجاح ✓";
+          verifyBonCode(decoded);
+          return;
+        }
+      }
+      camTimer = setTimeout(tick, 140);
+    };
+    tick();
+  } catch (err) {
+    stopGateCamera();
+    statusEl.textContent = "تعذّر فتح الكاميرا (قد تكون محجوبة في نافذة المعاينة). استخدم «فحص من صورة QR» أو قارئ QR اليدوي.";
+    statusEl.style.color = "var(--bad)";
+  }
+};
+
+$("#stopCamBtn").onclick = () => {
+  stopGateCamera();
+  $("#verifyCamStatus").textContent = "تم إيقاف الكاميرا.";
+  $("#verifyCamStatus").style.color = "var(--mu)";
+};
+
+$("#verifyQrFile").onchange = async e => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) return;
+  const statusEl = $("#verifyCamStatus");
+  try {
+    const decoded = typeof window.decodeQrFromFile === "function"
+      ? await window.decodeQrFromFile(file)
+      : null;
+    if (!decoded) {
+      statusEl.textContent = "لم يتم العثور على رمز QR واضح داخل هذه الصورة.";
+      statusEl.style.color = "var(--bad)";
+      return toast("لم يتم التعرف على رمز QR في الصورة", 1);
+    }
+    statusEl.textContent = "تمت قراءة رمز QR من الصورة ✓";
+    statusEl.style.color = "var(--pr)";
+    verifyBonCode(decoded);
+  } catch (err) {
+    toast(err?.message || "تعذّر قراءة الصورة", 1);
+  }
+};
+
+$("#verifyLogTable").onclick = e => {
+  const btn = e.target.closest("[data-recheck-bon]");
+  if (btn) verifyBonCode(btn.dataset.recheckBon);
+};
+
+$("#clearGateLogBtn").onclick = () => {
+  if (!confirm("مسح سجل التحقق المحلي لبوابة المخزن؟")) return;
+  writeGateChecks([]);
+  renderGateLog();
+  toast("تم مسح سجل البوابة المحلي");
+};
+
 $("#bT").onclick = async e => {
   const editBtn = e.target.closest("[data-edit-bon]");
   if (editBtn) {
@@ -592,22 +1170,29 @@ $("#bT").onclick = async e => {
   }
   const bonBtn = e.target.closest("[data-bon]");
   if (bonBtn) {
-    showBon(bonBtn.dataset.bon);
+    await showBon(bonBtn.dataset.bon);
     return;
   }
   const delBtn = e.target.closest("[data-del]");
   if (delBtn) {
     const id = delBtn.dataset.del;
-    if (!confirm("حذف هذا السطر من سجل الخروج؟")) return;
-    if (hasRemoteBons && id) {
-      const { error } = await sb.from("bon_sorties").delete().eq("id", id);
-      if (error) return toast(error.message, 1);
-    }
+    const target = BONS.find(x => String(x.id) === String(id));
+    if (!target || !confirm("نقل هذا السطر من سجل الخروج إلى سلة المحذوفات؟")) return;
+    const res = await softDeleteItem({
+      entityType: "إذن خروج",
+      tableName: "bon_sorties",
+      entityLabel: `إذن ${target.bon_no} — ${target.designation} (${n(target.qty)})`,
+      originalId: id,
+      payload: target,
+      localOnly: !(hasRemoteBons && id)
+    });
+    if (!res.ok) return toast(res.error?.message || "تعذّر الحذف", 1);
     BONS = BONS.filter(x => String(x.id) !== String(id));
     writeLocalBons(BONS);
+    syncPublicBonRegistry(BONS);
     syncBonLists();
     renderEtat();
-    toast("تم الحذف");
+    toast("تم نقل الإذن إلى سلة المحذوفات");
   }
 };
 
@@ -615,11 +1200,21 @@ startApp({
   page: "bons",
   tabs: [
     ["bon", "إصدار إذن خروج (Bon)", ["bonSec"], loadBons, ["pickup", "log", "invoices", "receipts", "stock"]],
+    ["verify", "التحقق عند البوابة (QR)", ["verifySec"], loadBons, ["pickup", "log", "invoices", "receipts", "stock"]],
     ["etat", "حالة خروج الأسمدة (Etat)", ["etatSec"], loadBons, ["log", "pickup", "invoices", "receipts", "stock"]]
   ],
   ready() {
+    try {
+      const savedFmt = localStorage.getItem(BON_FORMAT_KEY);
+      if (savedFmt && $("#bonFormatSelect") && ["a4", "half", "2up"].includes(savedFmt)) {
+        $("#bonFormatSelect").value = savedFmt;
+      }
+    } catch (_) {}
     if (!$("#bonLines").children.length) addBonLine();
     $("#fb [name=sortie_date]").value = today();
+    document.querySelectorAll("nav button").forEach(btn => {
+      if (btn.dataset.t !== "verify") btn.addEventListener("click", stopGateCamera);
+    });
   }
 });
 </script>

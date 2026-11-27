@@ -7,6 +7,7 @@ await build({
   entryPoints: [
     "src/warehouse-chart.tsx",
     "src/culture-chart.tsx",
+    "src/analytics-dashboard.tsx",
     "src/dossiers-pdf.ts",
   ],
   bundle: true,

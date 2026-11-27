@@ -1,0 +1,19 @@
+{
+  "name": "تسيير مخزون الأسمدة - CCLS ADRAR",
+  "short_name": "CCLS الأسمدة",
+  "description": "نظام متكامل لتسيير مخزون الأسمدة، استقبال الملفات، الفواتير، أذون الخروج، والتحليلات التنفيذية لتعاونية الحبوب والبقول الجافة أدرار.",
+  "dir": "rtl",
+  "lang": "ar",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#f6f7f5",
+  "theme_color": "#175236",
+  "icons": [
+    {
+      "src": "/f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ]
+}

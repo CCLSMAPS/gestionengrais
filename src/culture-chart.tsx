@@ -25,11 +25,11 @@ interface Palette {
 }
 
 const SLICE_COLORS = [
-  "#1f5a3d",
-  "#c28a2b",
-  "#2e7d5b",
+  "#175236",
+  "#b97d19",
+  "#2a7b54",
   "#d97706",
-  "#3b82a6",
+  "#2f6f8f",
   "#6d4c3d",
   "#4f772d",
   "#8f3d56",
@@ -40,11 +40,11 @@ function readPalette(): Palette {
   const get = (name: string, fallback: string) =>
     s.getPropertyValue(name).trim() || fallback;
   return {
-    primary: get("--pr", "#1f5a3d"),
-    accent: get("--ac", "#c28a2b"),
-    border: get("--bd", "#d9dfd4"),
-    text: get("--tx", "#1d2b22"),
-    muted: get("--mu", "#66736a"),
+    primary: get("--pr", "#175236"),
+    accent: get("--ac", "#b97d19"),
+    border: get("--bd", "#dfe4dd"),
+    text: get("--tx", "#14221a"),
+    muted: get("--mu", "#57675d"),
     card: get("--card", "#ffffff"),
   };
 }
@@ -124,12 +124,14 @@ function CulturePieChart({ data }: { data: CultureAreaItem[] }) {
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const onChange = () => setPalette(readPalette());
+    const onChange = () => requestAnimationFrame(() => setPalette(readPalette()));
     const onResize = () => setVw(window.innerWidth);
     mq.addEventListener("change", onChange);
+    window.addEventListener("ccls:theme-change", onChange);
     window.addEventListener("resize", onResize);
     return () => {
       mq.removeEventListener("change", onChange);
+      window.removeEventListener("ccls:theme-change", onChange);
       window.removeEventListener("resize", onResize);
     };
   }, []);
@@ -191,7 +193,7 @@ function CulturePieChart({ data }: { data: CultureAreaItem[] }) {
       </div>
 
       {activeData.length ? (
-        <div dir="ltr" style={{ width: "100%", height: isPhone ? 310 : 360 }}>
+        <div dir="ltr" style={{ width: "100%", height: isPhone ? 310 : 360, fontFamily: '"IBM Plex Sans Arabic", sans-serif' }}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie

@@ -4,10 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>تسيير المخزن - تسيير مخزون الأسمدة</title>
+<meta name="description" content="متابعة مخزون الأسمدة حسب المخزن، تنبيهات النفاد، سجل التسليمات، وسجل التعديلات.">
+<meta name="theme-color" content="#175236">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif">
 <link rel="stylesheet" href="common.css">
 </head>
 <body>
-<header><div style="display:flex;gap:10px;align-items:center"><button class="p" id="menu" aria-label="القائمة" style="background:var(--ac);color:#1d2b22">☰</button><h1>تسيير المخزن - تسيير مخزون الأسمدة</h1></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span id="links" style="display:flex;gap:6px;flex-wrap:wrap"></span><span id="who" style="font-size:.85rem"></span><button class="p" id="pwb" hidden style="background:var(--ac);color:#1d2b22">كلمة المرور</button><button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button></div></header>
+<header><div style="display:flex;gap:10px;align-items:center"><button class="f" id="menu" aria-label="القائمة">☰</button><h1>تسيير المخزن - تسيير مخزون الأسمدة</h1></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span id="links" style="display:flex;gap:4px;flex-wrap:wrap"></span><span id="who"></span><button class="f" id="pwb" hidden>الإعدادات</button><button class="f" id="out" hidden>خروج</button></div></header>
 <main>
 <div id="cfg" class="box" hidden></div>
 <div id="app" hidden>
@@ -122,6 +126,115 @@
   </form>
   <div class="w" id="prT"></div>
 </section>
+<section id="adjustSec" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+    <h2 style="margin:0;padding:0;border:0">سجل التالف والضائع والمرتجع وتسوية الجرد</h2>
+    <span id="adjDbBadge" style="font-size:.82rem;color:var(--mu)"></span>
+  </div>
+  <div class="cards" id="adjCards"></div>
+  <div id="adjEditBanner" class="info" hidden style="border:1px solid var(--ac);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+    <strong id="adjEditLabel">تعديل تسوية</strong>
+    <button type="button" class="f" id="cancelAdjEdit">إلغاء التعديل</button>
+  </div>
+  <form id="fAdj">
+    <label>التاريخ<input name="adj_date" type="date" required></label>
+    <label>نوع العملية
+      <select name="adjustment_type" required>
+        <option value="damaged">تالف (يُخصم من المخزون)</option>
+        <option value="lost">ضائع / عجز جرد (يُخصم من المخزون)</option>
+        <option value="returned_supplier">مرتجع للممون (يُخصم من المخزون)</option>
+        <option value="returned_farmer">مرتجع من فلاح (يُضاف للمخزون +)</option>
+      </select>
+    </label>
+    <label>السماد<input name="product_name" list="adjPl" required autocomplete="off" placeholder="اسم السماد..."></label>
+    <label>المخزن<select name="warehouse_id" id="adjWh"></select></label>
+    <label>الكمية (قنطار)<input name="qty" type="number" step="any" min="0.01" required></label>
+    <label>سعر الوحدة (دج - اختياري)<input name="unit_price" type="number" step="any" min="0"></label>
+    <label>المبلغ الإجمالي (دج)<input name="amount_dzd" type="number" step="any" min="0" required value="0"></label>
+    <label>رقم محضر الجرد / المرجع<input name="ref_doc" placeholder="مثال: PV-2026/04"></label>
+    <label style="grid-column:1/-1">السبب والتوضيح الدقيق<input name="reason" required placeholder="مثال: تمزق أكياس بسبب الرطوبة / نقص أثناء التفريغ / إرجاع كمية..."></label>
+    <button class="p" id="submitAdjBtn">تسجيل التسوية</button>
+  </form>
+  <datalist id="adjPl"></datalist>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:10px;align-items:end;margin:16px 0 10px">
+    <label>بحث<input id="adjQ" placeholder="السماد، السبب، المحضر، المخزن..."></label>
+    <label>النوع
+      <select id="adjTypeFilter">
+        <option value="">كل الحركات</option>
+        <option value="damaged">تالف</option>
+        <option value="lost">ضائع / عجز</option>
+        <option value="returned_supplier">مرتجع للممون</option>
+        <option value="returned_farmer">مرتجع من فلاح</option>
+      </select>
+    </label>
+    <button type="button" class="p" id="xAdj">تصدير CSV</button>
+  </div>
+  <div class="w" id="adjT"></div>
+</section>
+<section id="transferSec" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+    <h2 style="margin:0;padding:0;border:0">التحويل بين المخازن والمواقع</h2>
+    <span id="transferDbBadge" style="font-size:.82rem;color:var(--mu)"></span>
+  </div>
+  <div class="cards" id="transferCards"></div>
+  <form id="fTransfer">
+    <label>تاريخ التحويل<input name="transfer_date" type="date" required></label>
+    <label>من المخزن (المُرسِل)<select name="from_warehouse_id" id="trFromWh" required></select></label>
+    <label>إلى المخزن (المُستقبِل)<select name="to_warehouse_id" id="trToWh" required></select></label>
+    <label>السماد / المنتج<input name="product_name" list="transferPl" required autocomplete="off" placeholder="اختر المنتج..."></label>
+    <label>الكمية المحوَّلة (قنطار)<input name="qty" type="number" step="any" min="0.01" required></label>
+    <label>رقم وثيقة التحويل<input name="ref_doc" placeholder="مثال: TR-2026/01"></label>
+    <label style="grid-column:1/-1">سبب التحويل وملاحظات النقل<input name="reason" placeholder="مثال: إعادة توزيع لتغطية الطلب في الحظيرة 2"></label>
+    <button class="p" id="submitTransferBtn">تنفيذ التحويل بين المخازن</button>
+  </form>
+  <datalist id="transferPl"></datalist>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin:16px 0 10px">
+    <label style="flex:1;min-width:190px">بحث في سجل التحويلات<input id="transferQ" placeholder="المخزن، المنتج، الوثيقة، السبب..."></label>
+    <button type="button" class="p" id="xTransfers">تصدير CSV</button>
+  </div>
+  <div class="w" id="transfersT"></div>
+</section>
+<section id="driversSec" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+    <h2 style="margin:0;padding:0;border:0">سجل الناقلين والسائقين والشاحنات</h2>
+    <span id="driversDbBadge" style="font-size:.82rem;color:var(--mu)"></span>
+  </div>
+  <div class="cards" id="driverCards"></div>
+  <div id="driverEditBanner" class="info" hidden style="border:1px solid var(--ac);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+    <strong id="driverEditLabel">تعديل بيانات سائق</strong>
+    <button type="button" class="f" id="cancelDriverEdit">إلغاء التعديل</button>
+  </div>
+  <form id="fDriver">
+    <label>اسم السائق الكامل<input name="driver_name" required autocomplete="off"></label>
+    <label>رقم رخصة السياقة<input name="license_no" autocomplete="off" placeholder="مثال: 01-16-45892"></label>
+    <label>ترقيم الشاحنة<input name="truck_no" required autocomplete="off" placeholder="مثال: 1128-517-01"></label>
+    <label>رقم الهاتف<input name="phone" type="tel" autocomplete="off"></label>
+    <label>الشركة / الناقل<input name="carrier_name" autocomplete="off" placeholder="نقل خاص / شركة..."></label>
+    <label>ملاحظات<input name="notes" autocomplete="off"></label>
+    <label style="flex-direction:row;align-items:center;gap:8px;color:var(--tx);padding-top:16px">
+      <input type="checkbox" name="active" checked> سائق نشط ومعتمد
+    </label>
+    <button class="p" id="submitDriverBtn">حفظ السائق</button>
+  </form>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin:16px 0 10px">
+    <label style="flex:1;min-width:190px">بحث في الناقلين<input id="driverQ" placeholder="اسم السائق، رقم الرخصة، الشاحنة، الهاتف..."></label>
+    <button type="button" class="p" id="xDrivers">تصدير CSV</button>
+  </div>
+  <div class="w" id="driversT"></div>
+</section>
+<section id="recycleSec" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+    <h2 style="margin:0;padding:0;border:0">سلة المحذوفات والاسترجاع (Soft Delete)</h2>
+    <span id="recycleDbBadge" style="font-size:.82rem;color:var(--mu)"></span>
+  </div>
+  <div class="cards" id="recycleCards"></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:10px">
+    <label style="flex:1;min-width:180px">بحث في المحذوفات<input id="recycleQ" placeholder="البيان، النوع، المستخدم..."></label>
+    <label>القسم<select id="recycleTypeFilter"><option value="">كل الأقسام</option></select></label>
+    <button type="button" class="f" id="refreshRecycleBtn">تحديث السلة</button>
+  </div>
+  <div class="w" id="recycleT"></div>
+</section>
 <section id="audit" hidden>
   <h2>سجل التعديلات (من غيّر ماذا ومتى)</h2>
   <div class="w" id="auT"></div>
@@ -134,25 +247,178 @@
 <script src="dist/warehouse-chart.js"></script>
 <script>
 let stockRows = [];
+let adjRows = [];
+let transferRows = [];
+let driverRows = [];
+let recycleRows = [];
+const ADJ_LOCAL_KEY = "ccls_stock_adjustments_v1";
+const TRANSFER_LOCAL_KEY = "ccls_warehouse_transfers_v1";
+const DRIVERS_LOCAL_KEY = "ccls_drivers_registry_v1";
+
+function readLocalAdj() {
+  try {
+    const raw = localStorage.getItem(ADJ_LOCAL_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_) { return []; }
+}
+function writeLocalAdj(rows) {
+  try { localStorage.setItem(ADJ_LOCAL_KEY, JSON.stringify(rows || [])); } catch (_) {}
+}
+function readLocalTransfers() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TRANSFER_LOCAL_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_) { return []; }
+}
+function writeLocalTransfers(rows) {
+  try { localStorage.setItem(TRANSFER_LOCAL_KEY, JSON.stringify(rows || [])); } catch (_) {}
+}
+function readLocalDrivers() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(DRIVERS_LOCAL_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_) { return []; }
+}
+function writeLocalDrivers(rows) {
+  try { localStorage.setItem(DRIVERS_LOCAL_KEY, JSON.stringify(rows || [])); } catch (_) {}
+}
+
+async function fetchAdjustmentsList() {
+  let rows = readLocalAdj();
+  let remote = false;
+  try {
+    const { data, error } = await sb.from("stock_adjustments").select("*").order("id", { ascending: false }).limit(500);
+    if (!error && Array.isArray(data)) {
+      remote = true;
+      rows = data;
+      writeLocalAdj(rows);
+    }
+  } catch (_) {}
+  return { rows, remote };
+}
+
+async function fetchTransfersList() {
+  let rows = readLocalTransfers();
+  let remote = false;
+  try {
+    const { data, error } = await sb.from("warehouse_transfers").select("*").order("id", { ascending: false }).limit(500);
+    if (!error && Array.isArray(data)) {
+      remote = true;
+      rows = data;
+      writeLocalTransfers(rows);
+    }
+  } catch (_) {}
+  return { rows, remote };
+}
+
+async function syncKioskStock(rows) {
+  try {
+    const safeStock = (rows || []).map(r => ({
+      name: r.name,
+      warehouse: r.warehouse || "المخزن الرئيسي",
+      balance: Number(r.balance || 0)
+    }));
+    const prev = JSON.parse(localStorage.getItem("ccls_kiosk_snapshot_v1") || "{}") || {};
+    localStorage.setItem("ccls_kiosk_snapshot_v1", JSON.stringify({
+      ...prev,
+      updatedAt: new Date().toISOString(),
+      stock: safeStock
+    }));
+    const sess = await sb.auth.getSession();
+    const token = sess?.data?.session?.access_token;
+    if (!token) return;
+    await fetch("/api/public/kiosk-sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({ stock: safeStock, orgName: getAppSettings().orgName })
+    });
+  } catch (_) {}
+}
+
 async function loadStock() {
-  const [s, iv, w, wh, ct] = await Promise.all([
+  const [s, iv, w, wh, ct, adjRes, trRes] = await Promise.all([
     sb.from("stock_analysis").select("*").order("name"),
     sb.from("invoice_balance").select("remaining"),
     sb.from("withdrawals").select("qty").gte("w_date", today().slice(0, 8) + "01"),
     sb.from("warehouses").select("id,name").order("name"),
-    sb.from("product_categories").select("id,name").order("sort_order")]);
+    sb.from("product_categories").select("id,name").order("sort_order"),
+    fetchAdjustmentsList(),
+    fetchTransfersList()]);
   if (s.error) return toast(s.error.message + " (نفّذ supabase-warehouses.sql)", 1);
-  stockRows = s.data;
+  adjRows = adjRes.rows || [];
+  transferRows = trRes.rows || [];
+
+  const adjByKey = new Map();
+  adjRows.forEach(a => {
+    const k = `${String(a.warehouse_id || "")}|${String(a.product_name || "").trim().toUpperCase()}`;
+    const q = Number(a.qty || 0);
+    const tp = a.adjustment_type || a.adj_type;
+    const delta = tp === "returned_farmer" ? q : -q;
+    adjByKey.set(k, (adjByKey.get(k) || 0) + delta);
+  });
+
+  const trByKey = new Map();
+  const trMetaByKey = new Map();
+  transferRows.forEach(tr => {
+    const pUp = String(tr.product_name || "").trim().toUpperCase();
+    const q = Number(tr.qty || 0);
+    if (!pUp || !Number.isFinite(q) || q <= 0) return;
+    const kFrom = `${String(tr.from_warehouse_id || "")}|${pUp}`;
+    const kTo = `${String(tr.to_warehouse_id || "")}|${pUp}`;
+    trByKey.set(kFrom, (trByKey.get(kFrom) || 0) - q);
+    trByKey.set(kTo, (trByKey.get(kTo) || 0) + q);
+    if (tr.to_warehouse_id != null && !trMetaByKey.has(kTo)) {
+      trMetaByKey.set(kTo, { wid: tr.to_warehouse_id, warehouse: tr.to_warehouse_name || "", name: tr.product_name });
+    }
+  });
+
+  const baseRows = [...(s.data || [])];
+  const seenKeys = new Set(baseRows.map(r => `${String(r.wid || "")}|${String(r.name || "").trim().toUpperCase()}`));
+  trMetaByKey.forEach((meta, key) => {
+    if (!seenKeys.has(key)) {
+      const whMatch = (wh.data || []).find(x => String(x.id) === String(meta.wid));
+      baseRows.push({
+        wid: meta.wid,
+        warehouse: whMatch?.name || meta.warehouse || "مخزن",
+        name: meta.name,
+        category_id: null,
+        received: 0,
+        withdrawn: 0,
+        balance: 0,
+        daily: 0,
+        reorder_point: 0,
+        cover_days: null,
+        abc: "-"
+      });
+    }
+  });
+
+  stockRows = baseRows.map(r => {
+    const kExact = `${String(r.wid || "")}|${String(r.name || "").trim().toUpperCase()}`;
+    const kAnyWh = `|${String(r.name || "").trim().toUpperCase()}`;
+    const adjDelta = (adjByKey.get(kExact) || 0) + (r.wid ? 0 : (adjByKey.get(kAnyWh) || 0));
+    const transferDelta = trByKey.get(kExact) || 0;
+    const netBal = Number((Number(r.balance || 0) + adjDelta + transferDelta).toFixed(2));
+    return {
+      ...r,
+      adj_delta: Number(adjDelta.toFixed(2)),
+      transfer_delta: Number(transferDelta.toFixed(2)),
+      balance: netBal
+    };
+  });
+
   fillSel("#sw", wh.data, "كل المخازن"); fillSel("#lw", wh.data, "كل المخازن"); fillSel("#sc", ct.data, "كل الأنواع");
   const inv = iv.data || [], act = inv.filter(x => x.remaining > 0).length;
   const sum = a => (a || []).reduce((t, x) => t + Number(x.qty ?? x.balance), 0);
   const low = stockRows.filter(r => r.daily > 0 && r.balance <= r.reorder_point).length;
-  $("#cards").innerHTML = [["إجمالي الباقي في المخازن (قنطار)", n(sum(stockRows))], ["فواتير نشطة", act],
+  $("#cards").innerHTML = [["إجمالي الباقي الفعلي بالمخازن (قنطار)", n(sum(stockRows))], ["فواتير نشطة", act],
     ["مواد تحت نقطة إعادة الطلب", low], ["المسلَّم هذا الشهر (قنطار)", n(sum(w.data))]]
     .map(([l, v]) => `<div class="card"><b>${v}</b><span>${l}</span></div>`).join("");
   drawWarehouseChart(wh.data || []);
   drawLowStock();
   drawStock();
+  syncKioskStock(stockRows);
 }
 function getLowLimit() {
   const el = $("#lowLimit");
@@ -180,7 +446,9 @@ function drawLowStock() {
   if (allLow.length) {
     alertBox.hidden = false;
     alertBox.innerHTML = `<span><strong>تنبيه المخزون:</strong> يوجد <b>${allLow.length}</b> منتج كميته أقل من <b>${n(limit)}</b> قنطار.</span>
-      <button type="button" class="p" style="background:#b45309;color:#fff;padding:6px 12px" onclick="window.showAppTab && window.showAppTab('lowStock')">عرض قائمة المنتجات المنخفضة</button>`;
+      <button type="button" class="f" id="goLowStockBtn">عرض قائمة المنتجات المنخفضة</button>`;
+    const goBtn = $("#goLowStockBtn");
+    if (goBtn) goBtn.onclick = () => window.showAppTab && window.showAppTab("lowStock");
   } else {
     alertBox.hidden = true;
   }
@@ -193,7 +461,7 @@ function drawLowStock() {
   ].map(([l, v]) => `<div class="card"><b>${v}</b><span>${l}</span></div>`).join("");
 
   if (!rows.length) {
-    $("#lowStockT").innerHTML = `<p style="color:var(--mu)">لا توجد منتجات أقل من ${n(limit)} قنطار حالياً.</p>`;
+    $("#lowStockT").innerHTML = `<p class="empty-state">لا توجد منتجات أقل من ${n(limit)} قنطار حالياً.</p>`;
     return;
   }
   $("#lowStockT").innerHTML = `<table><thead><tr><th>المنتج</th><th>المخزن</th><th>الوارد</th><th>المستلم</th><th>الباقي (قنطار)</th><th>الحد الأدنى</th><th>الحالة</th></tr></thead><tbody>` +
@@ -253,13 +521,15 @@ function drawStock() {
     if (bal < limit) return `<span class="tag-warn">أوشك على النفاد</span>`;
     return r.daily > 0 && bal <= r.reorder_point ? `<span class="${r.cover_days <= r.lead_days ? "bad" : "warn"}">اطلب الآن</span>` : "";
   };
-  $("#stockT").innerHTML = tbl(["المنتج", "المخزن", "الوارد", "المستلم", "الباقي", "المعدل اليومي", "أيام التغطية", "نقطة إعادة الطلب", "ABC", "الحالة"],
+  $("#stockT").innerHTML = tbl(["المنتج", "المخزن", "الوارد", "المستلم", "تسويات / تحويلات", "الباقي الفعلي", "المعدل اليومي", "أيام التغطية", "نقطة إعادة الطلب", "ABC", "الحالة"],
     stockRows.filter(r => r.name.toLowerCase().includes(q) && (!w || String(r.wid) === w) && (!c || String(r.category_id) === c))
       .map(r => {
         const bal = Number(r.balance);
         const cls = bal <= 0 ? "bad" : bal < limit ? "warn" : "";
-        return [esc(r.name), esc(r.warehouse), n(r.received), n(r.withdrawn), `<span class="${cls}">${n(bal)}</span>`,
-          n(r.daily), r.cover_days ?? "-", n(r.reorder_point), r.abc, st(r)];
+        const netDiff = Number(((r.adj_delta || 0) + (r.transfer_delta || 0)).toFixed(2));
+        const adjTxt = netDiff ? `${netDiff > 0 ? "+" : ""}${n(netDiff)}` : "0";
+        return [esc(r.name), esc(r.warehouse), n(r.received), n(r.withdrawn), `<span class="${netDiff < 0 ? "warn" : ""}">${esc(adjTxt)}</span>`, `<span class="${cls}">${n(bal)}</span>`,
+          n(r.daily), esc(r.cover_days ?? "-"), n(r.reorder_point), esc(r.abc), st(r)];
       }));
 }
 ["#sq", "#sw", "#sc"].forEach(x => $(x).oninput = drawStock);
@@ -273,13 +543,14 @@ function drawInvoices() {
   const q = $("#q").value.trim().toLowerCase();
   const rows = invView = invoices.filter(i =>
     (st === "all" || (st === "open" ? i.remaining > 0 : i.remaining <= 0)) &&
-    (!q || `${i.invoice_no} ${i.client_name} ${i.farmer_name} ${i.product_name}`.toLowerCase().includes(q)));
+    (!q || `${i.invoice_no || ""} ${i.client_name || ""} ${i.farmer_name || ""} ${i.product_name || ""}`.toLowerCase().includes(q)));
   $("#invT").innerHTML = tbl(["الفاتورة", "التاريخ", "الفلاح", "السماد", "الكمية", "المستلم", "المتبقي", "إجراءات"],
-    rows.map(i => [`${esc(i.invoice_no)}/${i.invoice_year}`, i.invoice_date || "", esc(`${i.client_name || ""} ${i.farmer_name || ""}`.trim()),
+    rows.map(i => [`${esc(i.invoice_no)}/${esc(i.invoice_year)}`, esc(i.invoice_date || ""), esc(`${i.client_name || ""} ${i.farmer_name || ""}`.trim()),
       esc(i.product_name), n(i.qty), n(i.taken), `<b>${n(i.remaining)}</b>`,
-      `<div style="display:flex;gap:4px">
-        <button type="button" class="f" data-edit-inv="${i.id}">تعديل</button>
-        <button type="button" class="p" data-del-inv="${i.id}" style="background:var(--bad);padding:6px 10px">حذف</button>
+      `<div class="action-group">
+        <button type="button" class="f" data-inv-notes="${esc(i.id)}">ملاحظات</button>
+        <button type="button" class="f" data-edit-inv="${esc(i.id)}">تعديل</button>
+        <button type="button" class="f btn-danger" data-del-inv="${esc(i.id)}">حذف</button>
       </div>`]));
 }
 $("#q").oninput = drawInvoices;
@@ -290,6 +561,18 @@ document.querySelectorAll(".f[data-s]").forEach(b => b.onclick = () => {
   drawInvoices();
 });
 $("#invT").onclick = async e => {
+  const noteBtn = e.target.closest("[data-inv-notes]");
+  if (noteBtn) {
+    const inv = invoices.find(x => String(x.id) === noteBtn.dataset.invNotes);
+    if (inv && typeof openInvoiceNotesModal === "function") {
+      openInvoiceNotesModal({
+        invoiceId: inv.id,
+        invoiceRef: `${inv.invoice_no}/${inv.invoice_year}`,
+        farmerName: `${inv.client_name || ""} ${inv.farmer_name || ""}`.trim()
+      });
+    }
+    return;
+  }
   const editBtn = e.target.closest("[data-edit-inv]");
   if (editBtn) {
     const inv = invoices.find(x => String(x.id) === editBtn.dataset.editInv);
@@ -314,10 +597,26 @@ $("#invT").onclick = async e => {
   const delBtn = e.target.closest("[data-del-inv]");
   if (delBtn) {
     const id = delBtn.dataset.delInv;
-    if (!confirm("حذف سطر الفاتورة؟")) return;
-    const { error } = await sb.from("invoices").delete().eq("id", id);
-    if (error) return toast(error.code === "23503" ? "لا يمكن الحذف: توجد تسليمات مرتبطة بهذه الفاتورة" : error.message, 1);
-    toast("تم حذف الفاتورة");
+    const inv = invoices.find(x => String(x.id) === String(id));
+    if (!inv || !confirm("نقل سطر الفاتورة إلى سلة المحذوفات؟")) return;
+    let rawPayload = null;
+    try {
+      const { data } = await sb.from("invoices").select("*").eq("id", id).maybeSingle();
+      if (data) rawPayload = data;
+    } catch (_) {}
+    if (!rawPayload) {
+      const { taken, remaining, product_name, ...rest } = inv;
+      rawPayload = rest;
+    }
+    const res = await softDeleteItem({
+      entityType: "فاتورة",
+      tableName: "invoices",
+      entityLabel: `فاتورة ${inv.invoice_no}/${inv.invoice_year} — ${inv.farmer_name || ""}`,
+      originalId: id,
+      payload: rawPayload
+    });
+    if (!res.ok) return toast(res.error?.code === "23503" ? "لا يمكن الحذف: توجد تسليمات مرتبطة بهذه الفاتورة" : (res.error?.message || "تعذّر الحذف"), 1);
+    toast("تم نقل الفاتورة إلى سلة المحذوفات (يمكنك استرجاعها لاحقاً)");
     loadInvoices();
   }
 };
@@ -326,6 +625,10 @@ $("#fInvEdit").onsubmit = async e => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
   const id = f.id;
+  const invQty = Number(f.qty);
+  if (!Number.isFinite(invQty) || invQty <= 0) return toast("أدخل كمية صالحة أكبر من الصفر", 1);
+  const unitPrice = f.unit_price !== "" ? Number(f.unit_price) : null;
+  if (unitPrice !== null && (!Number.isFinite(unitPrice) || unitPrice < 0)) return toast("أدخل سعراً صالحاً", 1);
   const payload = {
     invoice_no: f.invoice_no.trim(),
     invoice_year: Number(f.invoice_year),
@@ -335,8 +638,8 @@ $("#fInvEdit").onsubmit = async e => {
     farmer_name: f.farmer_name.trim(),
     region: f.region?.trim() || null,
     phone: f.phone?.trim() || null,
-    qty: Number(f.qty),
-    unit_price: f.unit_price !== "" ? Number(f.unit_price) : null,
+    qty: invQty,
+    unit_price: unitPrice,
     notes: f.notes?.trim() || null
   };
   const { error } = await sb.from("invoices").update(payload).eq("id", id);
@@ -366,9 +669,9 @@ function drawLog() {
     const i = w.invoices || {};
     return [w.w_date, `${i.invoice_no}/${i.invoice_year}`, `${i.client_name || ""} ${i.farmer_name || ""}`.trim(), i.products?.name,
       w.qty, w.vehicle_ref, w.driver_name, w.truck_no, w.bon_no, w.created_by, (w.created_at || "").slice(0, 16).replace("T", " "),
-      `<div style="display:flex;gap:4px">
-        <button type="button" class="f" data-edit-log="${w.id}">تعديل</button>
-        <button type="button" class="p" data-del-log="${w.id}" style="background:var(--bad);padding:6px 10px">حذف</button>
+      `<div class="action-group">
+        <button type="button" class="f" data-edit-log="${esc(w.id)}">تعديل</button>
+        <button type="button" class="f btn-danger" data-del-log="${esc(w.id)}">حذف</button>
       </div>`];
   });
   $("#logT").innerHTML = tbl(LOGH, logView.map((r, idx) => r.map((c, ci) => ci === LOGH.length - 1 ? c : esc(c))));
@@ -395,10 +698,18 @@ $("#logT").onclick = async e => {
   const delBtn = e.target.closest("[data-del-log]");
   if (delBtn) {
     const id = delBtn.dataset.delLog;
-    if (!confirm("حذف عملية التسليم هذه؟")) return;
-    const { error } = await sb.from("withdrawals").delete().eq("id", id);
-    if (error) return toast(error.message, 1);
-    toast("تم حذف التسليم");
+    const row = logRows.find(x => String(x.id) === String(id));
+    if (!row || !confirm("نقل عملية التسليم هذه إلى سلة المحذوفات؟")) return;
+    const i = row.invoices || {};
+    const res = await softDeleteItem({
+      entityType: "عملية تسليم",
+      tableName: "withdrawals",
+      entityLabel: `تسليم ${n(row.qty)} قنطار · فاتورة ${i.invoice_no || row.invoice_id || ""}`,
+      originalId: id,
+      payload: row
+    });
+    if (!res.ok) return toast(res.error?.message || "تعذّر الحذف", 1);
+    toast("تم نقل التسليم إلى سلة المحذوفات");
     loadLog();
   }
 };
@@ -406,9 +717,21 @@ $("#cancelLogEdit").onclick = () => { $("#logEditBox").hidden = true; $("#fLogEd
 $("#fLogEdit").onsubmit = async e => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
+  const logQty = Number(f.qty);
+  if (!Number.isFinite(logQty) || logQty <= 0) return toast("أدخل كمية تسليم صالحة أكبر من الصفر", 1);
+  const oldRow = logRows.find(x => String(x.id) === String(f.id));
+  if (oldRow?.invoice_id) {
+    const { data: ib } = await sb.from("invoice_balance").select("remaining").eq("id", oldRow.invoice_id).maybeSingle();
+    if (ib) {
+      const maxAllowed = Number(ib.remaining || 0) + Number(oldRow.qty || 0);
+      if (logQty > maxAllowed) {
+        return toast(`الكمية ${n(logQty)} تتجاوز المتبقي في الفاتورة. أقصى كمية متاحة: ${n(maxAllowed)} قنطار`, 1);
+      }
+    }
+  }
   const payload = {
     w_date: f.w_date,
-    qty: Number(f.qty),
+    qty: logQty,
     vehicle_ref: f.vehicle_ref.trim(),
     driver_name: f.driver_name.trim(),
     truck_no: f.truck_no.trim(),
@@ -436,14 +759,14 @@ async function loadAudit() {
   const A = { INSERT: "إضافة", UPDATE: "تعديل", DELETE: "حذف" };
   const T = { products: "الأسمدة", stock_in: "الوارد", invoices: "الفواتير", withdrawals: "التسليمات" };
   $("#auT").innerHTML = tbl(["الوقت", "المستخدم", "العملية", "القسم", "رقم السجل"],
-    data.map(r => [r.changed_at.slice(0, 16).replace("T", " "), esc(r.user_name || r.user_email), A[r.action], T[r.table_name] || r.table_name, r.row_id]));
+    (data || []).map(r => [esc((r.changed_at || "").slice(0, 16).replace("T", " ")), esc(r.user_name || r.user_email), esc(A[r.action] || r.action), esc(T[r.table_name] || r.table_name), esc(r.row_id)]));
 }
 
 // ----- المخازن وأنواع المنتجات والمنتجات -----
 let CT = [];
-const catBoxes = sel => CT.map(c => `<label><input type="checkbox" class="pc" value="${c.id}"${sel.includes(c.id) ? " checked" : ""}>${esc(c.name)}</label>`).join("");
-const catOpts = cur => CT.map(c => `<option value="${c.id}"${c.id === cur ? " selected" : ""}>${esc(c.name)}</option>`).join("");
-const btns = id => `<button class="p" data-id="${id}">حفظ</button> <button class="p" data-id="${id}" data-act="del" style="background:var(--bad)">حذف</button>`;
+const catBoxes = sel => CT.map(c => `<label><input type="checkbox" class="pc" value="${esc(c.id)}"${sel.includes(c.id) ? " checked" : ""}>${esc(c.name)}</label>`).join("");
+const catOpts = cur => CT.map(c => `<option value="${esc(c.id)}"${c.id === cur ? " selected" : ""}>${esc(c.name)}</option>`).join("");
+const btns = id => `<div class="action-group"><button class="p" data-id="${esc(id)}">حفظ</button> <button class="f btn-danger" data-id="${esc(id)}" data-act="del">حذف</button></div>`;
 async function loadCatalogTab() {
   const [w, c, wc, p] = await Promise.all([sb.from("warehouses").select("*").order("name"),
     sb.from("product_categories").select("*").order("sort_order").order("name"),
@@ -459,9 +782,9 @@ async function loadCatalogTab() {
   $("#prT").innerHTML = tbl(["المنتج", "النوع", "مدة التوريد (يوم)", "احتياطي (يوم)", ""], p.data.map(x => [
     `<input data-pn value="${esc(x.name)}">`,
     `<select data-c><option value="">—</option>${catOpts(x.category_id)}</select>`,
-    `<input type="number" data-ld min="0" value="${x.lead_days}" style="width:80px">`,
-    `<input type="number" data-sd min="0" value="${x.safety_days}" style="width:80px">`,
-    `<button class="p" data-id="${x.id}">حفظ</button>`]));
+    `<input type="number" data-ld min="0" value="${esc(x.lead_days)}" style="width:80px">`,
+    `<input type="number" data-sd min="0" value="${esc(x.safety_days)}" style="width:80px">`,
+    `<button class="p" data-id="${esc(x.id)}">حفظ</button>`]));
 }
 async function run(q, ok) {
   const { error } = await q;
@@ -490,9 +813,13 @@ $("#wT").onclick = async e => {
   if (b.dataset.act === "del") return confirm("حذف المخزن؟") && run(sb.from("warehouses").delete().eq("id", id), "تم الحذف");
   const { error } = await sb.from("warehouses").update({ name: tr.querySelector("[data-n]").value.trim(), location: tr.querySelector("[data-l]").value || null, active: tr.querySelector("[data-a]").checked }).eq("id", id);
   if (error) return toast(error.message, 1);
-  await sb.from("warehouse_categories").delete().eq("warehouse_id", id);
+  const { error: delErr } = await sb.from("warehouse_categories").delete().eq("warehouse_id", id);
+  if (delErr) return toast(delErr.message, 1);
   const cs = [...tr.querySelectorAll(".pc:checked")].map(c => ({ warehouse_id: id, category_id: +c.value }));
-  if (cs.length) await sb.from("warehouse_categories").insert(cs);
+  if (cs.length) {
+    const { error: insErr } = await sb.from("warehouse_categories").insert(cs);
+    if (insErr) return toast(insErr.message, 1);
+  }
   toast("تم الحفظ"); loadCatalogTab();
 };
 $("#cT").onclick = e => {
@@ -507,13 +834,654 @@ $("#prT").onclick = e => {
   run(sb.from("products").update({ name: tr.querySelector("[data-pn]").value.trim(), category_id: tr.querySelector("[data-c]").value || null, lead_days: +tr.querySelector("[data-ld]").value, safety_days: +tr.querySelector("[data-sd]").value }).eq("id", +b.dataset.id), "تم الحفظ");
 };
 
+// ----- التالف والضائع والمرتجع وتسوية الجرد -----
+let hasRemoteAdj = false;
+let editingAdjId = null;
+const ADJ_LABELS = {
+  damaged: "تالف (خصم)",
+  lost: "ضائع / عجز جرد (خصم)",
+  returned_supplier: "مرتجع للممون (خصم)",
+  returned_farmer: "مرتجع من فلاح (+)"
+};
+
+function cancelAdjEdit() {
+  editingAdjId = null;
+  $("#adjEditBanner").hidden = true;
+  $("#fAdj").reset();
+  $("#fAdj [name=adj_date]").value = today();
+  $("#fAdj [name=amount_dzd]").value = "0";
+  requestAnimationFrame(() => { $("#submitAdjBtn").textContent = "تسجيل التسوية"; });
+}
+$("#cancelAdjEdit").onclick = cancelAdjEdit;
+
+["qty", "unit_price"].forEach(name => {
+  $("#fAdj [name=" + name + "]").addEventListener("input", () => {
+    const q = Number($("#fAdj [name=qty]").value || 0);
+    const up = Number($("#fAdj [name=unit_price]").value || 0);
+    if (q > 0 && up > 0) {
+      $("#fAdj [name=amount_dzd]").value = String(Number((q * up).toFixed(2)));
+    }
+  });
+});
+
+async function loadAdjustments() {
+  const [whRes, prRes, adjRes] = await Promise.all([
+    sb.from("warehouses").select("id,name").order("name"),
+    sb.from("products").select("id,name").order("name"),
+    fetchAdjustmentsList()
+  ]);
+  const whList = whRes.data || [];
+  const prList = prRes.data || [];
+  $("#adjWh").innerHTML = '<option value="">— المخزن الرئيسي —</option>' + whList.map(w => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join("");
+  $("#adjPl").innerHTML = prList.map(p => `<option value="${esc(p.name)}">`).join("");
+  adjRows = adjRes.rows || [];
+  hasRemoteAdj = adjRes.remote;
+  $("#adjDbBadge").textContent = hasRemoteAdj
+    ? "متصل بقاعدة البيانات Supabase ✓"
+    : "حفظ محلي (لتفعيل الحفظ في Supabase نفّذ supabase-ops.sql)";
+  if (!$("#fAdj [name=adj_date]").value) $("#fAdj [name=adj_date]").value = today();
+  renderAdjustments();
+}
+
+function filteredAdjRows() {
+  const q = ($("#adjQ").value || "").trim().toLowerCase();
+  const tp = $("#adjTypeFilter").value;
+  return adjRows.filter(r =>
+    (!tp || r.adjustment_type === tp) &&
+    (!q || [r.product_name, r.warehouse_name, r.reason, r.ref_doc, r.adj_date, ADJ_LABELS[r.adjustment_type]].join(" ").toLowerCase().includes(q))
+  );
+}
+
+function renderAdjustments() {
+  const rows = filteredAdjRows();
+  let damagedQ = 0, lostQ = 0, returnedQ = 0, totalAmt = 0;
+  rows.forEach(r => {
+    const q = Number(r.qty || 0);
+    totalAmt += Number(r.amount_dzd || 0);
+    if (r.adjustment_type === "damaged") damagedQ += q;
+    else if (r.adjustment_type === "lost") lostQ += q;
+    else returnedQ += q;
+  });
+  const canFin = typeof hasFeatPerm !== "function" || hasFeatPerm("feat:financials");
+  $("#adjCards").innerHTML = [
+    ["إجمالي التالف (قنطار)", n(damagedQ)],
+    ["الضائع وعجز الجرد (قنطار)", n(lostQ)],
+    ["المرتجع (قنطار)", n(returnedQ)],
+    [canFin ? "إجمالي المبلغ المسجّل (دج)" : "عدد تسويات الجرد", canFin ? n(totalAmt) : rows.length]
+  ].map(([l, v]) => `<div class="card"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
+
+  $("#adjT").innerHTML = tbl(
+    ["التاريخ", "النوع", "السماد", "المخزن", "الكمية (قنطار)", "المبلغ (دج)", "السبب", "المرجع", "المستخدم", "إجراءات"],
+    rows.map(r => [
+      esc(r.adj_date),
+      `<span class="${r.adjustment_type === "returned_farmer" ? "" : "warn"}">${esc(ADJ_LABELS[r.adjustment_type] || r.adjustment_type)}</span>`,
+      `<b>${esc(r.product_name)}</b>`,
+      esc(r.warehouse_name || "—"),
+      `<b>${n(r.qty)}</b>`,
+      canFin ? n(r.amount_dzd || 0) : "—",
+      esc(r.reason),
+      esc(r.ref_doc || "—"),
+      esc(r.created_by || "—"),
+      `<div class="action-group">
+        <button type="button" class="f" data-edit-adj="${esc(r.id)}">تعديل</button>
+        <button type="button" class="f btn-danger" data-del-adj="${esc(r.id)}">حذف</button>
+      </div>`
+    ])
+  );
+}
+
+$("#adjQ").oninput = renderAdjustments;
+$("#adjTypeFilter").onchange = renderAdjustments;
+$("#xAdj").onclick = () => csv("stock-adjustments",
+  ["التاريخ", "النوع", "السماد", "المخزن", "الكمية (قنطار)", "سعر الوحدة", "المبلغ (دج)", "السبب", "المرجع", "بواسطة"],
+  filteredAdjRows().map(r => [r.adj_date, ADJ_LABELS[r.adjustment_type] || r.adjustment_type, r.product_name, r.warehouse_name || "", r.qty, r.unit_price || 0, r.amount_dzd || 0, r.reason, r.ref_doc || "", r.created_by || ""]));
+
+$("#fAdj").onsubmit = async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  const qVal = Number(f.qty);
+  const upVal = f.unit_price !== "" ? Number(f.unit_price) : 0;
+  const amtVal = Number(f.amount_dzd || 0);
+  if (!Number.isFinite(qVal) || qVal <= 0) return toast("أدخل كمية صالحة أكبر من الصفر", 1);
+  if (!Number.isFinite(amtVal) || amtVal < 0) return toast("أدخل مبلغاً صالحاً (0 أو أكثر)", 1);
+  const whSel = $("#adjWh");
+  const whName = whSel.value ? whSel.selectedOptions[0]?.textContent || "" : "المخزن الرئيسي";
+  let pId = null;
+  try { pId = await productId(f.product_name); } catch (_) {}
+  const payload = {
+    adj_date: f.adj_date || today(),
+    adjustment_type: f.adjustment_type,
+    product_id: pId,
+    product_name: f.product_name.trim(),
+    warehouse_id: whSel.value ? Number(whSel.value) : null,
+    warehouse_name: whName,
+    qty: qVal,
+    unit_price: Number.isFinite(upVal) ? upVal : 0,
+    amount_dzd: amtVal,
+    reason: f.reason.trim(),
+    ref_doc: f.ref_doc?.trim() || null,
+    created_by: ME?.full_name || ME?.email || null
+  };
+
+  if (editingAdjId != null) {
+    if (hasRemoteAdj) {
+      const { data, error } = await sb.from("stock_adjustments").update(payload).eq("id", editingAdjId).select().single();
+      if (error) return toast(error.message, 1);
+      adjRows = adjRows.map(x => String(x.id) === String(editingAdjId) ? data : x);
+    } else {
+      adjRows = adjRows.map(x => String(x.id) === String(editingAdjId) ? { ...x, ...payload } : x);
+    }
+    writeLocalAdj(adjRows);
+    toast("تم تعديل سجل التسوية");
+    cancelAdjEdit();
+    renderAdjustments();
+    return;
+  }
+
+  if (hasRemoteAdj) {
+    const { data, error } = await sb.from("stock_adjustments").insert(payload).select().single();
+    if (error) return toast(error.message, 1);
+    adjRows.unshift(data);
+    toast("تم تسجيل التالف/المرتجع في قاعدة البيانات");
+  } else {
+    adjRows.unshift({ id: Date.now(), created_at: new Date().toISOString(), ...payload });
+    toast("تم تسجيل التسوية محلياً (نفّذ supabase-ops.sql للمزامنة السحابية)");
+  }
+  writeLocalAdj(adjRows);
+  e.target.reset();
+  $("#fAdj [name=adj_date]").value = today();
+  $("#fAdj [name=amount_dzd]").value = "0";
+  renderAdjustments();
+};
+
+$("#adjT").onclick = async e => {
+  const editBtn = e.target.closest("[data-edit-adj]");
+  if (editBtn) {
+    const r = adjRows.find(x => String(x.id) === editBtn.dataset.editAdj);
+    if (!r) return;
+    editingAdjId = r.id;
+    $("#adjEditLabel").textContent = `تعديل تسوية ${r.product_name} (${r.adj_date})`;
+    $("#adjEditBanner").hidden = false;
+    $("#fAdj [name=adj_date]").value = r.adj_date || today();
+    $("#fAdj [name=adjustment_type]").value = r.adjustment_type || "damaged";
+    $("#fAdj [name=product_name]").value = r.product_name || "";
+    $("#adjWh").value = r.warehouse_id != null ? String(r.warehouse_id) : "";
+    $("#fAdj [name=qty]").value = r.qty ?? "";
+    $("#fAdj [name=unit_price]").value = r.unit_price ?? "";
+    $("#fAdj [name=amount_dzd]").value = r.amount_dzd ?? 0;
+    $("#fAdj [name=ref_doc]").value = r.ref_doc || "";
+    $("#fAdj [name=reason]").value = r.reason || "";
+    $("#submitAdjBtn").textContent = "حفظ التعديل";
+    $("#adjustSec").scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  const delBtn = e.target.closest("[data-del-adj]");
+  if (delBtn) {
+    const id = delBtn.dataset.delAdj;
+    const target = adjRows.find(x => String(x.id) === String(id));
+    if (!target || !confirm("نقل سجل التسوية هذا إلى سلة المحذوفات؟")) return;
+    const res = await softDeleteItem({
+      entityType: "تسوية جرد",
+      tableName: "stock_adjustments",
+      entityLabel: `${ADJ_LABELS[target.adjustment_type] || "تسوية"} · ${target.product_name} (${n(target.qty)})`,
+      originalId: id,
+      payload: target,
+      localOnly: !hasRemoteAdj
+    });
+    if (!res.ok) return toast(res.error?.message || "تعذّر الحذف", 1);
+    adjRows = adjRows.filter(x => String(x.id) !== String(id));
+    writeLocalAdj(adjRows);
+    if (String(editingAdjId) === String(id)) cancelAdjEdit();
+    toast("تم نقل السجل إلى سلة المحذوفات");
+    renderAdjustments();
+  }
+};
+
+// ----- التحويل بين المخازن -----
+let hasRemoteTransfers = false;
+let transferWhList = [];
+
+async function loadTransfers() {
+  const [whRes, prRes, trRes] = await Promise.all([
+    sb.from("warehouses").select("id,name").eq("active", true).order("name"),
+    sb.from("products").select("id,name").order("name"),
+    fetchTransfersList()
+  ]);
+  transferWhList = whRes.data || [];
+  const prList = prRes.data || [];
+  const whOpts = '<option value="">— اختر المخزن —</option>' + transferWhList.map(w => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join("");
+  $("#trFromWh").innerHTML = whOpts;
+  $("#trToWh").innerHTML = whOpts;
+  $("#transferPl").innerHTML = prList.map(p => `<option value="${esc(p.name)}">`).join("");
+  transferRows = trRes.rows || [];
+  hasRemoteTransfers = trRes.remote;
+  $("#transferDbBadge").textContent = hasRemoteTransfers
+    ? "متصل بقاعدة البيانات Supabase ✓"
+    : "حفظ محلي (لتفعيل المزامنة نفّذ supabase-ops.sql)";
+  if (!$("#fTransfer [name=transfer_date]").value) $("#fTransfer [name=transfer_date]").value = today();
+  if (!stockRows.length) await loadStock().catch(() => {});
+  renderTransfers();
+}
+
+function filteredTransferRows() {
+  const q = ($("#transferQ")?.value || "").trim().toLowerCase();
+  return transferRows.filter(r =>
+    !q || [r.product_name, r.from_warehouse_name, r.to_warehouse_name, r.reason, r.ref_doc, r.transfer_date].join(" ").toLowerCase().includes(q)
+  );
+}
+
+function renderTransfers() {
+  const rows = filteredTransferRows();
+  const totalQ = rows.reduce((s, r) => s + Number(r.qty || 0), 0);
+  const uniqProds = new Set(rows.map(r => r.product_name).filter(Boolean)).size;
+  $("#transferCards").innerHTML = [
+    ["إجمالي عمليات التحويل", rows.length],
+    ["إجمالي الكميات المحوَّلة (قنطار)", n(totalQ)],
+    ["عدد الأصناف المحوَّلة", uniqProds],
+    ["المخازن المفعَّلة", transferWhList.length]
+  ].map(([l, v]) => `<div class="card"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
+
+  $("#transfersT").innerHTML = tbl(
+    ["التاريخ", "المنتج", "من المخزن", "إلى المخزن", "الكمية (قنطار)", "رقم الوثيقة", "السبب", "المستخدم", "إجراءات"],
+    rows.map(r => [
+      esc(r.transfer_date),
+      `<b>${esc(r.product_name)}</b>`,
+      esc(r.from_warehouse_name || "—"),
+      `<span class="tag-ok">${esc(r.to_warehouse_name || "—")}</span>`,
+      `<b>${n(r.qty)}</b>`,
+      esc(r.ref_doc || "—"),
+      esc(r.reason || "—"),
+      esc(r.created_by || "—"),
+      `<button type="button" class="f btn-danger" data-del-transfer="${esc(r.id)}">حذف</button>`
+    ])
+  );
+  if (typeof applyActionPermissions === "function") applyActionPermissions($("#transferSec"));
+}
+
+$("#transferQ").oninput = renderTransfers;
+$("#xTransfers").onclick = () => csv("warehouse-transfers",
+  ["التاريخ", "المنتج", "من المخزن", "إلى المخزن", "الكمية (قنطار)", "رقم الوثيقة", "السبب", "المستخدم"],
+  filteredTransferRows().map(r => [r.transfer_date, r.product_name, r.from_warehouse_name || "", r.to_warehouse_name || "", r.qty, r.ref_doc || "", r.reason || "", r.created_by || ""]));
+
+$("#fTransfer").onsubmit = async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  const qtyVal = Number(f.qty);
+  if (!Number.isFinite(qtyVal) || qtyVal <= 0) return toast("أدخل كمية تحويل صالحة أكبر من الصفر", 1);
+  if (String(f.from_warehouse_id) === String(f.to_warehouse_id)) {
+    return toast("يرجى اختيار مخزن وجهة مختلف عن مخزن المصدر", 1);
+  }
+  const pName = f.product_name.trim();
+  const fromOpt = $("#trFromWh").selectedOptions[0]?.textContent || "";
+  const toOpt = $("#trToWh").selectedOptions[0]?.textContent || "";
+  const srcMatch = stockRows.find(r =>
+    String(r.wid || "") === String(f.from_warehouse_id) &&
+    String(r.name || "").trim().toUpperCase() === pName.toUpperCase()
+  );
+  if (srcMatch && qtyVal > Number(srcMatch.balance || 0)) {
+    return toast(`رصيد (${pName}) في ${fromOpt} هو ${n(srcMatch.balance)} قنطار ولا يكفي لتحويل ${n(qtyVal)} قنطار`, 1);
+  }
+  let pId = null;
+  try { pId = await productId(pName); } catch (_) {}
+  const payload = {
+    transfer_date: f.transfer_date || today(),
+    from_warehouse_id: Number(f.from_warehouse_id),
+    from_warehouse_name: fromOpt,
+    to_warehouse_id: Number(f.to_warehouse_id),
+    to_warehouse_name: toOpt,
+    product_id: pId,
+    product_name: pName,
+    qty: qtyVal,
+    ref_doc: f.ref_doc?.trim() || null,
+    reason: f.reason?.trim() || null,
+    created_by: ME?.full_name || ME?.email || null
+  };
+  if (hasRemoteTransfers) {
+    const { data, error } = await sb.from("warehouse_transfers").insert(payload).select().single();
+    if (error) return toast(error.message, 1);
+    transferRows.unshift(data);
+    toast("تم تنفيذ التحويل وتحديث أرصدة المخازن ✓");
+  } else {
+    transferRows.unshift({ id: Date.now(), created_at: new Date().toISOString(), ...payload });
+    toast("تم تسجيل التحويل محلياً (نفّذ supabase-ops.sql للمزامنة السحابية)");
+  }
+  writeLocalTransfers(transferRows);
+  e.target.reset();
+  $("#fTransfer [name=transfer_date]").value = today();
+  await loadStock();
+  renderTransfers();
+};
+
+$("#transfersT").onclick = async e => {
+  const delBtn = e.target.closest("[data-del-transfer]");
+  if (!delBtn) return;
+  const id = delBtn.dataset.delTransfer;
+  const target = transferRows.find(x => String(x.id) === String(id));
+  if (!target || !confirm("نقل سجل التحويل هذا إلى سلة المحذوفات؟")) return;
+  const res = await softDeleteItem({
+    entityType: "تحويل مخزني",
+    tableName: "warehouse_transfers",
+    entityLabel: `تحويل ${target.product_name} (${n(target.qty)}) من ${target.from_warehouse_name || ""} إلى ${target.to_warehouse_name || ""}`,
+    originalId: id,
+    payload: target,
+    localOnly: !hasRemoteTransfers
+  });
+  if (!res.ok) return toast(res.error?.message || "تعذّر الحذف", 1);
+  transferRows = transferRows.filter(x => String(x.id) !== String(id));
+  writeLocalTransfers(transferRows);
+  toast("تم نقل التحويل إلى سلة المحذوفات");
+  await loadStock();
+  renderTransfers();
+};
+
+// ----- سجل الناقلين والسائقين -----
+let hasRemoteDrivers = false;
+let editingDriverId = null;
+let driverStatsMap = new Map();
+
+function cancelDriverEdit() {
+  editingDriverId = null;
+  $("#driverEditBanner").hidden = true;
+  $("#fDriver").reset();
+  $("#fDriver [name=active]").checked = true;
+  requestAnimationFrame(() => { $("#submitDriverBtn").textContent = "حفظ السائق"; });
+}
+$("#cancelDriverEdit").onclick = cancelDriverEdit;
+
+function computeDriverTripStats(wRows, bonRows) {
+  const map = new Map();
+  const addTrip = (dName, tNo, qty) => {
+    const cleanD = String(dName || "").trim().toUpperCase();
+    const cleanT = String(tNo || "").trim().toUpperCase();
+    const key = cleanD || cleanT;
+    if (!key) return;
+    if (cleanD) {
+      const cur = map.get("D:" + cleanD) || { trips: 0, qty: 0 };
+      cur.trips += 1;
+      cur.qty += Number(qty || 0);
+      map.set("D:" + cleanD, cur);
+    }
+    if (cleanT) {
+      const curT = map.get("T:" + cleanT) || { trips: 0, qty: 0 };
+      curT.trips += 1;
+      curT.qty += Number(qty || 0);
+      map.set("T:" + cleanT, curT);
+    }
+  };
+  (wRows || []).forEach(w => addTrip(w.driver_name, w.truck_no, w.qty));
+  const seenBons = new Map();
+  (bonRows || []).forEach(b => {
+    const bKey = `${b.bon_no}|${b.driver_name}|${b.truck_no}`;
+    if (!seenBons.has(bKey)) seenBons.set(bKey, { d: b.driver_name, t: b.truck_no, q: 0 });
+    seenBons.get(bKey).q += Number(b.qty || 0);
+  });
+  seenBons.forEach(v => addTrip(v.d, v.t, v.q));
+  return map;
+}
+
+async function loadDrivers() {
+  driverRows = readLocalDrivers();
+  hasRemoteDrivers = false;
+  let wRows = [];
+  let bonRows = [];
+  try {
+    const [dRes, wRes, bRes] = await Promise.all([
+      sb.from("drivers_registry").select("*").order("driver_name"),
+      sb.from("withdrawals").select("driver_name, truck_no, qty").limit(2000),
+      sb.from("bon_sorties").select("bon_no, driver_name, truck_no, qty").limit(2000)
+    ]);
+    if (!dRes.error && Array.isArray(dRes.data)) {
+      hasRemoteDrivers = true;
+      driverRows = dRes.data;
+      writeLocalDrivers(driverRows);
+    }
+    if (!wRes.error && Array.isArray(wRes.data)) wRows = wRes.data;
+    if (!bRes.error && Array.isArray(bRes.data)) bonRows = bRes.data;
+  } catch (_) {}
+  if (!bonRows.length) {
+    try { bonRows = JSON.parse(localStorage.getItem("ccls_bons_2026_2027") || "[]") || []; } catch (_) {}
+  }
+  driverStatsMap = computeDriverTripStats(wRows, bonRows);
+  $("#driversDbBadge").textContent = hasRemoteDrivers
+    ? "متصل بقاعدة البيانات Supabase ✓"
+    : "حفظ محلي (لتفعيل المزامنة نفّذ supabase-ops.sql)";
+  renderDrivers();
+}
+
+function getTripsForDriver(d) {
+  const byName = d.driver_name ? driverStatsMap.get("D:" + String(d.driver_name).trim().toUpperCase()) : null;
+  const byTruck = d.truck_no ? driverStatsMap.get("T:" + String(d.truck_no).trim().toUpperCase()) : null;
+  if (byName && byTruck) {
+    return byName.trips >= byTruck.trips ? byName : byTruck;
+  }
+  return byName || byTruck || { trips: 0, qty: 0 };
+}
+
+function filteredDriverRows() {
+  const q = ($("#driverQ")?.value || "").trim().toLowerCase();
+  return driverRows.filter(d =>
+    !q || [d.driver_name, d.license_no, d.truck_no, d.phone, d.carrier_name, d.notes].join(" ").toLowerCase().includes(q)
+  );
+}
+
+function renderDrivers() {
+  const rows = filteredDriverRows();
+  let totalTrips = 0;
+  let totalLoaded = 0;
+  rows.forEach(d => {
+    const st = getTripsForDriver(d);
+    totalTrips += st.trips;
+    totalLoaded += st.qty;
+  });
+  $("#driverCards").innerHTML = [
+    ["إجمالي السائقين المسجّلين", rows.length],
+    ["السائقون النشطون", rows.filter(d => d.active !== false).length],
+    ["إجمالي رحلات التحميل المسجلة", totalTrips],
+    ["الكميات المنقولة (قنطار)", n(totalLoaded)]
+  ].map(([l, v]) => `<div class="card"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
+
+  $("#driversT").innerHTML = tbl(
+    ["السائق", "رقم الرخصة", "ترقيم الشاحنة", "الهاتف", "الناقل / الشركة", "مرات التحميل", "الحالة", "إجراءات"],
+    rows.map(d => {
+      const st = getTripsForDriver(d);
+      return [
+        `<b>${esc(d.driver_name)}</b>${d.notes ? `<br><small style="color:var(--mu)">${esc(d.notes)}</small>` : ""}`,
+        `<span style="font-family:var(--font-mono)">${esc(d.license_no || "—")}</span>`,
+        `<b style="font-family:var(--font-mono);color:var(--pr)">${esc(d.truck_no || "—")}</b>`,
+        esc(d.phone || "—"),
+        esc(d.carrier_name || "نقل خاص"),
+        `<b>${st.trips}</b> <small style="color:var(--mu)">(${n(st.qty)} قنطار)</small>`,
+        d.active === false ? `<span class="tag-warn">متوقف</span>` : `<span class="tag-ok">نشط ✓</span>`,
+        `<div class="action-group">
+          <button type="button" class="f" data-edit-driver="${esc(d.id)}">تعديل</button>
+          <button type="button" class="f btn-danger" data-del-driver="${esc(d.id)}">حذف</button>
+        </div>`
+      ];
+    })
+  );
+  if (typeof applyActionPermissions === "function") applyActionPermissions($("#driversSec"));
+}
+
+$("#driverQ").oninput = renderDrivers;
+$("#xDrivers").onclick = () => csv("drivers-registry",
+  ["اسم السائق", "رقم الرخصة", "ترقيم الشاحنة", "الهاتف", "الناقل", "عدد مرات التحميل", "إجمالي الكمية", "الحالة", "ملاحظات"],
+  filteredDriverRows().map(d => {
+    const st = getTripsForDriver(d);
+    return [d.driver_name, d.license_no || "", d.truck_no || "", d.phone || "", d.carrier_name || "", st.trips, Number(st.qty.toFixed(2)), d.active === false ? "متوقف" : "نشط", d.notes || ""];
+  }));
+
+$("#fDriver").onsubmit = async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  const payload = {
+    driver_name: f.driver_name.trim().toUpperCase(),
+    license_no: f.license_no?.trim() || null,
+    truck_no: f.truck_no.trim().toUpperCase(),
+    phone: f.phone?.trim() || null,
+    carrier_name: f.carrier_name?.trim() || null,
+    notes: f.notes?.trim() || null,
+    active: $("#fDriver [name=active]").checked,
+    created_by: ME?.full_name || ME?.email || null
+  };
+  if (editingDriverId != null) {
+    if (hasRemoteDrivers) {
+      const { data, error } = await sb.from("drivers_registry").update(payload).eq("id", editingDriverId).select().single();
+      if (error) return toast(error.message, 1);
+      driverRows = driverRows.map(x => String(x.id) === String(editingDriverId) ? data : x);
+    } else {
+      driverRows = driverRows.map(x => String(x.id) === String(editingDriverId) ? { ...x, ...payload } : x);
+    }
+    writeLocalDrivers(driverRows);
+    toast("تم تحديث بيانات السائق ✓");
+    cancelDriverEdit();
+    renderDrivers();
+    return;
+  }
+  if (hasRemoteDrivers) {
+    const { data, error } = await sb.from("drivers_registry").insert(payload).select().single();
+    if (error) return toast(error.message, 1);
+    driverRows.unshift(data);
+    toast("تم حفظ السائق في قاعدة البيانات ✓");
+  } else {
+    driverRows.unshift({ id: Date.now(), created_at: new Date().toISOString(), ...payload });
+    toast("تم حفظ السائق محلياً");
+  }
+  writeLocalDrivers(driverRows);
+  e.target.reset();
+  $("#fDriver [name=active]").checked = true;
+  renderDrivers();
+};
+
+$("#driversT").onclick = async e => {
+  const editBtn = e.target.closest("[data-edit-driver]");
+  if (editBtn) {
+    const d = driverRows.find(x => String(x.id) === editBtn.dataset.editDriver);
+    if (!d) return;
+    editingDriverId = d.id;
+    $("#driverEditLabel").textContent = `تعديل السائق: ${d.driver_name}`;
+    $("#driverEditBanner").hidden = false;
+    $("#fDriver [name=driver_name]").value = d.driver_name || "";
+    $("#fDriver [name=license_no]").value = d.license_no || "";
+    $("#fDriver [name=truck_no]").value = d.truck_no || "";
+    $("#fDriver [name=phone]").value = d.phone || "";
+    $("#fDriver [name=carrier_name]").value = d.carrier_name || "";
+    $("#fDriver [name=notes]").value = d.notes || "";
+    $("#fDriver [name=active]").checked = d.active !== false;
+    $("#submitDriverBtn").textContent = "حفظ التعديل";
+    $("#driversSec").scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  const delBtn = e.target.closest("[data-del-driver]");
+  if (delBtn) {
+    const id = delBtn.dataset.delDriver;
+    const target = driverRows.find(x => String(x.id) === String(id));
+    if (!target || !confirm("نقل بيانات هذا السائق إلى سلة المحذوفات؟")) return;
+    const res = await softDeleteItem({
+      entityType: "سائق / ناقل",
+      tableName: "drivers_registry",
+      entityLabel: `${target.driver_name} (${target.truck_no || ""})`,
+      originalId: id,
+      payload: target,
+      localOnly: !hasRemoteDrivers
+    });
+    if (!res.ok) return toast(res.error?.message || "تعذّر الحذف", 1);
+    driverRows = driverRows.filter(x => String(x.id) !== String(id));
+    writeLocalDrivers(driverRows);
+    if (String(editingDriverId) === String(id)) cancelDriverEdit();
+    toast("تم نقل السائق إلى سلة المحذوفات");
+    renderDrivers();
+  }
+};
+
+// ----- سلة المحذوفات والاسترجاع (Recycle Bin) -----
+async function loadRecycleBin() {
+  const res = typeof readRecycleBin === "function" ? await readRecycleBin() : { rows: [], remote: false };
+  recycleRows = res.rows || [];
+  $("#recycleDbBadge").textContent = res.remote
+    ? "متصل بسلة المحذوفات السحابية ✓"
+    : "سلة محذوفات محلية";
+  const types = [...new Set(recycleRows.map(x => x.entity_type).filter(Boolean))];
+  const curType = $("#recycleTypeFilter").value;
+  $("#recycleTypeFilter").innerHTML = '<option value="">كل الأقسام</option>' + types.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join("");
+  if (types.includes(curType)) $("#recycleTypeFilter").value = curType;
+  renderRecycleBin();
+}
+
+function renderRecycleBin() {
+  const q = ($("#recycleQ")?.value || "").trim().toLowerCase();
+  const tp = $("#recycleTypeFilter").value;
+  const rows = recycleRows.filter(r =>
+    (!tp || r.entity_type === tp) &&
+    (!q || [r.entity_type, r.entity_label, r.deleted_by, r.original_id].join(" ").toLowerCase().includes(q))
+  );
+  const byTypeCount = new Set(recycleRows.map(x => x.entity_type).filter(Boolean)).size;
+  $("#recycleCards").innerHTML = [
+    ["إجمالي السجلات المحذوفة", recycleRows.length],
+    ["نتائج البحث الحالية", rows.length],
+    ["الأقسام المشمولة", byTypeCount],
+    ["جاهزية الاسترجاع", recycleRows.length ? "فوري ✓" : "السلة فارغة"]
+  ].map(([l, v]) => `<div class="card"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
+
+  $("#recycleT").innerHTML = tbl(
+    ["القسم", "الوصف / البيان", "رقم السجل الأصلي", "حُذف بواسطة", "تاريخ الحذف", "إجراءات"],
+    rows.map(r => [
+      `<b>${esc(r.entity_type)}</b>`,
+      esc(r.entity_label || "—"),
+      esc(r.original_id || "—"),
+      esc(r.deleted_by || "—"),
+      esc((r.deleted_at || "").slice(0, 16).replace("T", " ")),
+      `<div class="action-group">
+        <button type="button" class="p" data-restore-bin="${esc(r.id)}">استرجاع ↩</button>
+        <button type="button" class="f btn-danger" data-purge-bin="${esc(r.id)}">حذف نهائي</button>
+      </div>`
+    ])
+  );
+  if (typeof applyActionPermissions === "function") applyActionPermissions($("#recycleSec"));
+}
+
+$("#recycleQ").oninput = renderRecycleBin;
+$("#recycleTypeFilter").onchange = renderRecycleBin;
+$("#refreshRecycleBtn").onclick = loadRecycleBin;
+
+$("#recycleT").onclick = async e => {
+  const resBtn = e.target.closest("[data-restore-bin]");
+  if (resBtn) {
+    const id = resBtn.dataset.restoreBin;
+    const item = recycleRows.find(x => String(x.id) === String(id));
+    if (!item) return;
+    resBtn.disabled = true;
+    const res = await restoreRecycleItem(item);
+    resBtn.disabled = false;
+    if (!res.ok) return toast(res.error?.message || "تعذّر استرجاع السجل", 1);
+    recycleRows = recycleRows.filter(x => String(x.id) !== String(id));
+    renderRecycleBin();
+    toast(`تم استرجاع (${item.entity_label}) بنجاح ✓`);
+    return;
+  }
+  const purgeBtn = e.target.closest("[data-purge-bin]");
+  if (purgeBtn) {
+    const id = purgeBtn.dataset.purgeBin;
+    const item = recycleRows.find(x => String(x.id) === String(id));
+    if (!item || !confirm("حذف هذا السجل نهائياً بلا رجعة؟")) return;
+    const res = await purgeRecycleItem(item);
+    if (!res.ok) return toast(res.error?.message || "تعذّر الحذف النهائي", 1);
+    recycleRows = recycleRows.filter(x => String(x.id) !== String(id));
+    renderRecycleBin();
+    toast("تم الحذف النهائي من السلة");
+  }
+};
+
 startApp({
   page: "warehouse",
   tabs: [
     ["stock", "المخزون الكلي من الأسمدة", ["stock", "stockChart"], loadStock],
     ["lowStock", "منتجات أوشكت على النفاد", ["lowStockSec"], loadStock, "stock"],
+    ["adjustments", "التالف والضائع والمرتجع", ["adjustSec"], loadAdjustments, "stock"],
+    ["transfers", "التحويل بين المخازن", ["transferSec"], loadTransfers, "stock"],
+    ["drivers", "الناقلون والسائقون", ["driversSec"], loadDrivers, "log"],
     ["invoices", "الفواتير", ["invList"], loadInvoices],
     ["log", "سجل التسليمات", ["log"], loadLog],
+    ["recycle", "سلة المحذوفات", ["recycleSec"], loadRecycleBin, "stock"],
     ["audit", "سجل التعديلات", ["audit"], loadAudit],
     ["catalog", "المخازن والمنتجات", ["catalog"], loadCatalogTab]
   ]

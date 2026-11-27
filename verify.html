@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>التحقق العام من إذن الخروج (QR) - CCLS ADRAR</title>
+<meta name="description" content="صفحة تحقق عامة لصحة إذن خروج الأسمدة عبر رمز QR دون كشف البيانات الشخصية أو الحساسة.">
+<meta name="theme-color" content="#175236">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif">
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<header>
+  <div style="display:flex;gap:10px;align-items:center">
+    <img src="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif" alt="CCLS ADRAR" style="height:34px;width:34px;border-radius:6px;object-fit:contain;background:#fff;border:1px solid var(--bd)" onerror="this.style.display='none'">
+    <h1>التحقق العام من إذن الخروج (CCLS ADRAR)</h1>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <a class="lk" id="staffGateLink" href="bons.html">بوابة الموظفين</a>
+  </div>
+</header>
+<main style="max-width:780px;margin:0 auto;padding:22px 16px 40px">
+  <section>
+    <h2>التحقق من صحة الوثيقة عبر رمز QR</h2>
+    <p style="margin:0 0 14px;color:var(--mu);font-size:.9rem">
+      تتيح هذه الصفحة العامة التحقق الفوري من صحة إذن الخروج (رقمه، الكمية الإجمالية، والتاريخ) دون عرض أي بيانات شخصية أو حساسة لحماية الخصوصية.
+    </p>
+    <form id="pubVerifyForm" style="grid-template-columns:1fr auto;gap:8px;align-items:end;margin-bottom:12px">
+      <label style="margin:0">رقم إذن الخروج أو رابط QR
+        <input id="pubVerifyInput" placeholder="أدخل رقم الإذن (مثال: 1691)" autocomplete="off" required>
+      </label>
+      <button type="submit" class="p">تحقق من الوثيقة</button>
+    </form>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button type="button" class="f" id="pubStartCam">مسح بالكاميرا</button>
+      <button type="button" class="f btn-danger" id="pubStopCam" hidden>إيقاف الكاميرا</button>
+      <label class="f" style="display:inline-flex;flex-direction:row;align-items:center;gap:6px;margin:0;cursor:pointer;padding:9px 14px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx);min-height:42px">
+        <span>فحص من صورة QR</span>
+        <input type="file" id="pubQrFile" accept="image/*" hidden>
+      </label>
+    </div>
+    <div id="pubCamStatus" style="font-size:.83rem;color:var(--mu);margin-top:8px"></div>
+    <div id="pubCamBox" class="verify-cam-box" hidden style="margin-top:10px">
+      <video id="pubVideo" playsinline muted></video>
+    </div>
+    <canvas id="pubCanvas" hidden></canvas>
+  </section>
+
+  <section id="pubResultSec" hidden></section>
+</main>
+<div id="toast" role="status"></div>
+<script src="dist/dossiers-pdf.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let pubStream = null;
+let pubTimer = null;
+
+function stopPubCam() {
+  if (pubTimer) { clearTimeout(pubTimer); pubTimer = null; }
+  if (pubStream) { pubStream.getTracks().forEach(t => t.stop()); pubStream = null; }
+  const v = $("#pubVideo");
+  if (v) v.srcObject = null;
+  $("#pubCamBox").hidden = true;
+  $("#pubStopCam").hidden = true;
+  $("#pubStartCam").hidden = false;
+}
+
+function fmtDate(d) {
+  if (!d) return "—";
+  const parts = String(d).split("-");
+  return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : d;
+}
+
+async function runPublicVerify(raw) {
+  const bonNo = typeof window.extractBonNoFromScan === "function"
+    ? window.extractBonNoFromScan(raw)
+    : String(raw || "").trim();
+  if (!bonNo) return;
+  $("#pubVerifyInput").value = bonNo;
+  $("#staffGateLink").href = `bons.html?verify=${encodeURIComponent(bonNo)}`;
+
+  const box = $("#pubResultSec");
+  box.hidden = false;
+  box.innerHTML = `<p style="margin:0;color:var(--mu)">جارٍ التحقق من صحة الوثيقة رقم <b>${esc(bonNo)}</b>...</p>`;
+
+  try {
+    const resp = await fetch(`/api/public/verify-bon?bon=${encodeURIComponent(bonNo)}`, { cache: "no-store" });
+    const data = await resp.json();
+    if (!resp.ok || !data?.valid) {
+      box.innerHTML = `
+        <div class="verify-card verify-bad">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+            <strong style="font-size:1.05rem;color:var(--bad)">✕ وثيقة غير مسجلة أو غير صالحة</strong>
+            <span class="tag-bad">مرفوضة</span>
+          </div>
+          <p style="margin:0;font-size:.92rem">لم يتم العثور على إذن خروج مسجل برقم <b>${esc(bonNo)}</b> في السجل الرسمي.</p>
+        </div>`;
+      return;
+    }
+
+    const itemsRows = (data.items || []).map((it, idx) => `
+      <tr>
+        <td>${idx + 1}</td>
+        <td>${esc(it.designation)}</td>
+        <td><b>${Number(it.qty || 0).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} قنطار</b></td>
+      </tr>`).join("");
+
+    box.innerHTML = `
+      <div class="verify-card verify-valid">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <strong style="font-size:1.08rem;color:var(--pr)">✓ وثيقة صالحة ومعتمدة رسمياً</strong>
+          <span style="font-family:var(--font-mono);font-size:.88rem;font-weight:700">BON N° ${esc(data.bon_no)}</span>
+        </div>
+        <div class="cards" style="margin-bottom:12px">
+          <div class="card"><b>${esc(data.bon_no)}</b><span>رقم الوثيقة</span></div>
+          <div class="card"><b>${Number(data.total_qty || 0).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} قنطار</b><span>الكمية الإجمالية</span></div>
+          <div class="card"><b>${esc(fmtDate(data.sortie_date))}</b><span>تاريخ الإصدار</span></div>
+          <div class="card"><b>${esc(data.camp || "—")}</b><span>الموسم الفلاحي</span></div>
+        </div>
+        ${itemsRows ? `
+          <div class="w" style="margin-bottom:10px">
+            <table>
+              <thead><tr><th>#</th><th>الصنف</th><th>الكمية</th></tr></thead>
+              <tbody>${itemsRows}</tbody>
+            </table>
+          </div>` : ""}
+        <div style="font-size:.81rem;color:var(--mu)">
+          حماية الخصوصية: تم التحقق من صحة الوثيقة وكميتها وتاريخها دون عرض أي بيانات شخصية أو معلومات مركبة.
+        </div>
+      </div>`;
+  } catch (err) {
+    box.innerHTML = `<div class="alert-bad">تعذّر الاتصال بخادم التحقق حالياً. يرجى المحاولة لاحقاً.</div>`;
+  }
+}
+
+$("#pubVerifyForm").onsubmit = e => {
+  e.preventDefault();
+  runPublicVerify($("#pubVerifyInput").value);
+};
+
+$("#pubStartCam").onclick = async () => {
+  const statusEl = $("#pubCamStatus");
+  if (!navigator.mediaDevices?.getUserMedia) {
+    statusEl.textContent = "الكاميرا غير متاحة في هذا المتصفح؛ استخدم رفع صورة QR أو أدخل الرقم يدوياً.";
+    statusEl.style.color = "var(--bad)";
+    return;
+  }
+  try {
+    pubStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
+    const v = $("#pubVideo");
+    v.srcObject = pubStream;
+    await v.play();
+    $("#pubCamBox").hidden = false;
+    $("#pubStopCam").hidden = false;
+    $("#pubStartCam").hidden = true;
+    statusEl.textContent = "وجّه الكاميرا نحو رمز QR...";
+    statusEl.style.color = "var(--pr)";
+    const canvas = $("#pubCanvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const tick = () => {
+      if (!pubStream) return;
+      if (v.readyState >= 2 && v.videoWidth && v.videoHeight && ctx) {
+        canvas.width = v.videoWidth;
+        canvas.height = v.videoHeight;
+        ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = window.decodeQrFromImageData?.(img.data, canvas.width, canvas.height);
+        if (code) {
+          stopPubCam();
+          statusEl.textContent = "تمت قراءة الرمز بنجاح ✓";
+          runPublicVerify(code);
+          return;
+        }
+      }
+      pubTimer = setTimeout(tick, 140);
+    };
+    tick();
+  } catch (_) {
+    stopPubCam();
+    statusEl.textContent = "تعذّر فتح الكاميرا. يمكنك رفع صورة QR أو كتابة رقم الإذن.";
+    statusEl.style.color = "var(--bad)";
+  }
+};
+
+$("#pubStopCam").onclick = () => {
+  stopPubCam();
+  $("#pubCamStatus").textContent = "تم إيقاف الكاميرا.";
+};
+
+$("#pubQrFile").onchange = async e => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) return;
+  const code = await window.decodeQrFromFile?.(file).catch(() => null);
+  if (!code) {
+    $("#pubCamStatus").textContent = "لم يتم العثور على رمز QR واضح في الصورة.";
+    $("#pubCamStatus").style.color = "var(--bad)";
+    return;
+  }
+  $("#pubCamStatus").textContent = "تمت قراءة الرمز من الصورة ✓";
+  $("#pubCamStatus").style.color = "var(--pr)";
+  runPublicVerify(code);
+};
+
+const params = new URLSearchParams(window.location.search);
+const initBon = params.get("bon") || params.get("verify") || params.get("bon_no");
+if (initBon) runPublicVerify(initBon);
+</script>
+</body>
+</html>

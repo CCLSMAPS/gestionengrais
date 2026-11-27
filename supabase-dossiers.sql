@@ -19,12 +19,32 @@ alter table public.dossier_receptions add column if not exists created_by text;
 alter table public.dossier_receptions add column if not exists camp text default '2026/2027';
 alter table public.dossier_receptions add column if not exists farmer_card_no text;
 
+create index if not exists idx_dossier_receptions_camp on public.dossier_receptions (camp);
+create index if not exists idx_dossier_receptions_card on public.dossier_receptions (farmer_card_no);
+
 alter table public.dossier_receptions enable row level security;
 
 drop policy if exists "authenticated read dossiers" on public.dossier_receptions;
 create policy "authenticated read dossiers" on public.dossier_receptions
-  for select to authenticated using (true);
+  for select to authenticated using (
+    not exists (
+      select 1 from public.profiles p
+      where p.user_id = auth.uid() and coalesce(p.is_blocked, false)
+    )
+  );
 
 drop policy if exists "authenticated write dossiers" on public.dossier_receptions;
 create policy "authenticated write dossiers" on public.dossier_receptions
-  for all to authenticated using (true) with check (true);
+  for all to authenticated
+  using (
+    not exists (
+      select 1 from public.profiles p
+      where p.user_id = auth.uid() and coalesce(p.is_blocked, false)
+    )
+  )
+  with check (
+    not exists (
+      select 1 from public.profiles p
+      where p.user_id = auth.uid() and coalesce(p.is_blocked, false)
+    )
+  );

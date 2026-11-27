@@ -290,25 +290,38 @@
         </div>
     </div>
 
+<div id="dashToast" role="status" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#14221a;color:#fff;padding:10px 18px;border-radius:8px;display:none;z-index:2000;font-size:.9rem;box-shadow:0 6px 20px rgba(0,0,0,.2)"></div>
 <script>
     const SUPABASE_URL = 'https://ibznldpkdrqgcdnrxwnj.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlibmtkbHBrZHJxZ2NkbnJ4d25qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5OTUwODUsImV4cCI6MjExMDU3MTA4NX0.LUyefDjCMWnac-cytLMkmOOLIPtgr0GdsPTWAqewJfw';
-    
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imliem5sZHBrZHJxZ2NkbnJ4d25qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5OTUwODUsImV4cCI6MjExMDU3MTA4NX0.LUyefDjCMWnac-cytLMkmOOLIPtgr0GdsPTWAqewJfw';
+
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    let dashToastTimer;
+    function notify(msg, isErr) {
+        const el = document.getElementById('dashToast');
+        if (!el) return;
+        el.textContent = msg;
+        el.style.background = isErr ? '#b91c1c' : '#14221a';
+        el.style.display = 'block';
+        clearTimeout(dashToastTimer);
+        dashToastTimer = setTimeout(() => { el.style.display = 'none'; }, 3500);
+    }
 
     let produitsList = [];
     let facturesList = [];
 
-    window.addEventListener('DOMContentLoaded', () => {
-        if (localStorage.getItem('ccls_logged') !== 'true') {
+    window.addEventListener('DOMContentLoaded', async () => {
+        const { data } = await db.auth.getSession();
+        if (!data?.session) {
             window.location.href = 'index.html';
         } else {
             init();
         }
     });
 
-    function logout() {
-        localStorage.removeItem('ccls_logged');
+    async function logout() {
+        await db.auth.signOut();
         window.location.href = 'index.html';
     }
 
@@ -347,18 +360,12 @@
         datalist.innerHTML = '';
         summary.innerHTML = '';
 
-        data.forEach(p => {
-            const option = document.createElement('option');
-            option.value = p.designation;
-            datalist.appendChild(option);
-
-            summary.innerHTML += `
-                <div class="stock-box">
-                    <h3>[${p.code_produit || '-'}] ${p.designation}</h3>
-                    <div class="qty">${Number(p.stock_actuel).toLocaleString('fr-FR')} <span style="font-size:0.9rem; font-weight:normal;">قنطار</span></div>
-                </div>
-            `;
-        });
+        summary.innerHTML = data.map(p => `
+            <div class="stock-box">
+                <h3>[${escHtml(p.code_produit || '-')}] ${escHtml(p.designation)}</h3>
+                <div class="qty">${Number(p.stock_actuel || 0).toLocaleString('fr-FR')} <span style="font-size:0.9rem; font-weight:normal;">قنطار</span></div>
+            </div>
+        `).join('');
     }
 
     async function getOrCreateProduit(designation, code) {
@@ -378,6 +385,8 @@
 
     document.getElementById('form-facture').addEventListener('submit', async (e) => {
         e.preventDefault();
+        const qtyTot = parseFloat(document.getElementById('quantite_totale').value);
+        if (!Number.isFinite(qtyTot) || qtyTot <= 0) return notify('أدخل كمية إجمالية صالحة أكبر من الصفر', true);
         const designation = document.getElementById('designation_engrais').value;
         const code = document.getElementById('code_produit').value;
         const produit = await getOrCreateProduit(designation, code);
@@ -389,15 +398,15 @@
             prenom_client: document.getElementById('prenom_client').value,
             region: document.getElementById('region').value,
             produit_id: produit.id,
-            quantite_totale: parseFloat(document.getElementById('quantite_totale').value),
+            quantite_totale: qtyTot,
             quantite_retiree: 0
         };
 
         const { error } = await db.from('factures_enl').insert([newFacture]);
         if (error) {
-            alert('خطأ: ' + error.message);
+            notify('خطأ: ' + error.message, true);
         } else {
-            alert('تم حفظ الفاتورة وإذن التسليم بنجاح!');
+            notify('تم حفظ الفاتورة وإذن التسليم بنجاح!');
             e.target.reset();
             await loadFactures();
         }
@@ -415,34 +424,37 @@
 
     function renderFactures(list) {
         const tbody = document.querySelector('#table-factures tbody');
-        tbody.innerHTML = '';
-        list.forEach(f => {
+        tbody.innerHTML = list.map(f => {
             const reste = (Number(f.quantite_totale) - Number(f.quantite_retiree)).toFixed(2);
-            const isDone = reste <= 0;
-            tbody.innerHTML += `
+            const isDone = Number(reste) <= 0;
+            return `
                 <tr>
-                    <td><strong>${f.num_facture}</strong></td>
-                    <td>${f.dossier_matricule || '-'}</td>
-                    <td>${f.nom_client} ${f.prenom_client || ''}</td>
-                    <td>${f.region || '-'}</td>
-                    <td>${f.produits_engrais?.designation || '-'}</td>
+                    <td><strong>${escHtml(f.num_facture)}</strong></td>
+                    <td>${escHtml(f.dossier_matricule || '-')}</td>
+                    <td>${escHtml(f.nom_client)} ${escHtml(f.prenom_client || '')}</td>
+                    <td>${escHtml(f.region || '-')}</td>
+                    <td>${escHtml(f.produits_engrais?.designation || '-')}</td>
                     <td>${Number(f.quantite_totale).toFixed(2)}</td>
                     <td>${Number(f.quantite_retiree).toFixed(2)}</td>
-                    <td style="font-weight:bold; color:${isDone ? 'green' : '#d84315'}">${reste}</td>
+                    <td style="font-weight:bold; color:${isDone ? 'green' : '#d84315'}">${escHtml(reste)}</td>
                     <td><span class="badge ${isDone ? 'badge-done' : 'badge-pending'}">${isDone ? 'مكتمل' : 'قيد السحب'}</span></td>
                     <td>
-                        ${!isDone ? `<button class="btn-action" onclick="openSortieModal(${f.id})">شحن / خروج</button>` : '✓'}
+                        ${!isDone ? `<button class="btn-action" data-open-sortie="${escHtml(f.id)}">شحن / خروج</button>` : '✓'}
                     </td>
                 </tr>
             `;
-        });
+        }).join('');
     }
+    document.querySelector('#table-factures tbody').addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-open-sortie]');
+        if (btn) openSortieModal(Number(btn.dataset.openSortie));
+    });
 
     function filterFactures() {
         const q = document.getElementById('search-facture').value.toLowerCase();
-        const filtered = facturesList.filter(f => 
-            f.num_facture.toLowerCase().includes(q) ||
-            f.nom_client.toLowerCase().includes(q) ||
+        const filtered = facturesList.filter(f =>
+            String(f.num_facture || '').toLowerCase().includes(q) ||
+            String(f.nom_client || '').toLowerCase().includes(q) ||
             (f.region && f.region.toLowerCase().includes(q)) ||
             (f.dossier_matricule && f.dossier_matricule.toLowerCase().includes(q))
         );
@@ -451,6 +463,7 @@
 
     function openSortieModal(factureId) {
         const f = facturesList.find(item => item.id === factureId);
+        if (!f) return;
         const reste = (Number(f.quantite_totale) - Number(f.quantite_retiree)).toFixed(2);
 
         document.getElementById('sortie_facture_id').value = f.id;
@@ -458,10 +471,10 @@
         document.getElementById('sortie_max_qty').value = reste;
         document.getElementById('quantite_chargee').max = reste;
         document.getElementById('quantite_chargee').value = reste;
-        
+
         document.getElementById('modal-info').innerHTML = `
-            <strong>الفاتورة رقم:</strong> ${f.num_facture} | <strong>المستفيد:</strong> ${f.nom_client}<br>
-            <strong>السماد:</strong> ${f.produits_engrais.designation} | <strong>الكمية المتبقية:</strong> ${reste} قنطار
+            <strong>الفاتورة رقم:</strong> ${escHtml(f.num_facture)} | <strong>المستفيد:</strong> ${escHtml(f.nom_client)}<br>
+            <strong>السماد:</strong> ${escHtml(f.produits_engrais?.designation || '-')} | <strong>الكمية المتبقية:</strong> ${escHtml(reste)} قنطار
         `;
         document.getElementById('modal-sortie').style.display = 'flex';
     }
@@ -477,8 +490,8 @@
         const maxQty = parseFloat(document.getElementById('sortie_max_qty').value);
         const qtyChargee = parseFloat(document.getElementById('quantite_chargee').value);
 
-        if (qtyChargee <= 0 || qtyChargee > maxQty) {
-            alert('الكمية المحملة يجب ألا تتجاوز الكمية المتبقية (' + maxQty + ')');
+        if (!Number.isFinite(qtyChargee) || qtyChargee <= 0 || qtyChargee > maxQty) {
+            notify('الكمية المحملة يجب ألا تتجاوز الكمية المتبقية (' + maxQty + ')', true);
             return;
         }
 
@@ -493,7 +506,7 @@
         };
 
         const { error: errSortie } = await db.from('sorties_livraisons').insert([sortieData]);
-        if (errSortie) return alert('خطأ: ' + errSortie.message);
+        if (errSortie) return notify('خطأ: ' + errSortie.message, true);
 
         const f = facturesList.find(item => item.id === factureId);
         const nouvelleQtyRetiree = Number(f.quantite_retiree) + qtyChargee;
@@ -503,7 +516,7 @@
         const nouveauStock = Number(p.stock_actuel) - qtyChargee;
         await db.from('produits_engrais').update({ stock_actuel: nouveauStock }).eq('id', produitId);
 
-        alert('تم تسجيل خروج الشاحنة وتحديث الأرصدة بنجاح!');
+        notify('تم تسجيل خروج الشاحنة وتحديث الأرصدة بنجاح!');
         closeModal();
         e.target.reset();
         document.getElementById('date_livraison').valueAsDate = new Date();
@@ -518,22 +531,19 @@
         if (error) throw error;
 
         const tbody = document.querySelector('#table-sorties tbody');
-        tbody.innerHTML = '';
-        data.forEach(s => {
-            tbody.innerHTML += `
-                <tr>
-                    <td>${s.date_livraison}</td>
-                    <td><strong>${s.num_bon_sortie || '-'}</strong></td>
-                    <td>${s.factures_enl?.num_facture || '-'}</td>
-                    <td>${s.factures_enl?.nom_client || '-'}</td>
-                    <td>${s.identite_preneur || '-'}</td>
-                    <td>${s.num_piece_identite || '-'}</td>
-                    <td><span style="background:#eceff1; padding:2px 6px; border-radius:4px; font-family:monospace;">${s.matricule_transport}</span></td>
-                    <td>${s.factures_enl?.produits_engrais?.designation || '-'}</td>
-                    <td><strong>${Number(s.quantite_chargee).toFixed(2)}</strong></td>
-                </tr>
-            `;
-        });
+        tbody.innerHTML = data.map(s => `
+            <tr>
+                <td>${escHtml(s.date_livraison)}</td>
+                <td><strong>${escHtml(s.num_bon_sortie || '-')}</strong></td>
+                <td>${escHtml(s.factures_enl?.num_facture || '-')}</td>
+                <td>${escHtml(s.factures_enl?.nom_client || '-')}</td>
+                <td>${escHtml(s.identite_preneur || '-')}</td>
+                <td>${escHtml(s.num_piece_identite || '-')}</td>
+                <td><span style="background:#eceff1; padding:2px 6px; border-radius:4px; font-family:monospace;">${escHtml(s.matricule_transport)}</span></td>
+                <td>${escHtml(s.factures_enl?.produits_engrais?.designation || '-')}</td>
+                <td><strong>${Number(s.quantite_chargee).toFixed(2)}</strong></td>
+            </tr>
+        `).join('');
     }
 
     document.getElementById('form-entree').addEventListener('submit', async (e) => {
@@ -541,6 +551,7 @@
         const designation = document.getElementById('entree_designation').value;
         const code = document.getElementById('entree_code').value;
         const val_qty = parseFloat(document.getElementById('entree_quantite').value);
+        if (!Number.isFinite(val_qty) || val_qty <= 0) return notify('أدخل كمية صالحة أكبر من الصفر', true);
 
         const produit = await getOrCreateProduit(designation, code);
 
@@ -553,7 +564,7 @@
         const nouveauStock = Number(produit.stock_actuel) + val_qty;
         await db.from('produits_engrais').update({ stock_actuel: nouveauStock }).eq('id', produit.id);
 
-        alert('تمت إضافة الكمية إلى المخزن بنجاح!');
+        notify('تمت إضافة الكمية إلى المخزن بنجاح!');
         e.target.reset();
         await init();
     });

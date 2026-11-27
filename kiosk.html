@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>شاشة قاعة الانتظار المباشرة - CCLS ADRAR</title>
+<meta name="description" content="شاشة العرض العامة لقاعة الانتظار بأرقام الدور الجارية والأصناف المتوفرة بالمخازن.">
+<meta name="theme-color" content="#175236">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif">
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<header>
+  <div style="display:flex;gap:12px;align-items:center">
+    <img src="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif" alt="CCLS ADRAR" style="height:40px;width:40px;border-radius:8px;object-fit:contain;background:#fff;border:1px solid var(--bd)" onerror="this.style.display='none'">
+    <div>
+      <h1 id="kioskOrgTitle" style="font-size:1.15rem">تعاونية الحبوب والبقول الجافة أدرار (CCLS ADRAR)</h1>
+      <div id="kioskMeta" style="font-size:.82rem;color:var(--mu)">شاشة قاعة الانتظار المباشرة · تحديث تلقائي كل 12 ثانية</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <strong id="kioskClock" style="font-size:1.15rem;font-variant-numeric:tabular-nums;color:var(--pr);padding:6px 12px;border:1px solid var(--bd);border-radius:var(--rad);background:var(--sf2)">--:--</strong>
+    <button type="button" class="f" id="kioskThemeBtn">المظهر</button>
+    <button type="button" class="p" id="kioskFullscreenBtn">ملء الشاشة</button>
+  </div>
+</header>
+
+<main style="max-width:1360px;margin:0 auto;padding:18px 16px 36px;display:grid;gap:18px">
+  <section style="border-color:var(--pr)">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <h2 style="margin:0;padding:0;border:0;font-size:1.25rem;color:var(--pr)">جاري التحميل الآن (يُرجى التوجّه إلى المخزن المحدد)</h2>
+      <span id="kioskDateBadge" style="font-size:.88rem;color:var(--mu);font-weight:600"></span>
+    </div>
+    <div id="kioskLoadingGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:14px"></div>
+  </section>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:18px;align-items:start">
+    <section>
+      <h2 style="font-size:1.1rem">الأدوار القادمة في الانتظار</h2>
+      <div id="kioskWaitingList" style="display:grid;gap:10px"></div>
+    </section>
+
+    <section>
+      <h2 style="font-size:1.1rem">حالة الأصناف المتوفرة بالمخازن</h2>
+      <div class="w" id="kioskStockTbl"></div>
+    </section>
+  </div>
+</main>
+
+<div id="toast" role="status"></div>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+const n = v => Number(v || 0).toLocaleString("fr-FR", { maximumFractionDigits: 2 });
+
+function updateClock() {
+  const now = new Date();
+  $("#kioskClock").textContent = now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+(function initTheme() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("ccls_app_settings_v1") || "{}");
+    if (saved?.theme === "dark") document.documentElement.setAttribute("data-theme", "dark");
+  } catch (_) {}
+  $("#kioskThemeBtn").onclick = () => {
+    const cur = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    if (cur === "dark") document.documentElement.setAttribute("data-theme", "dark");
+    else document.documentElement.removeAttribute("data-theme");
+  };
+  $("#kioskFullscreenBtn").onclick = async () => {
+    try {
+      if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      else await document.exitFullscreen();
+    } catch (_) {}
+  };
+})();
+
+function readLocalKioskSnapshot() {
+  try {
+    return JSON.parse(localStorage.getItem("ccls_kiosk_snapshot_v1") || "null");
+  } catch (_) {
+    return null;
+  }
+}
+
+function renderKiosk(data, sourceLabel) {
+  const snap = data || {};
+  const unit = snap.unitLabel || "قنطار";
+  const threshold = Number(snap.threshold ?? 5);
+  $("#kioskOrgTitle").textContent = snap.orgName || "تعاونية الحبوب والبقول الجافة أدرار (CCLS ADRAR)";
+  const upd = snap.updatedAt ? new Date(snap.updatedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
+  $("#kioskMeta").textContent = `شاشة قاعة الانتظار المباشرة · ${sourceLabel}${upd ? " · آخر تحديث: " + upd : ""}`;
+  $("#kioskDateBadge").textContent = snap.queueDate ? `تاريخ اليوم: ${snap.queueDate}` : "";
+
+  const tickets = Array.isArray(snap.tickets) ? snap.tickets : [];
+  const loading = tickets.filter(t => t.status === "loading").sort((a, b) => Number(a.queue_no) - Number(b.queue_no));
+  const waiting = tickets.filter(t => t.status === "waiting").sort((a, b) => Number(a.queue_no) - Number(b.queue_no));
+
+  $("#kioskLoadingGrid").innerHTML = loading.length
+    ? loading.map(t => `
+        <div style="border:2px solid var(--pr);border-radius:10px;padding:16px;background:var(--pr-l);display:grid;gap:6px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:2.1rem;font-weight:800;color:var(--pr);font-variant-numeric:tabular-nums">#${esc(t.queue_no)}</span>
+            <span class="tag-ok">قيد التحميل الآن</span>
+          </div>
+          <div style="font-size:1.15rem;font-weight:700">${esc(t.display_name || "فلاح")}</div>
+          <div style="font-size:.95rem;color:var(--mu)">${esc(t.product_name || "سماد")} · <strong>${n(t.qty)} ${esc(unit)}</strong></div>
+          <div style="font-size:.92rem;font-weight:600;color:var(--pr)">المخزن: ${esc(t.warehouse_name || "المخزن الرئيسي")}</div>
+        </div>`).join("")
+    : `<p class="empty-state" style="padding:24px">لا يوجد تحميل جارٍ حالياً — يُرجى انتظار المناداة على الرقم التالي.</p>`;
+
+  $("#kioskWaitingList").innerHTML = waiting.length
+    ? waiting.slice(0, 12).map(t => `
+        <div style="border:1px solid var(--bd);border-radius:8px;padding:11px 14px;background:var(--sf2);display:flex;justify-content:space-between;align-items:center;gap:12px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <strong style="font-size:1.45rem;color:var(--pr);min-width:44px;font-variant-numeric:tabular-nums">#${esc(t.queue_no)}</strong>
+            <div>
+              <div style="font-weight:700;font-size:1rem">${esc(t.display_name || "فلاح")}</div>
+              <div style="font-size:.86rem;color:var(--mu)">${esc(t.product_name || "سماد")} · ${n(t.qty)} ${esc(unit)}</div>
+            </div>
+          </div>
+          <span style="font-size:.86rem;color:var(--mu);font-weight:600">${esc(t.warehouse_name || "—")}</span>
+        </div>`).join("")
+    : `<p class="empty-state">لا توجد أدوار منتظرة حالياً.</p>`;
+
+  const stock = Array.isArray(snap.stock) ? snap.stock : [];
+  $("#kioskStockTbl").innerHTML = stock.length
+    ? `<table>
+        <thead><tr><th>الصنف</th><th>المخزن</th><th>المتوفر (${esc(unit)})</th><th>الحالة</th></tr></thead>
+        <tbody>
+          ${stock.map(s => {
+            const bal = Number(s.balance || 0);
+            const badge = bal <= 0
+              ? `<span class="tag-bad">نفد</span>`
+              : bal < threshold
+              ? `<span class="tag-warn">كمية محدودة</span>`
+              : `<span class="tag-ok">متوفر</span>`;
+            return `<tr>
+              <td><strong>${esc(s.name)}</strong></td>
+              <td>${esc(s.warehouse || "—")}</td>
+              <td style="font-variant-numeric:tabular-nums"><strong>${n(bal)}</strong></td>
+              <td>${badge}</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>`
+    : `<p class="empty-state">بانتظار مزامنة أرصدة المخازن...</p>`;
+}
+
+async function refreshKiosk() {
+  const localSnap = readLocalKioskSnapshot();
+  try {
+    const resp = await fetch("/api/public/kiosk", { cache: "no-store" });
+    if (resp.ok) {
+      const json = await resp.json().catch(() => ({}));
+      const serverData = json?.data;
+      const serverHasData = (serverData?.tickets?.length || 0) > 0 || (serverData?.stock?.length || 0) > 0;
+      if (serverHasData) {
+        renderKiosk(serverData, json.source === "live_db" ? "اتصال مباشر بقاعدة البيانات" : "مزامنة مباشرة");
+        return;
+      }
+    }
+  } catch (_) {}
+
+  if (localSnap) {
+    renderKiosk(localSnap, "البيانات المحلية المباشرة");
+  } else {
+    renderKiosk({ tickets: [], stock: [] }, "بانتظار البث المباشر");
+  }
+}
+
+refreshKiosk();
+setInterval(refreshKiosk, 12000);
+</script>
+</body>
+</html>

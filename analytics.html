@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>لوحة التحكم التحليلية - تسيير مخزون الأسمدة</title>
+<meta name="description" content="لوحة القيادة التنفيذية لتحليل استهلاك الأسمدة حسب المحصول، الواردات الشهرية، والمؤشرات المالية للمخزون.">
+<meta name="theme-color" content="#175236">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif">
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<header>
+  <div style="display:flex;gap:10px;align-items:center">
+    <button class="f" id="menu" aria-label="القائمة">☰</button>
+    <h1>لوحة التحكم التحليلية - تسيير مخزون الأسمدة</h1>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span id="links" style="display:flex;gap:4px;flex-wrap:wrap"></span>
+    <span id="who"></span>
+    <button class="f" id="pwb" hidden>الإعدادات</button>
+    <button class="f" id="out" hidden>خروج</button>
+  </div>
+</header>
+<main>
+<div id="cfg" class="box" hidden></div>
+<div id="app" hidden>
+<nav></nav>
+
+<section id="dashOverviewSec" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--bd)">
+    <h2 style="margin:0;padding:0;border:0">المؤشرات التنفيذية واتجاهات المخزون</h2>
+    <div class="no-print" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span id="dashUpdated" style="color:var(--mu);font-size:.83rem"></span>
+      <button type="button" class="p" id="pdfDashBtn">تصدير PDF</button>
+      <button type="button" class="f" id="printDashBtn">طباعة التقرير</button>
+      <button type="button" class="f" id="shareDirectorLinkBtn">رابط عرض للمدير (قراءة فقط)</button>
+      <button type="button" class="f" id="dashRefresh">تحديث البيانات</button>
+    </div>
+  </div>
+  <div id="dashStatus" class="info" hidden></div>
+  <div id="directorLinkBox" class="info no-print" hidden style="border:1px solid var(--pr)"></div>
+  <div id="dashStockAlert" class="alert-warn no-print" hidden></div>
+  <div class="cards" id="dashCards"></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:10px;align-items:end">
+    <label>السنة
+      <select id="dashYear"></select>
+    </label>
+    <label>المخزن
+      <select id="dashWh"></select>
+    </label>
+    <label>نوع السماد
+      <select id="dashProd"></select>
+    </label>
+    <label>نوع المحصول
+      <select id="dashCulture"></select>
+    </label>
+    <label>المنطقة
+      <select id="dashRegion"></select>
+    </label>
+  </div>
+</section>
+
+<section id="dashKpiSec" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--bd)">
+    <div>
+      <h2 style="margin:0;padding:0;border:0">مؤشرات الأداء التشغيلية (KPI)</h2>
+      <span id="kpiMeta" style="color:var(--mu);font-size:.83rem">زمن معالجة الملفات ومعدل خدمة الفلاحين اليومي</span>
+    </div>
+  </div>
+  <div class="cards" id="dashKpiCards"></div>
+</section>
+
+<section id="dashValuationSec" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--bd)">
+    <div>
+      <h2 style="margin:0;padding:0;border:0">قيمة المخزون الحالية بالدينار وتطورها عبر الأشهر</h2>
+      <span id="valuationMeta" style="color:var(--mu);font-size:.83rem"></span>
+    </div>
+  </div>
+  <div id="stock-valuation-chart-root"></div>
+</section>
+
+<section id="dashCropSec" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--bd)">
+    <div>
+      <h2 style="margin:0;padding:0;border:0">استهلاك الأسمدة حسب المحصول</h2>
+      <span id="cropChartMeta" style="color:var(--mu);font-size:.83rem"></span>
+    </div>
+    <button type="button" class="p" id="exportCropCsv">تصدير ملخص المحاصيل CSV</button>
+  </div>
+  <div id="crop-consumption-chart-root"></div>
+</section>
+
+<section id="dashRemainingSec" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--bd)">
+    <div>
+      <h2 style="margin:0;padding:0;border:0">الأرصدة والكميات المتبقية بالمخازن</h2>
+      <span id="remainingChartMeta" style="color:var(--mu);font-size:.83rem"></span>
+    </div>
+    <button type="button" class="p" id="exportRemainingCsv">تصدير أرصدة المخازن CSV</button>
+  </div>
+  <div id="remaining-stock-chart-root"></div>
+</section>
+
+<section id="dashMonthlySec" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--bd)">
+    <div>
+      <h2 style="margin:0;padding:0;border:0">توزيع الواردات والتسليمات الشهرية</h2>
+      <span id="monthlyChartMeta" style="color:var(--mu);font-size:.83rem"></span>
+    </div>
+    <button type="button" class="p" id="exportMonthlyCsv">تصدير الواردات الشهرية CSV</button>
+  </div>
+  <div id="monthly-receipts-chart-root"></div>
+</section>
+
+<section id="dashYoYSec" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--bd)">
+    <div>
+      <h2 style="margin:0;padding:0;border:0">مقارنة سنة بسنة للوارد والمسحوب لكل صنف (YoY)</h2>
+      <span id="yoyMeta" style="color:var(--mu);font-size:.83rem">مقارنة كميات الوارد والتسليم بين سنتين</span>
+    </div>
+    <div class="no-print" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+      <label style="min-width:110px">سنة الأساس
+        <select id="yoyYearA"></select>
+      </label>
+      <label style="min-width:110px">سنة المقارنة
+        <select id="yoyYearB"></select>
+      </label>
+      <button type="button" class="p" id="exportYoYCsv">تصدير مقارنة السنوات CSV</button>
+    </div>
+  </div>
+  <div id="yoy-comparison-chart-root" style="margin-bottom:14px"></div>
+  <div class="w" id="yoySummaryTable"></div>
+</section>
+
+<section id="dashTableSec" hidden>
+  <h2>ملخص استهلاك المحاصيل والكميات المتبقية</h2>
+  <div class="w" id="cropSummaryTable" style="margin-bottom:18px"></div>
+  <h2>أرصدة المخازن والكميات المتبقية</h2>
+  <div class="w" id="remainingSummaryTable" style="margin-bottom:18px"></div>
+  <h2>التقرير الشهري للواردات والتسليمات</h2>
+  <div class="w" id="monthlySummaryTable"></div>
+</section>
+</div>
+</main>
+<div id="analyticsPrintReport" hidden></div>
+<div id="toast" role="status"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="common.js"></script>
+<script src="dossiers-data.js"></script>
+<script src="dist/analytics-dashboard.js"></script>
+<script src="dist/dossiers-pdf.js"></script>
+<script>
+const INV_META_KEY = "ccls_invoice_meta";
+const MONTHS_AR = [
+  "جانفي", "فيفري", "مارس", "أفريل", "ماي", "جوان",
+  "جويلية", "أوت", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"
+];
+
+let RAW_INVOICES = [];
+let RAW_STOCK_IN = [];
+let RAW_WITHDRAWALS = [];
+let RAW_WAREHOUSES = [];
+let RAW_PRODUCTS = [];
+let RAW_TRANSFERS = [];
+let RAW_STOCK_ANALYSIS = [];
+let RAW_ADJUSTMENTS = [];
+let RAW_DOSSIERS = [];
+let LAST_CROP_ROWS = [];
+let LAST_MONTHLY_ROWS = [];
+let LAST_REMAINING_ROWS = [];
+let LAST_YOY_ROWS = [];
+let LAST_VALUATION = null;
+let LAST_KPI_STATS = null;
+let LAST_DASH_CARDS = [];
+let dashboardLoaded = false;
+let liveChannel = null;
+let liveReloadTimer = null;
+let directorSnapshotTimer = null;
+
+function readInvMeta() {
+  try { return JSON.parse(localStorage.getItem(INV_META_KEY) || "{}") || {}; } catch (_) { return {}; }
+}
+
+function formatMonthLabel(ym) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(ym || ""));
+  if (!m) return ym || "-";
+  const idx = Number(m[2]) - 1;
+  return `${MONTHS_AR[idx] || m[2]} ${m[1]}`;
+}
+
+function setStatus(msg, isErr) {
+  const el = $("#dashStatus");
+  if (!el) return;
+  if (!msg) { el.hidden = true; el.textContent = ""; return; }
+  el.hidden = false;
+  el.textContent = msg;
+  el.style.borderColor = isErr ? "var(--bad)" : "var(--bd)";
+  el.style.color = isErr ? "var(--bad)" : "var(--tx)";
+}
+
+function populateFilters() {
+  const years = [...new Set([
+    ...RAW_INVOICES.map(i => String(i.invoice_year || (i.invoice_date || "").slice(0, 4)).trim()),
+    ...RAW_STOCK_IN.map(r => String((r.entry_date || "").slice(0, 4)).trim()),
+    ...RAW_WITHDRAWALS.map(w => String((w.w_date || "").slice(0, 4)).trim())
+  ].filter(Boolean))].sort((a, b) => b.localeCompare(a));
+
+  const prods = [...new Set([
+    ...RAW_INVOICES.map(i => String(i.product_name || "").trim()),
+    ...RAW_STOCK_IN.map(r => String(r.products?.name || "").trim()),
+    ...RAW_WITHDRAWALS.map(w => String(w.invoices?.products?.name || "").trim())
+  ].filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar"));
+
+  const regions = [...new Set(RAW_INVOICES.map(i => String(i.region || "").trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "ar"));
+
+  const metaMap = readInvMeta();
+  const baseAnalytics = window.buildCropAnalytics
+    ? window.buildCropAnalytics({
+        invoices: RAW_INVOICES,
+        withdrawals: RAW_WITHDRAWALS,
+        dossiers: RAW_DOSSIERS,
+        metaMap
+      })
+    : { availableCultures: [] };
+  const cultures = baseAnalytics.availableCultures || [];
+
+  const prevY = $("#dashYear").value;
+  const prevW = $("#dashWh").value;
+  const prevP = $("#dashProd").value;
+  const prevC = $("#dashCulture").value;
+  const prevR = $("#dashRegion").value;
+
+  $("#dashYear").innerHTML = '<option value="">كل السنوات</option>' + years.map(y => `<option value="${esc(y)}">${esc(y)}</option>`).join("");
+  $("#dashWh").innerHTML = '<option value="">كل المخازن</option>' + RAW_WAREHOUSES.map(w => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join("");
+  $("#dashProd").innerHTML = '<option value="">كل الأسمدة</option>' + prods.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
+  $("#dashCulture").innerHTML = '<option value="">كل المحاصيل</option>' + cultures.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  $("#dashRegion").innerHTML = '<option value="">كل المناطق</option>' + regions.map(r => `<option value="${esc(r)}">${esc(r)}</option>`).join("");
+
+  if (years.includes(prevY)) $("#dashYear").value = prevY;
+  if (RAW_WAREHOUSES.some(w => String(w.id) === prevW)) $("#dashWh").value = prevW;
+  if (prods.includes(prevP)) $("#dashProd").value = prevP;
+  if (cultures.includes(prevC)) $("#dashCulture").value = prevC;
+  if (regions.includes(prevR)) $("#dashRegion").value = prevR;
+
+  const ySelA = $("#yoyYearA"), ySelB = $("#yoyYearB");
+  if (ySelA && ySelB) {
+    const yoyYears = years.length ? years : [String(new Date().getFullYear()), String(new Date().getFullYear() - 1)];
+    const prevA = ySelA.value, prevB = ySelB.value;
+    const opts = yoyYears.map(y => `<option value="${esc(y)}">${esc(y)}</option>`).join("");
+    ySelA.innerHTML = opts;
+    ySelB.innerHTML = opts;
+    ySelB.value = yoyYears.includes(prevB) ? prevB : yoyYears[0];
+    ySelA.value = yoyYears.includes(prevA) ? prevA : (yoyYears[1] || yoyYears[0]);
+  }
+}
+
+function renderDashboard() {
+  const fYear = $("#dashYear").value;
+  const fWh = $("#dashWh").value;
+  const fProd = $("#dashProd").value;
+  const fCulture = $("#dashCulture").value;
+  const fRegion = $("#dashRegion").value;
+  const metaMap = readInvMeta();
+
+  const cropAnalytics = window.buildCropAnalytics
+    ? window.buildCropAnalytics({
+        invoices: RAW_INVOICES,
+        withdrawals: RAW_WITHDRAWALS,
+        dossiers: RAW_DOSSIERS,
+        metaMap,
+        filters: {
+          year: fYear,
+          warehouseId: fWh,
+          productName: fProd,
+          culture: fCulture,
+          region: fRegion
+        }
+      })
+    : {
+        items: [],
+        fertilizerKeys: [],
+        filteredInvoices: [],
+        filteredWithdrawals: [],
+        totalInvoicedQty: 0,
+        totalWithdrawnQty: 0,
+        totalInvoicedValueDzd: 0,
+        totalWithdrawnValueDzd: 0
+      };
+
+  const filteredStockIn = RAW_STOCK_IN.filter(r => {
+    const yr = String((r.entry_date || "").slice(0, 4)).trim();
+    if (fYear && yr !== fYear) return false;
+    if (fWh && String(r.warehouse_id || "") !== fWh) return false;
+    if (fProd && String(r.products?.name || "").trim() !== fProd) return false;
+    return true;
+  });
+
+  const filteredWithdrawals = cropAnalytics.filteredWithdrawals || [];
+  const cropRows = cropAnalytics.items || [];
+  const fertilizerKeys = cropAnalytics.fertilizerKeys || [];
+
+  LAST_CROP_ROWS = cropRows;
+
+  // 2) Aggregate monthly receipts and withdrawals
+  const productTotalsGlobal = new Map();
+  filteredStockIn.forEach(r => {
+    const pName = String(r.products?.name || "غير محدد").trim() || "غير محدد";
+    productTotalsGlobal.set(pName, (productTotalsGlobal.get(pName) || 0) + Number(r.qty || 0));
+  });
+  const topProducts = [...productTotalsGlobal.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([k]) => k);
+  const hasOtherProducts = productTotalsGlobal.size > 5;
+  const productKeys = hasOtherProducts ? [...topProducts, "أسمدة أخرى"] : topProducts;
+
+  const monthMap = new Map();
+  const ensureMonth = ym => {
+    if (!monthMap.has(ym)) {
+      const obj = {
+        month: ym,
+        label: formatMonthLabel(ym),
+        receivedQty: 0,
+        withdrawnQty: 0,
+        receiptCount: 0,
+        topProduct: "—",
+        _prodMap: new Map()
+      };
+      productKeys.forEach(pk => { obj[pk] = 0; });
+      monthMap.set(ym, obj);
+    }
+    return monthMap.get(ym);
+  };
+
+  filteredStockIn.forEach(r => {
+    const ym = String(r.entry_date || "").slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(ym)) return;
+    const q = Number(r.qty || 0);
+    if (!Number.isFinite(q)) return;
+    const entry = ensureMonth(ym);
+    entry.receivedQty += q;
+    entry.receiptCount += 1;
+    const pName = String(r.products?.name || "غير محدد").trim() || "غير محدد";
+    entry._prodMap.set(pName, (entry._prodMap.get(pName) || 0) + q);
+    const bucket = topProducts.includes(pName) ? pName : (hasOtherProducts ? "أسمدة أخرى" : pName);
+    if (bucket) entry[bucket] = Number(((entry[bucket] || 0) + q).toFixed(2));
+  });
+
+  filteredWithdrawals.forEach(w => {
+    const ym = String(w.w_date || "").slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(ym)) return;
+    const q = Number(w.qty || 0);
+    if (!Number.isFinite(q)) return;
+    const entry = ensureMonth(ym);
+    entry.withdrawnQty += q;
+  });
+
+  const monthlyRows = [...monthMap.values()]
+    .sort((a, b) => a.month.localeCompare(b.month))
+    .map(m => {
+      let topProd = "—";
+      let topVal = -1;
+      m._prodMap.forEach((v, k) => { if (v > topVal) { topVal = v; topProd = k; } });
+      const { _prodMap, ...rest } = m;
+      return {
+        ...rest,
+        receivedQty: Number(m.receivedQty.toFixed(2)),
+        withdrawnQty: Number(m.withdrawnQty.toFixed(2)),
+        topProduct: topProd
+      };
+    });
+
+  LAST_MONTHLY_ROWS = monthlyRows;
+
+  // 3) KPI summary cards (Ops + CFO Financial KPIs)
+  const totalReceived = monthlyRows.reduce((s, r) => s + r.receivedQty, 0);
+  const totalInvoiced = cropAnalytics.totalInvoicedQty ?? cropRows.reduce((s, r) => s + r.invoicedQty, 0);
+  const totalWithdrawn = cropAnalytics.totalWithdrawnQty ?? cropRows.reduce((s, r) => s + r.withdrawnQty, 0);
+  const totalInvoiceRemaining = cropRows.reduce((s, r) => s + Number(r.remainingQty || 0), 0);
+  const totalInvoicedValue = cropAnalytics.totalInvoicedValueDzd ?? cropRows.reduce((s, r) => s + (r.invoicedValueDzd || 0), 0);
+  const fulfillRate = totalInvoiced > 0 ? (totalWithdrawn / totalInvoiced) * 100 : 0;
+  const topCrop = cropRows[0];
+
+  const threshold = getLowStockThreshold();
+  const filteredStockRows = RAW_STOCK_ANALYSIS.filter(r =>
+    (!fWh || String(r.wid || "") === fWh) &&
+    (!fProd || String(r.name || "").trim() === fProd)
+  ).map(r => ({
+    wid: r.wid,
+    warehouse: r.warehouse || RAW_WAREHOUSES.find(w => String(w.id) === String(r.wid))?.name || "غير محدد",
+    name: String(r.name || "غير محدد").trim() || "غير محدد",
+    received: Number(r.received || 0),
+    withdrawn: Number(r.withdrawn || 0),
+    balance: Number(r.balance || 0),
+    daily: Number(r.daily || 0),
+    reorder_point: Number(r.reorder_point || 0),
+    cover_days: Number(r.cover_days || 0)
+  }));
+  LAST_REMAINING_ROWS = filteredStockRows;
+  const totalStockBalance = filteredStockRows.reduce((s, r) => s + r.balance, 0);
+
+  const criticalItems = filteredStockRows.filter(r =>
+    r.balance < threshold || (r.daily > 0 && r.balance <= r.reorder_point)
+  );
+  const adjTotals = RAW_ADJUSTMENTS.reduce((acc, a) => {
+    const q = Number(a.qty || 0);
+    const amt = Number(a.amount_dzd || 0);
+    const tp = a.adjustment_type || a.adj_type;
+    if (tp === "damaged") acc.damagedQty += q;
+    else if (tp === "lost") acc.lostQty += q;
+    else acc.returnedQty += q;
+    acc.totalAmountDzd += amt;
+    acc.count += 1;
+    return acc;
+  }, { damagedQty: 0, lostQty: 0, returnedQty: 0, totalAmountDzd: 0, count: 0 });
+  const alertEl = $("#dashStockAlert");
+  if (alertEl) {
+    if (criticalItems.length || adjTotals.count > 0) {
+      alertEl.hidden = false;
+      const parts = [];
+      if (criticalItems.length) {
+        parts.push(`<span><strong>تنبيه تشغيلي للمخزون:</strong> يوجد <b>${criticalItems.length}</b> صنف/مخزن أقل من حد الأمان (${n(threshold)} قنطار) أو بلغ نقطة إعادة الطلب.</span>`);
+      }
+      if (adjTotals.count > 0) {
+        parts.push(`<span><strong>تسويات الجرد (${adjTotals.count}):</strong> تالف <b>${n(adjTotals.damagedQty)}</b> · ضائع <b>${n(adjTotals.lostQty)}</b> · مرتجع <b>${n(adjTotals.returnedQty)}</b> (${n(adjTotals.totalAmountDzd)} دج).</span>`);
+      }
+      alertEl.innerHTML = `${parts.join(" ") } <a class="f" href="warehouse.html" style="text-decoration:none">مراجعة المخازن</a>`;
+    } else {
+      alertEl.hidden = true;
+      alertEl.innerHTML = "";
+    }
+  }
+
+  const canFinancials = typeof hasFeatPerm !== "function" || hasFeatPerm("feat:financials");
+  const unit = (typeof getAppSettings === "function" ? getAppSettings().unitLabel : "قنطار") || "قنطار";
+  const dashCardPairs = [
+    [`الرصيد المتبقي بالمخازن (${filteredStockRows.length} صنف/مخزن)`, `${n(totalStockBalance)} ${unit}`],
+    [`الكميات المسحوبة (${filteredWithdrawals.length} سحب · ${n(fulfillRate)}%)`, `${n(totalWithdrawn)} ${unit}`],
+    [`المتبقي من الفواتير (${cropRows.length} محصول)`, `${n(totalInvoiceRemaining)} ${unit}`],
+    [canFinancials && totalInvoicedValue > 0 ? `القيمة المفوترة الإجمالية` : (topCrop ? `أعلى محصول: ${topCrop.culture}` : "إجمالي الواردات"),
+      canFinancials && totalInvoicedValue > 0 ? `${n(totalInvoicedValue)} دج` : (topCrop ? `${n(topCrop.withdrawnQty || topCrop.invoicedQty)} ${unit}` : `${n(totalReceived)} ${unit}`)]
+  ];
+  LAST_DASH_CARDS = dashCardPairs.map(([label, value]) => ({ label, value }));
+  $("#dashCards").innerHTML = dashCardPairs
+    .map(([l, v]) => `<div class="card"><b>${esc(v)}</b><span>${esc(l)}</span></div>`)
+    .join("");
+
+  $("#cropChartMeta").textContent = cropRows.length
+    ? `${cropRows.length} محصول · الفواتير ${n(totalInvoiced)} ${unit} · السحوبات ${n(totalWithdrawn)} ${unit} · المتبقي ${n(totalInvoiceRemaining)} ${unit}`
+    : "لا توجد فواتير أو سحوبات مطابقة";
+
+  $("#remainingChartMeta").textContent = filteredStockRows.length
+    ? `إجمالي المتوفر بالمخازن: ${n(totalStockBalance)} ${unit} · ${filteredStockRows.length} سجل مخزون`
+    : "لا توجد أرصدة مخزنية مطابقة";
+
+  $("#monthlyChartMeta").textContent = monthlyRows.length
+    ? `${monthlyRows.length} شهر · إجمالي الوارد ${n(totalReceived)} ${unit}`
+    : "لا توجد واردات شهرية مطابقة";
+
+  const chartCropRows = canFinancials
+    ? cropRows
+    : cropRows.map(r => ({ ...r, invoicedValueDzd: 0, withdrawnValueDzd: 0 }));
+
+  if (window.renderCropConsumptionChart) {
+    window.renderCropConsumptionChart({ items: chartCropRows, fertilizerKeys });
+  }
+  if (window.renderRemainingStockChart) {
+    window.renderRemainingStockChart({ items: filteredStockRows, threshold });
+  }
+  if (window.renderMonthlyReceiptsChart) {
+    window.renderMonthlyReceiptsChart({ items: monthlyRows, productKeys });
+  }
+
+  // 4) Decision-support summary tables
+  $("#cropSummaryTable").innerHTML = tbl(
+    canFinancials
+      ? ["المحصول", "عدد الفواتير", "عدد السحوبات", `المفوتر (${unit})`, `المسحوب (${unit})`, `المتبقي (${unit})`, "نسبة التسليم %", "القيمة المفوترة (دج)", "السماد الأكثر طلباً"]
+      : ["المحصول", "عدد الفواتير", "عدد السحوبات", `المفوتر (${unit})`, `المسحوب (${unit})`, `المتبقي (${unit})`, "نسبة التسليم %", "السماد الأكثر طلباً"],
+    chartCropRows.map(r => {
+      const pct = r.invoicedQty > 0 ? (r.withdrawnQty / r.invoicedQty) * 100 : 0;
+      const baseCols = [
+        `<b>${esc(r.culture)}</b>`,
+        r.invoiceCount,
+        r.withdrawalCount || 0,
+        n(r.invoicedQty),
+        n(r.withdrawnQty),
+        `<b>${n(r.remainingQty)}</b>`,
+        `${n(pct)}%`
+      ];
+      if (canFinancials) baseCols.push(r.invoicedValueDzd > 0 ? n(r.invoicedValueDzd) : "—");
+      baseCols.push(esc(r.topProduct));
+      return baseCols;
+    })
+  );
+
+  $("#remainingSummaryTable").innerHTML = tbl(
+    ["السماد", "المخزن", `إجمالي الوارد (${unit})`, `إجمالي المسحوب (${unit})`, `الرصيد المتبقي (${unit})`, "الحالة"],
+    filteredStockRows.map(r => {
+      const bal = r.balance;
+      const badge = bal <= 0
+        ? `<span class="tag-bad">نفد المخزون</span>`
+        : bal < threshold
+        ? `<span class="tag-warn">منخفض (&lt; ${n(threshold)})</span>`
+        : `<span style="color:var(--pr);font-weight:700">متوفر ✓</span>`;
+      return [
+        `<b>${esc(r.name)}</b>`,
+        esc(r.warehouse),
+        n(r.received),
+        n(r.withdrawn),
+        `<b>${n(bal)}</b>`,
+        badge
+      ];
+    })
+  );
+
+  $("#monthlySummaryTable").innerHTML = tbl(
+    ["الشهر", "عمليات الوارد", `إجمالي الوارد (${unit})`, `إجمالي التسليمات (${unit})`, "صافي الرصيد الشهري", "السماد الأبرز وارداً"],
+    monthlyRows.map(m => {
+      const net = m.receivedQty - m.withdrawnQty;
+      const netTxt = `${net >= 0 ? "+" : ""}${n(net)}`;
+      return [
+        `<b>${esc(m.label)}</b> <small style="color:var(--mu)">(${esc(m.month)})</small>`,
+        m.receiptCount,
+        n(m.receivedQty),
+        n(m.withdrawnQty),
+        `<span class="${net < 0 ? "bad" : ""}">${esc(netTxt)}</span>`,
+        esc(m.topProduct)
+      ];
+    })
+  );
+  // 5) Stock Valuation in DZD, Performance KPIs, and YoY comparison
+  const valuationRes = window.computeStockValuationAndMonthly
+    ? window.computeStockValuationAndMonthly({
+        stockRows: filteredStockRows,
+        stockIn: filteredStockIn,
+        withdrawals: filteredWithdrawals,
+        invoices: RAW_INVOICES,
+        adjustments: RAW_ADJUSTMENTS,
+        products: RAW_PRODUCTS,
+        formatMonth: formatMonthLabel
+      })
+    : { totalStockValueDzd: 0, totalQtyBalance: totalStockBalance, pricedProductsCount: 0, stockWithValues: [], monthlySeries: [] };
+  LAST_VALUATION = valuationRes;
+
+  const kpiRes = window.computePerformanceKpis
+    ? window.computePerformanceKpis({
+        dossiers: RAW_DOSSIERS,
+        invoices: RAW_INVOICES,
+        withdrawals: RAW_WITHDRAWALS,
+        todayDate: new Date().toISOString().slice(0, 10)
+      })
+    : {
+        avgProcessingDays: 0,
+        minProcessingDays: 0,
+        maxProcessingDays: 0,
+        processedDossiersCount: 0,
+        farmersToday: 0,
+        avgFarmersPerDay: 0,
+        peakFarmersPerDay: 0,
+        peakDate: "—",
+        totalFarmersServed: 0,
+        activeDaysCount: 0
+      };
+  LAST_KPI_STATS = kpiRes;
+
+  const kpiCardPairs = [
+    ...(canFinancials
+      ? [[`قيمة المخزون الحالية (${valuationRes.pricedProductsCount} صنف مسعّر)`, `${n(valuationRes.totalStockValueDzd)} دج`]]
+      : []),
+    [`متوسط زمن معالجة الملف (${kpiRes.processedDossiersCount} ملف · ${n(kpiRes.minProcessingDays)}–${n(kpiRes.maxProcessingDays)} يوم)`, `${n(kpiRes.avgProcessingDays)} يوم`],
+    [`الفلاحون المخدومون يومياً (اليوم: ${kpiRes.farmersToday})`, `${n(kpiRes.avgFarmersPerDay)} فلاح/يوم`],
+    [`إجمالي الفلاحين (الذروة: ${kpiRes.peakFarmersPerDay} في ${kpiRes.peakDate})`, `${kpiRes.totalFarmersServed} فلاح`]
+  ];
+  const kpiCardsEl = $("#dashKpiCards");
+  if (kpiCardsEl) {
+    kpiCardsEl.innerHTML = kpiCardPairs
+      .map(([l, v]) => `<div class="card"><b>${esc(v)}</b><span>${esc(l)}</span></div>`)
+      .join("");
+  }
+
+  const valMetaEl = $("#valuationMeta");
+  const valRootEl = $("#stock-valuation-chart-root");
+  if (canFinancials) {
+    if (valMetaEl) {
+      valMetaEl.textContent = `القيمة الحالية بالمخازن: ${n(valuationRes.totalStockValueDzd)} دج · ${valuationRes.monthlySeries.length} شهر مسجّل`;
+    }
+    if (window.renderStockValuationChart) {
+      window.renderStockValuationChart({
+        monthlySeries: valuationRes.monthlySeries,
+        totalStockValueDzd: valuationRes.totalStockValueDzd,
+        totalQtyBalance: valuationRes.totalQtyBalance
+      });
+    }
+  } else {
+    if (valMetaEl) valMetaEl.textContent = "المعطيات المالية محجوبة حسب صلاحيات الحساب";
+    if (valRootEl) valRootEl.innerHTML = `<p class="empty-state">لا تملك صلاحية الاطلاع على القيم المالية (feat:financials).</p>`;
+  }
+
+  renderYoYSection();
+  scheduleDirectorSnapshotSync(adjTotals, valuationRes, kpiRes);
+}
+
+function renderYoYSection() {
+  const yearA = $("#yoyYearA")?.value || "";
+  const yearB = $("#yoyYearB")?.value || "";
+  const unit = (typeof getAppSettings === "function" ? getAppSettings().unitLabel : "قنطار") || "قنطار";
+  const fWh = $("#dashWh")?.value || "";
+  const fProd = $("#dashProd")?.value || "";
+
+  const yoyStockIn = RAW_STOCK_IN.filter(r =>
+    (!fWh || String(r.warehouse_id || "") === fWh) &&
+    (!fProd || String(r.products?.name || "").trim() === fProd)
+  );
+  const yoyWithdrawals = RAW_WITHDRAWALS.filter(w => {
+    if (fWh && String(w.invoices?.warehouse_id || "") !== fWh) return false;
+    const pName = String(w.invoices?.products?.name || "").trim();
+    if (fProd && pName !== fProd) return false;
+    return true;
+  });
+
+  const rows = window.computeYoYProductComparison && yearA && yearB
+    ? window.computeYoYProductComparison({
+        stockIn: yoyStockIn,
+        withdrawals: yoyWithdrawals,
+        invoices: RAW_INVOICES,
+        yearA,
+        yearB
+      })
+    : [];
+  LAST_YOY_ROWS = rows;
+
+  const metaEl = $("#yoyMeta");
+  if (metaEl) {
+    metaEl.textContent = rows.length
+      ? `مقارنة ${rows.length} صنف بين ${yearA} و ${yearB}`
+      : `لا توجد حركات كافية للمقارنة بين ${yearA || "—"} و ${yearB || "—"}`;
+  }
+  if (window.renderYoYComparisonChart) {
+    window.renderYoYComparisonChart({ rows, yearA, yearB });
+  }
+  const tblEl = $("#yoySummaryTable");
+  if (tblEl) {
+    tblEl.innerHTML = tbl(
+      ["الصنف", `وارد ${yearA}`, `وارد ${yearB}`, "تغير الوارد %", `مسحوب ${yearA}`, `مسحوب ${yearB}`, "تغير المسحوب %"],
+      rows.map(r => {
+        const fmtPct = pct => pct === null ? "—" : `${pct >= 0 ? "+" : ""}${pct}%`;
+        return [
+          `<b>${esc(r.product)}</b>`,
+          `${n(r.receivedA)} ${esc(unit)}`,
+          `${n(r.receivedB)} ${esc(unit)}`,
+          `<span class="${(r.receivedPct || 0) < 0 ? "bad" : ""}">${esc(fmtPct(r.receivedPct))}</span>`,
+          `${n(r.withdrawnA)} ${esc(unit)}`,
+          `${n(r.withdrawnB)} ${esc(unit)}`,
+          `<span class="${(r.withdrawnPct || 0) < 0 ? "bad" : ""}">${esc(fmtPct(r.withdrawnPct))}</span>`
+        ];
+      })
+    );
+  }
+}
+
+function scheduleDirectorSnapshotSync(adjTotals, valuationRes, kpiRes) {
+  clearTimeout(directorSnapshotTimer);
+  directorSnapshotTimer = setTimeout(async () => {
+    try {
+      const sess = await sb.auth.getSession();
+      const token = sess?.data?.session?.access_token;
+      if (!token) return;
+      const s = typeof getAppSettings === "function" ? getAppSettings() : {};
+      await fetch("/api/director-snapshot", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          orgName: s.orgName,
+          campaign: s.activeCampaign,
+          unitLabel: s.unitLabel,
+          updatedAt: new Date().toISOString(),
+          threshold: getLowStockThreshold(),
+          totalStockValueDzd: valuationRes?.totalStockValueDzd || 0,
+          cards: LAST_DASH_CARDS,
+          crops: LAST_CROP_ROWS,
+          stock: LAST_REMAINING_ROWS,
+          stockValuationMonthly: valuationRes?.monthlySeries || [],
+          kpiStats: kpiRes || null,
+          adjustments: adjTotals
+        })
+      });
+    } catch (_) {}
+  }, 500);
+}
+
+async function fetchWithdrawalsWithContext() {
+  const richSelect = "id, w_date, qty, invoice_id, invoices(id, invoice_no, invoice_year, dossier_no, farmer_card_no, farmer_name, client_name, culture, region, unit_price, product_id, warehouse_id, products(name))";
+  const richRes = await sb.from("withdrawals").select(richSelect).order("w_date", { ascending: true }).limit(2000);
+  if (!richRes.error) return richRes;
+  return sb
+    .from("withdrawals")
+    .select("id, w_date, qty, invoice_id, invoices(product_id, warehouse_id, products(name))")
+    .order("w_date", { ascending: true })
+    .limit(2000);
+}
+
+function computeStockFallback(stockIn, withdrawals, warehouses) {
+  const whNames = new Map((warehouses || []).map(w => [String(w.id), w.name]));
+  const map = new Map();
+  const ensure = (wid, name) => {
+    const k = `${wid || ""}|${name || "غير محدد"}`;
+    if (!map.has(k)) {
+      map.set(k, {
+        wid: wid ?? "",
+        warehouse: whNames.get(String(wid)) || "المخزن الرئيسي",
+        name: name || "غير محدد",
+        received: 0,
+        withdrawn: 0,
+        balance: 0,
+        daily: 0,
+        reorder_point: 0
+      });
+    }
+    return map.get(k);
+  };
+  (stockIn || []).forEach(r => {
+    const item = ensure(r.warehouse_id, r.products?.name);
+    item.received += Number(r.qty || 0);
+  });
+  (withdrawals || []).forEach(w => {
+    const wid = w.invoices?.warehouse_id;
+    const pname = w.invoices?.products?.name;
+    const item = ensure(wid, pname);
+    item.withdrawn += Number(w.qty || 0);
+  });
+  return [...map.values()].map(x => ({
+    ...x,
+    received: Number(x.received.toFixed(2)),
+    withdrawn: Number(x.withdrawn.toFixed(2)),
+    balance: Number((x.received - x.withdrawn).toFixed(2))
+  }));
+}
+
+function subscribeLiveDb() {
+  if (liveChannel || typeof sb?.channel !== "function") return;
+  const scheduleReload = () => {
+    clearTimeout(liveReloadTimer);
+    liveReloadTimer = setTimeout(() => loadDashboardData(true), 800);
+  };
+  liveChannel = sb
+    .channel("analytics-live-db")
+    .on("postgres_changes", { event: "*", schema: "public", table: "invoices" }, scheduleReload)
+    .on("postgres_changes", { event: "*", schema: "public", table: "withdrawals" }, scheduleReload)
+    .on("postgres_changes", { event: "*", schema: "public", table: "stock_in" }, scheduleReload)
+    .subscribe();
+  window.addEventListener("beforeunload", () => {
+    if (liveChannel && typeof sb?.removeChannel === "function") {
+      sb.removeChannel(liveChannel);
+      liveChannel = null;
+    }
+  }, { once: true });
+}
+
+async function fetchStockInSafe() {
+  const rich = await sb
+    .from("stock_in")
+    .select("id, product_id, qty, unit_price, entry_date, warehouse_id, products(name)")
+    .order("entry_date", { ascending: true })
+    .limit(2000);
+  if (!rich.error) return rich;
+  return sb
+    .from("stock_in")
+    .select("id, product_id, qty, entry_date, warehouse_id, products(name)")
+    .order("entry_date", { ascending: true })
+    .limit(2000);
+}
+
+async function fetchProductsSafe() {
+  const rich = await sb.from("products").select("id, name, unit_price").order("name");
+  if (!rich.error) return rich;
+  return sb.from("products").select("id, name").order("name");
+}
+
+async function fetchDossiersSafe() {
+  const rich = await sb
+    .from("dossier_receptions")
+    .select("dossier_no, farmer_card_no, farmer_name, culture, reception_date")
+    .limit(2000);
+  if (!rich.error) return rich;
+  return sb
+    .from("dossier_receptions")
+    .select("dossier_no, farmer_card_no, farmer_name, culture")
+    .limit(2000);
+}
+
+async function loadDashboardData(forceReload = false) {
+  if (dashboardLoaded && !forceReload) {
+    renderDashboard();
+    return;
+  }
+  setStatus("جارٍ تحميل بيانات الاستهلاك والأرصدة المتبقية من قاعدة البيانات...", false);
+  try {
+    const [invRes, stockRes, wRes, whRes, prodRes] = await Promise.all([
+      sb.from("invoice_balance").select("*").order("id", { ascending: false }).limit(2000),
+      fetchStockInSafe(),
+      fetchWithdrawalsWithContext(),
+      sb.from("warehouses").select("id, name").order("name"),
+      fetchProductsSafe()
+    ]);
+    const err = invRes.error || stockRes.error || wRes.error || whRes.error;
+    if (err) throw err;
+
+    RAW_INVOICES = invRes.data || [];
+    RAW_STOCK_IN = stockRes.data || [];
+    RAW_WITHDRAWALS = wRes.data || [];
+    RAW_WAREHOUSES = whRes.data || [];
+    RAW_PRODUCTS = !prodRes.error && Array.isArray(prodRes.data) ? prodRes.data : [];
+
+    RAW_ADJUSTMENTS = [];
+    try {
+      const { data: adjData, error: adjErr } = await sb.from("stock_adjustments").select("*").limit(500);
+      if (!adjErr && Array.isArray(adjData)) RAW_ADJUSTMENTS = adjData;
+    } catch (_) {}
+    if (!RAW_ADJUSTMENTS.length) {
+      try { RAW_ADJUSTMENTS = JSON.parse(localStorage.getItem("ccls_stock_adjustments_v1") || "[]") || []; } catch (_) {}
+    }
+
+    RAW_TRANSFERS = [];
+    try {
+      const { data: trData, error: trErr } = await sb.from("warehouse_transfers").select("*").limit(500);
+      if (!trErr && Array.isArray(trData)) RAW_TRANSFERS = trData;
+    } catch (_) {}
+    if (!RAW_TRANSFERS.length) {
+      try { RAW_TRANSFERS = JSON.parse(localStorage.getItem("ccls_warehouse_transfers_v1") || "[]") || []; } catch (_) {}
+    }
+
+    const adjDeltaMap = new Map();
+    RAW_ADJUSTMENTS.forEach(a => {
+      const tp = a.adjustment_type || a.adj_type;
+      const delta = tp === "returned_farmer" ? Number(a.qty || 0) : -Number(a.qty || 0);
+      const k = `${a.warehouse_id || ""}|${String(a.product_name || "").trim().toUpperCase()}`;
+      adjDeltaMap.set(k, (adjDeltaMap.get(k) || 0) + delta);
+    });
+
+    const trDeltaMap = new Map();
+    const trDestNames = new Map();
+    RAW_TRANSFERS.forEach(t => {
+      const q = Number(t.qty || 0);
+      if (!(q > 0)) return;
+      const pUpper = String(t.product_name || "").trim().toUpperCase();
+      if (!pUpper) return;
+      if (t.from_warehouse_id != null && t.from_warehouse_id !== "") {
+        const kFrom = `${t.from_warehouse_id}|${pUpper}`;
+        trDeltaMap.set(kFrom, (trDeltaMap.get(kFrom) || 0) - q);
+      }
+      if (t.to_warehouse_id != null && t.to_warehouse_id !== "") {
+        const kTo = `${t.to_warehouse_id}|${pUpper}`;
+        trDeltaMap.set(kTo, (trDeltaMap.get(kTo) || 0) + q);
+        if (!trDestNames.has(kTo)) {
+          trDestNames.set(kTo, {
+            wid: t.to_warehouse_id,
+            warehouse: t.to_warehouse_name || RAW_WAREHOUSES.find(w => String(w.id) === String(t.to_warehouse_id))?.name || "مخزن الوجهة",
+            name: String(t.product_name || "").trim()
+          });
+        }
+      }
+    });
+
+    RAW_STOCK_ANALYSIS = [];
+    try {
+      const { data: saData, error: saErr } = await sb.from("stock_analysis").select("*").order("name");
+      if (!saErr && Array.isArray(saData) && saData.length) {
+        RAW_STOCK_ANALYSIS = saData;
+      }
+    } catch (_) {}
+    if (!RAW_STOCK_ANALYSIS.length && (RAW_STOCK_IN.length || RAW_WITHDRAWALS.length)) {
+      RAW_STOCK_ANALYSIS = computeStockFallback(RAW_STOCK_IN, RAW_WITHDRAWALS, RAW_WAREHOUSES);
+    }
+
+    const seenKeys = new Set();
+    RAW_STOCK_ANALYSIS = RAW_STOCK_ANALYSIS.map(r => {
+      const pUpper = String(r.name || "").trim().toUpperCase();
+      const kExact = `${r.wid || ""}|${pUpper}`;
+      seenKeys.add(kExact);
+      const kAny = `|${pUpper}`;
+      const adjDelta = (adjDeltaMap.get(kExact) || 0) + (r.wid != null ? (adjDeltaMap.get(kAny) || 0) : 0);
+      const trDelta = trDeltaMap.get(kExact) || 0;
+      return { ...r, balance: Number((Number(r.balance || 0) + adjDelta + trDelta).toFixed(2)) };
+    });
+
+    // Add destination warehouse balances created purely via transfers
+    trDestNames.forEach((info, kTo) => {
+      if (seenKeys.has(kTo)) return;
+      const trDelta = trDeltaMap.get(kTo) || 0;
+      const adjDelta = adjDeltaMap.get(kTo) || 0;
+      const bal = Number((trDelta + adjDelta).toFixed(2));
+      if (bal > 0) {
+        RAW_STOCK_ANALYSIS.push({
+          wid: info.wid,
+          warehouse: info.warehouse,
+          name: info.name,
+          received: Number(trDelta.toFixed(2)),
+          withdrawn: 0,
+          balance: bal,
+          daily: 0,
+          reorder_point: 0,
+          cover_days: 0
+        });
+      }
+    });
+
+    let dossierRows = typeof readLocalDossiers === "function" ? readLocalDossiers() : [];
+    try {
+      const { data: dData, error: dErr } = await fetchDossiersSafe();
+      if (!dErr && Array.isArray(dData) && dData.length) {
+        dossierRows = dData;
+      }
+    } catch (_) {}
+    const greenSeedRows = typeof GREEN_SEED_FARMERS !== "undefined" && Array.isArray(GREEN_SEED_FARMERS)
+      ? GREEN_SEED_FARMERS
+      : [];
+    RAW_DOSSIERS = [...greenSeedRows, ...dossierRows];
+
+    populateFilters();
+    dashboardLoaded = true;
+    setStatus("", false);
+    const nowTime = new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    $("#dashUpdated").textContent = `متصل بقاعدة البيانات · آخر تحديث: ${nowTime}`;
+    subscribeLiveDb();
+    renderDashboard();
+  } catch (err) {
+    setStatus("تعذّر تحميل بيانات لوحة التحكم: " + (err?.message || "خطأ غير متوقع"), true);
+    toast(err?.message || "تعذّر تحميل البيانات", 1);
+  }
+}
+
+function buildAnalyticsReportPayload() {
+  const whSel = $("#dashWh");
+  const whLabel = whSel && whSel.value ? whSel.options[whSel.selectedIndex]?.textContent || "" : "";
+  return {
+    filters: {
+      year: $("#dashYear").value || "",
+      warehouse: whLabel,
+      product: $("#dashProd").value || "",
+      culture: $("#dashCulture").value || "",
+      region: $("#dashRegion").value || ""
+    },
+    cards: LAST_DASH_CARDS,
+    cropRows: LAST_CROP_ROWS,
+    monthlyRows: LAST_MONTHLY_ROWS,
+    remainingRows: LAST_REMAINING_ROWS
+  };
+}
+
+["#dashYear", "#dashWh", "#dashProd", "#dashCulture", "#dashRegion"].forEach(sel => {
+  $(sel).addEventListener("change", renderDashboard);
+});
+["#yoyYearA", "#yoyYearB"].forEach(sel => {
+  const el = $(sel);
+  if (el) el.addEventListener("change", renderYoYSection);
+});
+$("#dashRefresh").onclick = () => loadDashboardData(true);
+$("#printDashBtn").onclick = () => {
+  if (!dashboardLoaded) return toast("يرجى انتظار تحميل البيانات أولاً", 1);
+  if (!LAST_CROP_ROWS.length && !LAST_MONTHLY_ROWS.length) {
+    return toast("لا توجد بيانات مطابقة للطباعة حالياً", 1);
+  }
+  const payload = buildAnalyticsReportPayload();
+  if (typeof window.printAnalyticsReport === "function") {
+    window.printAnalyticsReport(payload, (msg, isErr) => toast(msg, isErr ? 1 : 0));
+  } else {
+    window.print();
+  }
+};
+$("#pdfDashBtn").onclick = async () => {
+  if (!dashboardLoaded) return toast("يرجى انتظار تحميل البيانات أولاً", 1);
+  if (!LAST_CROP_ROWS.length && !LAST_MONTHLY_ROWS.length) {
+    return toast("لا توجد بيانات مطابقة للتصدير حالياً", 1);
+  }
+  if (typeof window.exportAnalyticsPdf !== "function") {
+    return toast("تعذّر تحميل أداة تصدير PDF، أعد تحميل الصفحة", 1);
+  }
+  const b = $("#pdfDashBtn"), orig = b.textContent;
+  b.disabled = true; b.textContent = "جارٍ إنشاء PDF...";
+  try {
+    await window.exportAnalyticsPdf(buildAnalyticsReportPayload());
+    toast("تم تصدير التقرير بصيغة PDF بنجاح");
+  } catch (err) {
+    toast(err?.message || "تعذّر إنشاء ملف PDF", 1);
+  } finally {
+    b.disabled = false; b.textContent = orig;
+  }
+};
+
+$("#shareDirectorLinkBtn").onclick = async () => {
+  const b = $("#shareDirectorLinkBtn");
+  b.disabled = true;
+  try {
+    const sess = await sb.auth.getSession();
+    const token = sess?.data?.session?.access_token;
+    if (!token) throw new Error("يرجى تسجيل الدخول أولاً");
+    await fetch("/api/director-link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({ days: 30 })
+    }).then(async r => {
+      const json = await r.json();
+      if (!r.ok) throw new Error(json?.error || "تعذّر إنشاء رابط المدير");
+      const fullUrl = `${window.location.origin}${json.path}`;
+      const box = $("#directorLinkBox");
+      box.hidden = false;
+      box.innerHTML = `
+        <div style="display:grid;gap:8px">
+          <div><strong>رابط عرض المدير (قراءة فقط من الهاتف · صالح لمدة 30 يوماً):</strong></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input id="directorShareUrlInput" readonly value="${esc(fullUrl)}" style="flex:1;min-width:220px;direction:ltr;font-family:var(--font-mono);font-size:.82rem">
+            <button type="button" class="p" id="copyDirectorUrlBtn">نسخ الرابط</button>
+            <a class="f" style="text-decoration:none" href="${esc(fullUrl)}" target="_blank" rel="noopener noreferrer">فتح المعاينة</a>
+            <button type="button" class="f" id="closeDirectorUrlBox">إخفاء</button>
+          </div>
+          <small style="color:var(--mu)">يسمح هذا الرابط بمتابعة الأرقام المباشرة من الهاتف بدون أي صلاحية تعديل أو حذف، ولا يكشف بيانات الفلاحين الشخصية.</small>
+        </div>`;
+      $("#copyDirectorUrlBtn").onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(fullUrl);
+          toast("تم نسخ رابط المدير بنجاح ✓");
+        } catch (_) {
+          $("#directorShareUrlInput").select();
+          toast("حدد الرابط وانسخه يدوياً");
+        }
+      };
+      $("#closeDirectorUrlBox").onclick = () => { box.hidden = true; };
+      toast("تم إنشاء رابط العرض للمدير ✓");
+    });
+  } catch (err) {
+    toast(err?.message || "تعذّر إنشاء الرابط", 1);
+  } finally {
+    b.disabled = false;
+  }
+};
+
+$("#exportCropCsv").onclick = () => {
+  if (!LAST_CROP_ROWS.length) return toast("لا توجد بيانات محاصيل للتصدير", 1);
+  csv(
+    "fertilizer-consumption-by-crop",
+    ["المحصول", "عدد الفواتير", "عدد السحوبات", "المفوتر (قنطار)", "المسحوب (قنطار)", "المتبقي (قنطار)", "القيمة المفوترة (دج)", "السماد الأكثر طلباً"],
+    LAST_CROP_ROWS.map(r => [r.culture, r.invoiceCount, r.withdrawalCount || 0, r.invoicedQty, r.withdrawnQty, r.remainingQty, r.invoicedValueDzd || 0, r.topProduct])
+  );
+};
+
+$("#exportRemainingCsv").onclick = () => {
+  if (!LAST_REMAINING_ROWS.length) return toast("لا توجد أرصدة مخزنية للتصدير", 1);
+  csv(
+    "remaining-stock-balances",
+    ["السماد", "المخزن", "الوارد (قنطار)", "المسحوب (قنطار)", "الرصيد المتبقي (قنطار)"],
+    LAST_REMAINING_ROWS.map(r => [r.name, r.warehouse, r.received, r.withdrawn, r.balance])
+  );
+};
+
+$("#exportMonthlyCsv").onclick = () => {
+  if (!LAST_MONTHLY_ROWS.length) return toast("لا توجد بيانات شهرية للتصدير", 1);
+  csv(
+    "monthly-fertilizer-receipts",
+    ["الشهر", "التسمية", "عمليات الوارد", "إجمالي الوارد (قنطار)", "إجمالي التسليمات (قنطار)", "صافي الشهر", "السماد الأبرز"],
+    LAST_MONTHLY_ROWS.map(m => [m.month, m.label, m.receiptCount, m.receivedQty, m.withdrawnQty, Number((m.receivedQty - m.withdrawnQty).toFixed(2)), m.topProduct])
+  );
+};
+
+$("#exportYoYCsv").onclick = () => {
+  if (!LAST_YOY_ROWS.length) return toast("لا توجد بيانات مقارنة سنوية للتصدير", 1);
+  const yA = $("#yoyYearA")?.value || "السنة 1";
+  const yB = $("#yoyYearB")?.value || "السنة 2";
+  csv(
+    `yoy-comparison-${yA}-vs-${yB}`,
+    ["الصنف", `وارد ${yA}`, `وارد ${yB}`, "فرق الوارد", "نسبة تغير الوارد %", `مسحوب ${yA}`, `مسحوب ${yB}`, "فرق المسحوب", "نسبة تغير المسحوب %"],
+    LAST_YOY_ROWS.map(r => [r.product, r.receivedA, r.receivedB, r.receivedDiff, r.receivedPct ?? "", r.withdrawnA, r.withdrawnB, r.withdrawnDiff, r.withdrawnPct ?? ""])
+  );
+};
+
+startApp({
+  page: "analytics",
+  tabs: [
+    ["overview", "لوحة التحكم الشاملة", ["dashOverviewSec", "dashKpiSec", "dashValuationSec", "dashCropSec", "dashRemainingSec", "dashMonthlySec", "dashYoYSec", "dashTableSec"], () => loadDashboardData(false), ["invoices", "pickup", "receipts", "stock", "lowStock"]],
+    ["valuation", "قيمة المخزون (دج)", ["dashOverviewSec", "dashValuationSec"], () => loadDashboardData(false), ["stock", "receipts", "invoices"]],
+    ["yoy", "مقارنة سنة بسنة (YoY)", ["dashOverviewSec", "dashYoYSec"], () => loadDashboardData(false), ["receipts", "pickup", "invoices"]],
+    ["cropConsumption", "استهلاك الأسمدة حسب المحصول", ["dashOverviewSec", "dashCropSec", "dashTableSec"], () => loadDashboardData(false), ["invoices", "pickup", "receipts", "stock", "lowStock"]],
+    ["remainingStock", "الكميات المتبقية والأرصدة", ["dashOverviewSec", "dashRemainingSec", "dashTableSec"], () => loadDashboardData(false), ["stock", "lowStock", "invoices", "pickup", "receipts"]],
+    ["monthlyReceipts", "توزيع الواردات الشهرية", ["dashOverviewSec", "dashMonthlySec", "dashTableSec"], () => loadDashboardData(false), ["invoices", "pickup", "receipts", "stock", "lowStock"]]
+  ]
+});
+</script>
+</body>
+</html>

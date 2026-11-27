@@ -4,22 +4,27 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>المستخدمون والصلاحيات - تسيير مخزون الأسمدة</title>
+<meta name="description" content="إدارة حسابات المستخدمين، المناصب، وصلاحيات الصفحات والأزرار والنظام.">
+<meta name="theme-color" content="#175236">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif">
 <link rel="stylesheet" href="common.css">
 </head>
 <body>
-<header><div style="display:flex;gap:10px;align-items:center"><button class="p" id="menu" aria-label="القائمة" style="background:var(--ac);color:#1d2b22">☰</button><h1>المستخدمون والصلاحيات - تسيير مخزون الأسمدة</h1></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span id="links" style="display:flex;gap:6px;flex-wrap:wrap"></span><span id="who" style="font-size:.85rem"></span><button class="p" id="pwb" hidden style="background:var(--ac);color:#1d2b22">كلمة المرور</button><button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button></div></header>
+<header><div style="display:flex;gap:10px;align-items:center"><button class="f" id="menu" aria-label="القائمة">☰</button><h1>المستخدمون والصلاحيات - تسيير مخزون الأسمدة</h1></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span id="links" style="display:flex;gap:4px;flex-wrap:wrap"></span><span id="who"></span><button class="f" id="pwb" hidden>الإعدادات</button><button class="f" id="out" hidden>خروج</button></div></header>
 <main>
 <div id="cfg" class="box" hidden></div>
 <div id="app" hidden>
 <nav></nav>
 <section id="create" hidden>
-  <h2>إنشاء مستخدم جديد</h2>
+  <h2>إنشاء مستخدم جديد وتخصيص صلاحياته</h2>
   <form id="fu">
     <label>اسم المستخدم (حروف لاتينية وأرقام)<input name="username" required autocomplete="off" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\-]+"></label>
     <label>الاسم الكامل<input name="full_name" required></label>
     <label>كلمة المرور<input name="password" type="password" minlength="6" required autocomplete="new-password"></label>
     <label>الدور<select name="role" id="nr"></select></label>
-    <div class="perms" id="np" style="grid-column:1/-1"></div>
+    <label>نسخ الصلاحيات من مستخدم حالي<select id="clonePermsFrom"><option value="">— حسب الدور الافتراضي —</option></select></label>
+    <div id="np" style="grid-column:1/-1"></div>
     <button class="p">إنشاء المستخدم</button>
   </form>
 </section>
@@ -29,16 +34,49 @@
     <label>اسم المنصب<input name="name" required></label>
     <label>الرمز (حروف لاتينية صغيرة وأرقام و _)<input name="code" required autocomplete="off" pattern="[a-z0-9_]+" spellcheck="false"></label>
     <label style="flex-direction:row;align-items:center;gap:6px;color:var(--tx)"><input type="checkbox" name="is_admin">مسؤول نظام (كل الصلاحيات)</label>
-    <div class="perms" id="rp" style="grid-column:1/-1"></div>
+    <div id="rp" style="grid-column:1/-1"></div>
     <button class="p">إضافة المنصب</button>
   </form>
   <h2 style="margin-top:16px">المناصب الحالية وصلاحياتها الافتراضية</h2>
   <div class="w" id="roT"></div>
 </section>
 <section id="list" hidden>
-  <h2>المستخدمون والصلاحيات الممنوحة لهم</h2>
-  <label style="margin-bottom:10px">بحث<input id="us" placeholder="الاسم أو اسم المستخدم أو المنصب"></label>
+  <h2>المستخدمون وصلاحيات الصفحات والأزرار</h2>
+  <div class="cards" id="uCards"></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:10px;margin-bottom:12px;align-items:end">
+    <label>بحث في المستخدمين<input id="us" placeholder="الاسم أو اسم المستخدم أو المنصب"></label>
+    <label>تصفية حسب الدور<select id="uRoleFilter"><option value="">كل الأدوار</option></select></label>
+    <label>تصفية حسب الحالة
+      <select id="uStateFilter">
+        <option value="">كل الحسابات</option>
+        <option value="active">المفعَّلون فقط</option>
+        <option value="blocked">المعلَّقون فقط</option>
+      </select>
+    </label>
+  </div>
   <div class="w" id="uT"></div>
+</section>
+<section id="sessionsSec" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--bd)">
+    <div>
+      <h2 style="margin:0;padding:0;border:0">سجل الجلسات والأجهزة المتصلة والإنهاء عن بُعد</h2>
+      <span style="color:var(--mu);font-size:.83rem">متابعة أوقات الدخول والخروج والأجهزة مع إمكانية إنهاء أي جلسة مشبوهة فوراً</span>
+    </div>
+    <button type="button" class="f" id="refreshSessionsBtn">تحديث الجلسات</button>
+  </div>
+  <div class="cards" id="sessionsCards"></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:10px;margin-bottom:12px;align-items:end">
+    <label>بحث في الجلسات<input id="sessSearch" placeholder="اسم المستخدم أو الجهاز أو المتصفح"></label>
+    <label>تصفية حسب الحالة
+      <select id="sessStatusFilter">
+        <option value="">كل الجلسات</option>
+        <option value="active">النشطة فقط</option>
+        <option value="ended">المنتهية بخروج</option>
+        <option value="revoked">المُنهَاة عن بُعد</option>
+      </select>
+    </label>
+  </div>
+  <div class="w" id="sessionsT"></div>
 </section>
 </div>
 </main>
@@ -46,36 +84,182 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="common.js"></script>
 <script>
+let USERS_CACHE = [];
+
+function buildExtendedCatalogRows() {
+  const rows = [];
+  Object.entries(PAGE_PERMS).forEach(([code, [, label]], idx) => {
+    rows.push({ code, label: `صفحة: ${label}`, sort_order: 100 + idx, pages: [PAGE_PERMS[code][0]] });
+  });
+  Object.entries(BTN_PERMS).forEach(([code, label], idx) => {
+    rows.push({ code, label: `زر: ${label}`, sort_order: 200 + idx, pages: [] });
+  });
+  Object.entries(FEAT_PERMS).forEach(([code, label], idx) => {
+    rows.push({ code, label: `ميزة: ${label}`, sort_order: 300 + idx, pages: [] });
+  });
+  return rows;
+}
+
+async function syncExtendedCatalogToDb() {
+  const missing = buildExtendedCatalogRows().filter(r => !PERMS[r.code]);
+  if (!missing.length) return;
+  try {
+    const { error } = await sb.from("app_permissions").upsert(missing, { onConflict: "code" });
+    if (!error) await loadCatalog();
+  } catch (_) {}
+}
+
+function normalizedPerms(rawPerms) {
+  return expandLegacyPermsToV2(rawPerms || []);
+}
+
+function permGroupItems(entries, sel, dis) {
+  return entries.map(([k, label]) =>
+    `<label><input type="checkbox" class="pc" value="${esc(k)}"${sel.includes(k) ? " checked" : ""}${dis ? " disabled" : ""}>${esc(label)}</label>`
+  ).join("");
+}
+
+function permSummaryLine(sel) {
+  const pCount = Object.keys(PAGE_PERMS).filter(k => sel.includes(k)).length;
+  const bCount = Object.keys(BTN_PERMS).filter(k => sel.includes(k)).length;
+  const fCount = Object.keys(FEAT_PERMS).filter(k => sel.includes(k)).length;
+  return `الصفحات: ${pCount}/${Object.keys(PAGE_PERMS).length} · الأزرار: ${bCount}/${Object.keys(BTN_PERMS).length} · المزايا: ${fCount}/${Object.keys(FEAT_PERMS).length}`;
+}
+
+function permMatrixHtml(rawSel, dis, collapsible = false) {
+  const sel = normalizedPerms(rawSel);
+  const pageEntries = Object.entries(PAGE_PERMS).map(([k, [, label]]) => [k, label]);
+  const btnEntries = Object.entries(BTN_PERMS);
+  const funcEntries = [
+    ...Object.entries(PERMS).filter(([k]) => !k.startsWith("page:") && !k.startsWith("btn:") && !k.startsWith("feat:")),
+    ...Object.entries(FEAT_PERMS)
+  ];
+
+  const presetsHtml = dis ? "" : `
+    <div class="preset-bar">
+      <button type="button" class="f" data-preset="all">تحديد الكل</button>
+      <button type="button" class="f" data-preset="director_mobile">مدير (قراءة فقط من الهاتف)</button>
+      <button type="button" class="f" data-preset="readonly">قراءة وطباعة فقط</button>
+      <button type="button" class="f" data-preset="operator">إدخال وتعديل بدون حذف</button>
+      <button type="button" class="f" data-preset="bons_only">أذون الخروج فقط</button>
+      <button type="button" class="f" data-preset="none">إلغاء الكل</button>
+    </div>`;
+
+  const groupsHtml = `
+    <div class="perm-groups">
+      <div class="perm-group">
+        <div class="perm-group-title">1. الصفحات المسموح بفتحها</div>
+        <div class="perm-group-list">${permGroupItems(pageEntries, sel, dis)}</div>
+      </div>
+      <div class="perm-group">
+        <div class="perm-group-title">2. التحكم في الأزرار والعمليات</div>
+        <div class="perm-group-list">${permGroupItems(btnEntries, sel, dis)}</div>
+      </div>
+      <div class="perm-group">
+        <div class="perm-group-title">3. الصلاحيات الوظيفية والمزايا</div>
+        <div class="perm-group-list">${permGroupItems(funcEntries, sel, dis)}</div>
+      </div>
+    </div>`;
+
+  if (!collapsible) return `<div class="perm-scope">${presetsHtml}${groupsHtml}</div>`;
+  return `
+    <details class="perm-scope" open>
+      <summary style="cursor:pointer;font-size:.82rem;font-weight:600;color:var(--pr);margin-bottom:8px">${esc(permSummaryLine(sel))}</summary>
+      ${presetsHtml}${groupsHtml}
+    </details>`;
+}
+
+function applyPresetToScope(scope, preset) {
+  const boxes = [...scope.querySelectorAll(".pc")];
+  const setChecked = pred => boxes.forEach(c => { if (!c.disabled) c.checked = pred(c.value); });
+  if (preset === "all") {
+    setChecked(() => true);
+  } else if (preset === "none") {
+    setChecked(() => false);
+  } else if (preset === "director_mobile") {
+    setChecked(v => [
+      "page:analytics", "btn:refresh", "feat:financials"
+    ].includes(v));
+  } else if (preset === "readonly") {
+    setChecked(v => [
+      "page:analytics", "page:crops", "page:warehouse",
+      "btn:print", "btn:pdf", "btn:csv", "btn:refresh",
+      "stock", "lowStock", "feat:audit_view"
+    ].includes(v));
+  } else if (preset === "operator") {
+    setChecked(v =>
+      !["page:users", "users", "roles", "btn:delete", "feat:settings_system"].includes(v)
+    );
+  } else if (preset === "bons_only") {
+    setChecked(v => [
+      "page:bons", "page:reception",
+      "btn:create", "btn:edit", "btn:print", "btn:pdf", "btn:refresh",
+      "pickup", "bons"
+    ].includes(v));
+  }
+  const summary = scope.querySelector("summary");
+  if (summary) {
+    const checkedVals = boxes.filter(c => c.checked).map(c => c.value);
+    summary.textContent = permSummaryLine(checkedVals);
+  }
+}
+
+document.addEventListener("click", e => {
+  const pBtn = e.target.closest("[data-preset]");
+  if (!pBtn) return;
+  const scope = pBtn.closest(".perm-scope");
+  if (scope) applyPresetToScope(scope, pBtn.dataset.preset);
+});
+
+document.addEventListener("change", e => {
+  if (!e.target.matches(".pc")) return;
+  const scope = e.target.closest(".perm-scope");
+  const summary = scope?.querySelector("summary");
+  if (scope && summary) {
+    const vals = [...scope.querySelectorAll(".pc:checked")].map(c => c.value);
+    summary.textContent = permSummaryLine(vals);
+  }
+});
+
+function collectPermsFromScope(scope) {
+  const checked = [...scope.querySelectorAll(".pc:checked")].map(c => c.value);
+  return [...new Set([RBAC_V2_MARKER, ...checked])];
+}
 
 // ----- المناصب -----
 $("#fro").onsubmit = async e => {
   e.preventDefault();
   const f = new FormData(e.target), code = f.get("code").trim().toLowerCase(), is_admin = f.get("is_admin") === "on";
+  await syncExtendedCatalogToDb();
   const { error } = await sb.from("roles").insert({ code, name: f.get("name").trim(), is_admin });
   if (error) return toast(error.code === "23505" ? "الرمز مستعمل من قبل" : error.message, 1);
-  const perms = is_admin ? [] : [...$("#rp").querySelectorAll(".pc:checked")].map(c => c.value);
-  if (perms.length) {
-    const { error: e2 } = await sb.from("role_permissions").insert(perms.map(p => ({ role_code: code, perm_code: p })));
+  const selected = is_admin ? [] : collectPermsFromScope($("#rp")).filter(p => p !== RBAC_V2_MARKER);
+  const dbAllowed = selected.filter(p => Boolean(PERMS[p]));
+  if (dbAllowed.length) {
+    const { error: e2 } = await sb.from("role_permissions").insert(dbAllowed.map(p => ({ role_code: code, perm_code: p })));
     if (e2) return toast(e2.message, 1);
   }
   toast("تمت إضافة المنصب"); e.target.reset(); loadRoles();
 };
+
 async function loadRoles() {
   await loadCatalog();
-  $("#rp").innerHTML = permBoxes([]);
+  $("#rp").innerHTML = permMatrixHtml([], false, false);
   const { data, error } = await sb.from("roles").select("*").order("sort_order").order("name");
   if (error) return toast(error.message, 1);
-  $("#roT").innerHTML = tbl(["المنصب", "الرمز", "مسؤول", "الصلاحيات الافتراضية", ""], data.map(r => {
+  $("#roT").innerHTML = tbl(["المنصب", "الرمز", "مسؤول", "الصلاحيات الافتراضية (صفحات + أزرار + وظائف)", ""], data.map(r => {
     const self = r.code === ME.role;
+    const defPerms = r.is_admin ? Object.keys(PERMS) : (DEFAULTS[r.code] || []);
     return [
       `<input data-n value="${esc(r.name)}">`,
       `<small>${esc(r.code)}</small>`,
       `<input type="checkbox" data-adm${r.is_admin ? " checked" : ""}${self ? " disabled" : ""}>`,
-      `<div class="perms">${permBoxes(r.is_admin ? Object.keys(PERMS) : DEFAULTS[r.code] || [], r.is_admin)}</div>`,
-      `<button class="p" data-code="${esc(r.code)}">حفظ</button>` + (self ? "" : ` <button class="p" data-act="del" data-code="${esc(r.code)}" style="background:var(--bad)">حذف</button>`)
+      `<div class="perms">${permMatrixHtml(defPerms, r.is_admin, true)}</div>`,
+      `<div class="action-group"><button class="p" data-code="${esc(r.code)}">حفظ</button>` + (self ? "" : ` <button class="f btn-danger" data-act="del" data-code="${esc(r.code)}">حذف</button>`) + `</div>`
     ];
   }));
 }
+
 $("#roT").onclick = async e => {
   const b = e.target.closest("button[data-code]"); if (!b) return;
   const tr = b.closest("tr"), code = b.dataset.code;
@@ -85,37 +269,54 @@ $("#roT").onclick = async e => {
     if (error) return toast(error.code === "23503" ? "لا يمكن الحذف: يوجد مستخدمون بهذا المنصب" : error.message, 1);
     toast("تم الحذف"); return loadRoles();
   }
+  await syncExtendedCatalogToDb();
   const is_admin = tr.querySelector("[data-adm]").checked;
   const { data, error } = await sb.from("roles").update({ name: tr.querySelector("[data-n]").value.trim(), is_admin }).eq("code", code).select();
   if (error) return toast(error.message, 1);
   if (!data.length) return toast("لم يُحفظ: تحقق من سياسات الأمان (supabase-setup.sql)", 1);
-  await sb.from("role_permissions").delete().eq("role_code", code);
-  const perms = is_admin ? [] : [...tr.querySelectorAll(".pc:checked")].map(c => c.value);
-  if (perms.length) {
-    const { error: e2 } = await sb.from("role_permissions").insert(perms.map(p => ({ role_code: code, perm_code: p })));
+  const { error: delPermErr } = await sb.from("role_permissions").delete().eq("role_code", code);
+  if (delPermErr) return toast(delPermErr.message, 1);
+  const selected = is_admin ? [] : collectPermsFromScope(tr).filter(p => p !== RBAC_V2_MARKER);
+  const dbAllowed = selected.filter(p => Boolean(PERMS[p]));
+  if (dbAllowed.length) {
+    const { error: e2 } = await sb.from("role_permissions").insert(dbAllowed.map(p => ({ role_code: code, perm_code: p })));
     if (e2) return toast(e2.message, 1);
   }
   toast("تم الحفظ"); loadRoles();
 };
 
-const permBoxes = (sel, dis) => Object.entries(PERMS).map(([k, l]) =>
-  `<label><input type="checkbox" class="pc" value="${k}"${sel.includes(k) ? " checked" : ""}${dis ? " disabled" : ""}>${l}</label>`).join("");
-const roleOpts = cur => Object.entries(ROLES).map(([k, v]) => `<option value="${k}"${cur === k ? " selected" : ""}>${v}</option>`).join("");
+const roleOpts = cur => Object.entries(ROLES).map(([k, v]) => `<option value="${esc(k)}"${cur === k ? " selected" : ""}>${esc(v)}</option>`).join("");
+
 function resetNew() {
   const first = Object.keys(ROLES).find(k => !ADMIN_ROLES.has(k)) || Object.keys(ROLES)[0];
   $("#nr").innerHTML = roleOpts(first);
-  $("#np").innerHTML = permBoxes(DEFAULTS[first] || []);
+  $("#np").innerHTML = permMatrixHtml(DEFAULTS[first] || [], false, false);
+  const prevRoleF = $("#uRoleFilter").value;
+  $("#uRoleFilter").innerHTML = '<option value="">كل الأدوار</option>' + roleOpts(prevRoleF);
+  $("#uRoleFilter").value = prevRoleF;
 }
+
 $("#nr").onchange = e => {
-  const d = DEFAULTS[e.target.value] || [];
-  $("#np").querySelectorAll(".pc").forEach(c => c.checked = d.includes(c.value));
+  $("#clonePermsFrom").value = "";
+  const expanded = normalizedPerms(DEFAULTS[e.target.value] || []);
+  $("#np").querySelectorAll(".pc").forEach(c => c.checked = expanded.includes(c.value));
+};
+
+$("#clonePermsFrom").onchange = e => {
+  const uid = e.target.value;
+  if (!uid) return;
+  const srcUser = USERS_CACHE.find(u => String(u.user_id) === String(uid));
+  if (!srcUser) return;
+  const expanded = normalizedPerms(permsOf({ ...srcUser, is_blocked: false }));
+  $("#np").querySelectorAll(".pc").forEach(c => c.checked = expanded.includes(c.value));
+  toast(`تم نسخ صلاحيات ${srcUser.full_name}`);
 };
 
 $("#fu").onsubmit = async e => {
   e.preventDefault();
   const f = new FormData(e.target), username = f.get("username").trim().toLowerCase();
   const full_name = f.get("full_name").trim(), role = f.get("role");
-  const perms = [...$("#np").querySelectorAll(".pc:checked")].map(c => c.value);
+  const perms = collectPermsFromScope($("#np"));
   const email = username + "@" + EMAIL_DOMAIN;
   // عميل مؤقت لا يحفظ الجلسة حتى لا تُستبدل جلسة المسؤول بجلسة المستخدم الجديد
   const tmp = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: "sb-signup-tmp" } });
@@ -124,58 +325,243 @@ $("#fu").onsubmit = async e => {
   if (!data.user || !data.user.identities?.length) return toast("اسم المستخدم مسجّل من قبل", 1);
   const { error: e2 } = await sb.from("profiles").upsert({ user_id: data.user.id, full_name, role, permissions: perms, email, is_blocked: false }, { onConflict: "user_id" });
   if (e2) return toast("أُنشئ الحساب لكن تعذّر حفظ صلاحياته: " + e2.message + " (نفّذ supabase-setup.sql)", 1);
-  toast("تم إنشاء المستخدم"); e.target.reset(); resetNew(); loadUsers();
+  toast("تم إنشاء المستخدم وحفظ صلاحيات الصفحات والأزرار");
+  e.target.reset(); resetNew(); loadUsers();
 };
 
 function filterUsers() {
   const q = $("#us").value.trim().toLowerCase();
+  const rFilter = $("#uRoleFilter").value;
+  const sFilter = $("#uStateFilter").value;
   $("#uT").querySelectorAll("tbody tr").forEach(tr => {
-    const t = tr.cells[0].textContent + " " + tr.querySelector("[data-r]").selectedOptions[0].text;
-    tr.hidden = !t.toLowerCase().includes(q);
+    const roleVal = tr.querySelector("[data-r]")?.value || "";
+    const roleLabel = tr.querySelector("[data-r]")?.selectedOptions[0]?.text || "";
+    const active = Boolean(tr.querySelector("[data-a]")?.checked);
+    const t = (tr.cells[0].textContent + " " + roleLabel).toLowerCase();
+    const matchQ = !q || t.includes(q);
+    const matchR = !rFilter || roleVal === rFilter;
+    const matchS = !sFilter || (sFilter === "active" ? active : !active);
+    tr.hidden = !(matchQ && matchR && matchS);
   });
 }
 $("#us").oninput = filterUsers;
+$("#uRoleFilter").onchange = filterUsers;
+$("#uStateFilter").onchange = filterUsers;
+
 async function loadUsers() {
   const { data, error } = await sb.from("profiles").select("*").order("full_name");
   if (error) return toast(error.message, 1);
-  $("#uT").innerHTML = tbl(["المستخدم", "الدور", "الصلاحيات", "مفعّل", ""], data.map(u => {
+  USERS_CACHE = data || [];
+
+  const activeCount = USERS_CACHE.filter(u => !u.is_blocked).length;
+  const blockedCount = USERS_CACHE.filter(u => u.is_blocked === true).length;
+  $("#uCards").innerHTML = [
+    ["إجمالي المستخدمين", USERS_CACHE.length],
+    ["الحسابات المفعَّلة", activeCount],
+    ["الحسابات المعلَّقة", blockedCount],
+    ["المناصب المتاحة", Object.keys(ROLES).length]
+  ].map(([l, v]) => `<div class="card"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
+
+  const prevClone = $("#clonePermsFrom").value;
+  $("#clonePermsFrom").innerHTML = '<option value="">— حسب الدور الافتراضي —</option>' +
+    USERS_CACHE.map(u => `<option value="${esc(u.user_id)}">${esc(u.full_name)} (${esc(ROLES[u.role] || u.role || "")})</option>`).join("");
+  $("#clonePermsFrom").value = prevClone;
+
+  $("#uT").innerHTML = tbl(["المستخدم", "الدور", "صلاحيات الصفحات والأزرار والمزايا", "مفعّل", ""], USERS_CACHE.map(u => {
     const self = u.user_id === ME.id, P = permsOf({ ...u, is_blocked: false });
     return [
-      `${esc(u.full_name)}${self ? " (أنت)" : ""}<br><small>${esc((u.email || "").split("@")[0])}</small>`,
+      `<strong>${esc(u.full_name)}</strong>${self ? " (أنت)" : ""}<br><small>${esc((u.email || "").split("@")[0])}</small>`,
       `<select data-r${self ? " disabled" : ""}>${roleOpts(u.role)}</select>`,
-      `<div class="perms">${permBoxes(P, self)}</div>`,
+      `<div class="perms">${permMatrixHtml(P, self, true)}</div>`,
       `<input type="checkbox" data-a${!u.is_blocked ? " checked" : ""}${self ? " disabled" : ""}>`,
-      self ? "" : `<button class="p" data-id="${u.user_id}">حفظ</button>`
+      self ? "" : `<button class="p" data-id="${esc(u.user_id)}">حفظ</button>`
     ];
   }));
   filterUsers();
 }
+
 $("#uT").onchange = e => {
   if (!e.target.matches("[data-r]")) return;
-  const d = DEFAULTS[e.target.value] || [];
-  e.target.closest("tr").querySelectorAll(".pc").forEach(c => c.checked = d.includes(c.value));
+  const tr = e.target.closest("tr");
+  const expanded = normalizedPerms(DEFAULTS[e.target.value] || []);
+  tr.querySelectorAll(".pc").forEach(c => c.checked = expanded.includes(c.value));
+  const summary = tr.querySelector("summary");
+  if (summary) {
+    const vals = [...tr.querySelectorAll(".pc:checked")].map(c => c.value);
+    summary.textContent = permSummaryLine(vals);
+  }
 };
+
 $("#uT").onclick = async e => {
   const b = e.target.closest("button[data-id]"); if (!b) return;
   const tr = b.closest("tr");
   const row = {
     role: tr.querySelector("[data-r]").value,
     is_blocked: !tr.querySelector("[data-a]").checked,
-    permissions: [...tr.querySelectorAll(".pc:checked")].map(c => c.value)
+    permissions: collectPermsFromScope(tr)
   };
   b.disabled = true;
   const { data, error } = await sb.from("profiles").update(row).eq("user_id", b.dataset.id).select();
   b.disabled = false;
   if (error) return toast(error.message, 1);
   if (!data.length) return toast("لم يُحفظ التعديل: تحقق من سياسات الأمان (supabase-setup.sql)", 1);
-  toast("تم حفظ التعديلات");
+  toast("تم حفظ صلاحيات الصفحات والأزرار للمستخدم");
+  loadUsers();
+};
+
+// ----- سجل الجلسات والإنهاء عن بُعد -----
+let SESSIONS_CACHE = [];
+
+function fmtSessDateTime(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+  } catch (_) {
+    return String(iso).slice(0, 16);
+  }
+}
+
+function renderSessionsTable() {
+  const q = ($("#sessSearch")?.value || "").trim().toLowerCase();
+  const st = $("#sessStatusFilter")?.value || "";
+  const curKey = typeof getOrCreateSessionKey === "function" ? getOrCreateSessionKey() : "";
+
+  const filtered = SESSIONS_CACHE.filter(s => {
+    if (st && s.status !== st) return false;
+    if (q) {
+      const hay = `${s.full_name || ""} ${s.user_email || ""} ${s.device_label || ""} ${s.role_code || ""}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const activeN = SESSIONS_CACHE.filter(s => s.status === "active").length;
+  const revokedN = SESSIONS_CACHE.filter(s => s.status === "revoked").length;
+  const endedN = SESSIONS_CACHE.filter(s => s.status === "ended").length;
+  $("#sessionsCards").innerHTML = [
+    ["إجمالي الجلسات المسجلة", SESSIONS_CACHE.length],
+    ["الجلسات النشطة حالياً", activeN],
+    ["جلسات خرج أصحابها", endedN],
+    ["جلسات مُنهَاة عن بُعد", revokedN]
+  ].map(([l, v]) => `<div class="card"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
+
+  $("#sessionsT").innerHTML = tbl(
+    ["المستخدم", "الجهاز والمتصفح", "وقت الدخول", "آخر نشاط", "وقت الخروج", "الحالة", "إجراء"],
+    filtered.map(s => {
+      const isCurrent = curKey && s.session_key === curKey;
+      const statusBadge = s.status === "revoked"
+        ? `<span class="tag-bad">مُنهَاة عن بُعد${s.revoked_by ? " (" + esc(s.revoked_by) + ")" : ""}</span>`
+        : s.status === "ended"
+        ? `<span style="color:var(--mu);font-weight:600">خرج</span>`
+        : `<span class="tag-ok">نشطة${isCurrent ? " · جلستك الحالية" : ""}</span>`;
+      const actionBtn = (!isCurrent && s.status === "active")
+        ? `<button type="button" class="f btn-danger" data-revoke-session="${esc(s.session_key)}" data-user-id="${esc(s.user_id || "")}" data-user-email="${esc(s.user_email || "")}" data-full-name="${esc(s.full_name || "")}" data-device="${esc(s.device_label || "")}">إنهاء الجلسة عن بُعد</button>`
+        : `<span style="color:var(--mu);font-size:.82rem">—</span>`;
+      return [
+        `<strong>${esc(s.full_name || "مستخدم")}</strong><br><small>${esc((s.user_email || "").split("@")[0])} · ${esc(ROLES[s.role_code] || s.role_code || "")}</small>`,
+        `${esc(s.device_label || "متصفح ويب")}<br><small style="color:var(--mu)">${esc((s.session_key || "").slice(0, 14))}</small>`,
+        fmtSessDateTime(s.login_at),
+        fmtSessDateTime(s.last_seen_at),
+        fmtSessDateTime(s.logout_at),
+        statusBadge,
+        actionBtn
+      ];
+    })
+  );
+}
+
+async function loadSessionsTab() {
+  const merged = new Map();
+  try {
+    const sess = await sb.auth.getSession();
+    const token = sess?.data?.session?.access_token;
+    if (token) {
+      const resp = await fetch("/api/sessions", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store"
+      });
+      if (resp.ok) {
+        const json = await resp.json().catch(() => ({}));
+        (json.sessions || []).forEach(r => {
+          if (r?.session_key) merged.set(r.session_key, r);
+        });
+      }
+    }
+  } catch (_) {}
+
+  try {
+    const { data, error } = await sb
+      .from("user_sessions")
+      .select("*")
+      .order("last_seen_at", { ascending: false })
+      .limit(200);
+    if (!error && Array.isArray(data)) {
+      data.forEach(r => {
+        if (!r?.session_key) return;
+        const prev = merged.get(r.session_key);
+        if (!prev || r.status === "revoked" || String(r.last_seen_at || "") > String(prev.last_seen_at || "")) {
+          merged.set(r.session_key, { ...prev, ...r });
+        }
+      });
+    }
+  } catch (_) {}
+
+  SESSIONS_CACHE = [...merged.values()].sort((a, b) =>
+    String(b.last_seen_at || "").localeCompare(String(a.last_seen_at || ""))
+  );
+  renderSessionsTable();
+}
+
+$("#sessSearch").oninput = renderSessionsTable;
+$("#sessStatusFilter").onchange = renderSessionsTable;
+$("#refreshSessionsBtn").onclick = loadSessionsTab;
+
+$("#sessionsT").onclick = async e => {
+  const btn = e.target.closest("[data-revoke-session]");
+  if (!btn) return;
+  const key = btn.dataset.revokeSession;
+  if (!key) return;
+  if (!confirm(`إنهاء جلسة "${btn.dataset.fullName || "المستخدم"}" على (${btn.dataset.device || "الجهاز"}) عن بُعد؟`)) return;
+  btn.disabled = true;
+  const nowIso = new Date().toISOString();
+  try {
+    const sess = await sb.auth.getSession();
+    const token = sess?.data?.session?.access_token;
+    if (token) {
+      await fetch("/api/sessions/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          session_key: key,
+          user_id: btn.dataset.userId || "",
+          user_email: btn.dataset.userEmail || "",
+          full_name: btn.dataset.fullName || "",
+          device_label: btn.dataset.device || ""
+        })
+      });
+    }
+    try {
+      await sb.from("user_sessions").update({
+        status: "revoked",
+        logout_at: nowIso,
+        revoked_by: ME?.full_name || "المسؤول"
+      }).eq("session_key", key);
+    } catch (_) {}
+    toast("تم إنهاء الجلسة عن بُعد وإغلاق وصول الجهاز ✓");
+    await loadSessionsTab();
+  } catch (err) {
+    toast(err?.message || "تعذّر إنهاء الجلسة", 1);
+  } finally {
+    btn.disabled = false;
+  }
 };
 
 startApp({
   page: "users",
   tabs: [
     ["users", "المستخدمون والصلاحيات", ["create", "list"], () => { resetNew(); loadUsers(); }],
-    ["roles", "المناصب", ["rolesSec"], loadRoles]
+    ["roles", "المناصب", ["rolesSec"], loadRoles],
+    ["sessions", "سجل الجلسات والأمان", ["sessionsSec"], loadSessionsTab]
   ]
 });
 </script>

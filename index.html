@@ -7,10 +7,13 @@
 <meta name="description" content="نظام تسيير مخزون الأسمدة والفواتير والتسليمات والمستخدمين.">
 <meta property="og:title" content="تسيير مخزون الأسمدة - CCLS ADRAR">
 <meta property="og:description" content="نظام تسيير مخزون الأسمدة والفواتير والتسليمات والمستخدمين.">
+<meta name="theme-color" content="#175236">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif">
 <link rel="stylesheet" href="common.css">
 </head>
 <body>
-<header><div style="display:flex;gap:10px;align-items:center"><button class="p" id="menu" aria-label="القائمة" style="background:var(--ac);color:#1d2b22">☰</button><h1>إدخال البيانات - الفواتير والوارد</h1></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span id="links" style="display:flex;gap:6px;flex-wrap:wrap"></span><span id="who" style="font-size:.85rem"></span><button class="p" id="pwb" hidden style="background:var(--ac);color:#1d2b22">كلمة المرور</button><button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button></div></header>
+<header><div style="display:flex;gap:10px;align-items:center"><button class="f" id="menu" aria-label="القائمة">☰</button><h1>إدخال البيانات - الفواتير والوارد</h1></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span id="links" style="display:flex;gap:4px;flex-wrap:wrap"></span><span id="who"></span><button class="f" id="pwb" hidden>الإعدادات</button><button class="f" id="out" hidden>خروج</button></div></header>
 <main>
 <div id="cfg" class="box" hidden></div>
 <div id="app" hidden>
@@ -37,6 +40,7 @@
     <button type="button" class="f" id="addLine" style="justify-self:start">+ إضافة منتج</button>
     <button class="p" id="submitInvBtn">حفظ الفاتورة</button>
   </form>
+  <div id="invNotifyBanner" class="info" hidden style="border:1px solid var(--pr);margin-top:12px"></div>
   <div style="margin-top:18px;border-top:1px solid var(--bd);padding-top:14px">
     <h3 style="margin:0 0 10px">الفواتير المسجلة مؤخراً</h3>
     <label style="margin-bottom:10px">بحث في الفواتير (رقم الفاتورة، الفلاح، بطاقة الفلاح، المنتج، المنطقة)<input id="iq" type="search" autocomplete="off" placeholder="ابحث هنا..."></label>
@@ -52,6 +56,10 @@
     <label>الفاتورة<select id="pi"></select></label>
   </div>
   <div class="info" id="pinfo"></div>
+  <div id="pickupNoteBar" hidden style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--surface-2);font-size:.86rem">
+    <span id="pickupNoteBadge"></span>
+    <button type="button" class="f" id="openPickupNoteBtn">ملاحظات الفاتورة</button>
+  </div>
   <div id="pickupStockWarn" hidden></div>
   <div id="pEditBanner" class="info" hidden style="border:1px solid var(--ac);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
     <strong id="pEditLabel">تعديل عملية تسليم</strong>
@@ -62,8 +70,8 @@
     <label>التاريخ<input name="w_date" type="date" required></label>
     <label>رقم الهيكل أو الرقم التسلسلي للبطاقة الرمادية<input name="vehicle_ref" required></label>
     <label>رقم إذن الخروج (Bon de sortie)<input name="bon_no"></label>
-    <label>اسم السائق<input name="driver_name" required></label>
-    <label>رقم الشاحنة<input name="truck_no" required></label>
+    <label>اسم السائق<input name="driver_name" list="driverList" required autocomplete="off"><small id="driverLicenseHint" style="color:var(--mu);font-size:.78rem"></small></label>
+    <label>رقم الشاحنة<input name="truck_no" list="truckList" required autocomplete="off"></label>
     <label>ملاحظات<input name="note"></label>
     <button class="p" id="submitPickupBtn">تسجيل الاستلام</button>
   </form>
@@ -84,16 +92,118 @@
     <label>ملاحظة<input name="note"></label>
     <button class="p" id="submitReceiptBtn">حفظ</button>
   </form>
+  <div id="receiptArrivalBox" class="info" hidden style="border:1px solid var(--pr);margin-top:12px"></div>
   <div class="w" id="rT" style="margin-top:12px"></div>
 </section>
+
+<section id="queueSec" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+    <div>
+      <h2 style="margin:0;border:0;padding:0">نظام المواعيد وأرقام الدور (تنظيم السحب)</h2>
+      <span id="queueDbBadge" style="font-size:.82rem;color:var(--mu)"></span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <a class="f" href="kiosk.html" target="_blank" rel="noopener noreferrer" style="text-decoration:none">شاشة قاعة الانتظار (Kiosk)</a>
+      <button type="button" class="f" id="toggleQueueFeatureBtn">إيقاف / تفعيل نظام الدور</button>
+      <button type="button" class="f" id="printQueueBtn">طباعة برنامج الدور</button>
+      <button type="button" class="p" id="xQueue">تصدير CSV</button>
+    </div>
+  </div>
+  <div id="queueDisabledBanner" class="alert-warn" hidden>
+    <span><strong>ملاحظة:</strong> تم إيقاف خاصية المواعيد وأرقام الدور من الإعدادات. يمكنك إعادة تفعيلها في أي وقت.</span>
+    <button type="button" class="p" id="reEnableQueueBtn">تفعيل الآن</button>
+  </div>
+  <div id="queueContent">
+    <div class="cards" id="qCards"></div>
+    <form id="fqApp" style="margin-bottom:14px">
+      <label>تاريخ الموعد<input name="scheduled_date" type="date" required></label>
+      <label>رقم الدور التسلسلي<input name="queue_no" type="number" min="1" required></label>
+      <label>ربط بفاتورة مفتوحة (اختياري)
+        <select id="qInvSelect"><option value="">— اختيار فاتورة تلقائياً —</option></select>
+      </label>
+      <label>اسم الفلاح<input name="farmer_name" list="fl" required autocomplete="off"></label>
+      <label>رقم الهاتف<input name="phone" type="tel" autocomplete="off" placeholder="06 / 07 / 05..."></label>
+      <label>الصنف<input name="product_name" list="pl" autocomplete="off"></label>
+      <label>الكمية المقررة (QTX)<input name="qty" type="number" step="any" min="0"></label>
+      <label>المخزن<input name="warehouse_name" autocomplete="off" placeholder="المخزن الرئيسي"></label>
+      <label>ملاحظة / الفترة<input name="notes" autocomplete="off" placeholder="صباحاً / مساءً..."></label>
+      <button class="p" id="submitQueueBtn">حجز رقم الدور</button>
+    </form>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:10px;align-items:end;margin-bottom:10px">
+      <label>عرض تاريخ<input id="qfDate" type="date"></label>
+      <label>الحالة
+        <select id="qfStatus">
+          <option value="">كل الحالات</option>
+          <option value="waiting">في الانتظار</option>
+          <option value="loading">قيد التحميل</option>
+          <option value="done">مكتمل</option>
+          <option value="absent">متغيب</option>
+        </select>
+      </label>
+      <label>بحث<input id="qfSearch" type="search" placeholder="اسم الفلاح، رقم الفاتورة، الهاتف..."></label>
+    </div>
+    <div class="w" id="queueT"></div>
+  </div>
+</section>
+
+<section id="notifySec" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+    <div>
+      <h2 style="margin:0;border:0;padding:0">إشعارات الفلاحين (SMS وواتساب)</h2>
+      <span id="notifyDbBadge" style="font-size:.82rem;color:var(--mu)"></span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button type="button" class="f" id="toggleNotifyFeatureBtn">إيقاف / تفعيل الإشعارات</button>
+    </div>
+  </div>
+  <div id="notifyDisabledBanner" class="alert-warn" hidden>
+    <span><strong>ملاحظة:</strong> تم إيقاف خاصية إشعارات SMS/واتساب من الإعدادات. يمكنك إعادة تفعيلها في أي وقت.</span>
+    <button type="button" class="p" id="reEnableNotifyBtn">تفعيل الآن</button>
+  </div>
+  <div id="notifyContent">
+    <form id="fNotify" style="margin-bottom:14px">
+      <label>نوع الإشعار
+        <select name="event_type" id="nEventType">
+          <option value="invoice_ready">جاهزية الفاتورة للسحب</option>
+          <option value="stock_arrival">وصول الصنف المنتظر للمخزن</option>
+          <option value="queue_reminder">تذكير بموعد السحب ورقم الدور</option>
+        </select>
+      </label>
+      <label>اختيار من الفواتير المفتوحة
+        <select id="nInvSelect"><option value="">— اختر فلاحاً / فاتورة —</option></select>
+      </label>
+      <label>قناة الإرسال
+        <select name="channel" id="nChannel">
+          <option value="whatsapp">واتساب (WhatsApp)</option>
+          <option value="sms">رسالة نصية (SMS)</option>
+        </select>
+      </label>
+      <label>اسم الفلاح<input name="farmer_name" id="nFarmerName" required autocomplete="off"></label>
+      <label>رقم الهاتف<input name="phone" id="nPhone" type="tel" required autocomplete="off" placeholder="0661..."></label>
+      <label>الصنف<input name="product_name" id="nProductName" list="pl" autocomplete="off"></label>
+      <label>رقم الفاتورة<input name="invoice_no" id="nInvoiceNo" autocomplete="off"></label>
+      <label style="grid-column:1/-1">نص الرسالة<textarea name="message" id="nMessage" rows="3" required style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx);font-family:inherit"></textarea></label>
+      <button class="p" id="submitNotifyBtn">إرسال وحفظ الإشعار</button>
+      <a id="nDirectLink" class="f" target="_blank" rel="noopener noreferrer" hidden style="text-decoration:none;display:inline-flex;align-items:center">فتح رابط الرسالة المباشر</a>
+    </form>
+    <h3 style="margin:14px 0 8px">فواتير مفتوحة برقم هاتف (جاهزة للإشعار السريع)</h3>
+    <div class="w" id="notifyOpenInvT" style="margin-bottom:16px"></div>
+    <h3 style="margin:14px 0 8px">سجل الإشعارات المرسلة</h3>
+    <div class="w" id="notifyLogT"></div>
+  </div>
+</section>
+
 <datalist id="pl"></datalist>
 <datalist id="dl"></datalist>
 <datalist id="fcl"></datalist>
 <datalist id="fl"></datalist>
 <datalist id="cl"><option value="BLE"><option value="MAIS"><option value="ORGE"><option value="AVOINE"><option value="TRITICALE"></datalist>
 <datalist id="zl"></datalist>
+<datalist id="driverList"></datalist>
+<datalist id="truckList"></datalist>
 </div>
 </main>
+<div id="queuePrintArea" hidden></div>
 <div id="toast" role="status"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="common.js"></script>
@@ -119,7 +229,8 @@ function formatExpiryCell(exp) {
   if (!exp) return "-";
   const nowStr = today();
   const soonDate = new Date();
-  soonDate.setDate(soonDate.getDate() + 30);
+  const alertDays = (typeof getAppSettings === "function" ? getAppSettings().expiryAlertDays : 30) || 30;
+  soonDate.setDate(soonDate.getDate() + alertDays);
   const soonStr = soonDate.toISOString().slice(0, 10);
   if (exp < nowStr) return `<span class="tag-bad">${esc(exp)} (منتهي)</span>`;
   if (exp <= soonStr) return `<span class="tag-warn">${esc(exp)} (قريب الانتهاء)</span>`;
@@ -138,11 +249,13 @@ $("#cancelREdit").onclick = cancelReceiptEdit;
 $("#fr").onsubmit = async e => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
+  const qtyVal = Number(f.qty);
+  if (!Number.isFinite(qtyVal) || qtyVal <= 0) return toast("أدخل كمية صالحة أكبر من الصفر", 1);
   try {
     const product_id = await productId(f.product);
     const payload = {
       product_id,
-      qty: f.qty,
+      qty: qtyVal,
       entry_date: f.entry_date,
       expiry_date: f.expiry_date || null,
       warehouse_id: f.warehouse_id || null,
@@ -186,6 +299,9 @@ $("#fr").onsubmit = async e => {
       $("#fr [name=entry_date]").value = today();
     }
     loadProducts(); loadReceipts();
+    if (editingReceiptId == null && f.product && typeof showArrivalNotifySuggestions === "function") {
+      showArrivalNotifySuggestions(product_id, f.product.trim(), qtyVal);
+    }
   } catch (x) { toast(x.message, 1); }
 };
 async function loadReceipts() {
@@ -199,15 +315,15 @@ async function loadReceipts() {
     receiptsList.map(r => {
       const whName = WH.find(w => String(w.id) === String(r.warehouse_id))?.name || "-";
       return [
-        r.entry_date,
+        esc(r.entry_date),
         esc(r.products?.name),
         esc(whName),
         n(r.qty),
         formatExpiryCell(r.expiry_date),
         esc(r.note),
-        `<div style="display:flex;gap:4px">
-          <button type="button" class="f" data-edit-r="${r.id}">تعديل</button>
-          <button type="button" class="p" data-del-r="${r.id}" style="background:var(--bad);padding:6px 10px">حذف</button>
+        `<div class="action-group">
+          <button type="button" class="f" data-edit-r="${esc(r.id)}">تعديل</button>
+          <button type="button" class="f btn-danger" data-del-r="${esc(r.id)}">حذف</button>
         </div>`
       ];
     }));
@@ -235,12 +351,19 @@ $("#rT").onclick = async e => {
   const delBtn = e.target.closest("[data-del-r]");
   if (delBtn) {
     const id = delBtn.dataset.delR;
-    if (!confirm("حذف عملية الوارد هذه؟")) return;
-    const { error } = await sb.from("stock_in").delete().eq("id", id);
-    if (error) return toast(error.message, 1);
+    const row = receiptsList.find(x => String(x.id) === String(id));
+    if (!row || !confirm("نقل عملية الوارد هذه إلى سلة المحذوفات؟")) return;
+    const res = await softDeleteItem({
+      entityType: "وارد مخزني",
+      tableName: "stock_in",
+      entityLabel: `وارد ${row.products?.name || ""} (${n(row.qty)}) بتاريخ ${row.entry_date || ""}`,
+      originalId: id,
+      payload: row
+    });
+    if (!res.ok) return toast(res.error?.message || "تعذّر الحذف", 1);
     saveStockExp(id, "");
     if (String(editingReceiptId) === String(id)) cancelReceiptEdit();
-    toast("تم حذف الوارد");
+    toast("تم نقل الوارد إلى سلة المحذوفات");
     loadProducts();
     loadReceipts();
   }
@@ -358,15 +481,28 @@ function drawRecentInvoices() {
       n(i.qty),
       `<b>${n(i.remaining)}</b>`,
       esc(i.warehouse || "-"),
-      `<div style="display:flex;gap:4px">
-        <button type="button" class="f" data-edit-i="${i.id}">تعديل</button>
-        <button type="button" class="p" data-del-i="${i.id}" style="background:var(--bad);padding:6px 10px">حذف</button>
+      `<div class="action-group">
+        <button type="button" class="f" data-inv-notes="${esc(i.id)}">ملاحظات</button>
+        <button type="button" class="f" data-edit-i="${esc(i.id)}">تعديل</button>
+        <button type="button" class="f btn-danger" data-del-i="${esc(i.id)}">حذف</button>
       </div>`
     ])
   );
 }
 $("#iq").oninput = drawRecentInvoices;
 $("#iT").onclick = async e => {
+  const noteBtn = e.target.closest("[data-inv-notes]");
+  if (noteBtn) {
+    const inv = recentInvoices.find(x => String(x.id) === noteBtn.dataset.invNotes);
+    if (inv && typeof openInvoiceNotesModal === "function") {
+      openInvoiceNotesModal({
+        invoiceId: inv.id,
+        invoiceRef: `${inv.invoice_no}/${inv.invoice_year}`,
+        farmerName: `${inv.client_name || ""} ${inv.farmer_name || ""}`.trim()
+      });
+    }
+    return;
+  }
   const editBtn = e.target.closest("[data-edit-i]");
   if (editBtn) {
     await startEditInvoice(editBtn.dataset.editI);
@@ -375,11 +511,28 @@ $("#iT").onclick = async e => {
   const delBtn = e.target.closest("[data-del-i]");
   if (delBtn) {
     const id = delBtn.dataset.delI;
-    if (!confirm("حذف سطر الفاتورة؟")) return;
-    const { error } = await sb.from("invoices").delete().eq("id", id);
-    if (error) return toast(error.code === "23503" ? "لا يمكن الحذف: توجد تسليمات مرتبطة بهذه الفاتورة" : error.message, 1);
+    const inv = recentInvoices.find(x => String(x.id) === String(id));
+    if (!inv || !confirm("نقل سطر الفاتورة إلى سلة المحذوفات؟")) return;
+    let rawPayload = null;
+    try {
+      const { data } = await sb.from("invoices").select("*").eq("id", id).maybeSingle();
+      if (data) rawPayload = data;
+    } catch (_) {}
+    if (!rawPayload) {
+      const { taken, remaining, product_name, ...rest } = inv;
+      rawPayload = rest;
+    }
+    const res = await softDeleteItem({
+      entityType: "فاتورة",
+      tableName: "invoices",
+      entityLabel: `فاتورة ${inv.invoice_no}/${inv.invoice_year} — ${inv.farmer_name || ""}`,
+      originalId: id,
+      payload: rawPayload
+    });
+    if (!res.ok) return toast(res.error?.code === "23503" ? "لا يمكن الحذف: توجد تسليمات مرتبطة بهذه الفاتورة" : (res.error?.message || "تعذّر الحذف"), 1);
     if (String(editingInvId) === String(id)) cancelInvoiceEdit();
-    toast("تم حذف الفاتورة");
+    invalidateInvYearCache();
+    toast("تم نقل الفاتورة إلى سلة المحذوفات");
     loadRecentInvoices();
   }
 };
@@ -393,11 +546,13 @@ $("#fi").onsubmit = async e => {
   try {
     if (editingInvId != null) {
       const d = $("#lines").children[0];
+      const qLine = Number(d.querySelector("[data-q]").value);
+      if (!Number.isFinite(qLine) || qLine <= 0) return toast("أدخل كمية صالحة أكبر من الصفر", 1);
       const w = d.querySelector("[data-w]");
       const payload = {
         ...f,
         product_id: await productId(d.querySelector("[data-p]").value),
-        qty: d.querySelector("[data-q]").value,
+        qty: qLine,
         unit_price: d.querySelector("[data-u]").value || null,
         warehouse_id: w.value || null,
         warehouse: w.value ? w.selectedOptions[0].text : null
@@ -417,6 +572,7 @@ $("#fi").onsubmit = async e => {
           culture: f.culture || ""
         });
       }
+      invalidateInvYearCache(f.invoice_year);
       toast(missingCols ? "تم تعديل الفاتورة (بعض الحقول محفوظة محلياً)" : "تم تعديل الفاتورة");
       cancelInvoiceEdit();
       loadProducts();
@@ -427,7 +583,9 @@ $("#fi").onsubmit = async e => {
     const rows = [];
     for (const d of $("#lines").children) {
       const w = d.querySelector("[data-w]");
-      rows.push({ ...f, product_id: await productId(d.querySelector("[data-p]").value), qty: d.querySelector("[data-q]").value,
+      const qLine = Number(d.querySelector("[data-q]").value);
+      if (!Number.isFinite(qLine) || qLine <= 0) return toast("أدخل كمية صالحة أكبر من الصفر لكل منتج", 1);
+      rows.push({ ...f, product_id: await productId(d.querySelector("[data-p]").value), qty: qLine,
         unit_price: d.querySelector("[data-u]").value || null, warehouse_id: w.value || null, warehouse: w.value ? w.selectedOptions[0].text : null });
     }
     let { error } = await sb.from("invoices").insert(rows);
@@ -445,9 +603,20 @@ $("#fi").onsubmit = async e => {
         culture: f.culture || ""
       });
     }
+    invalidateInvYearCache(f.invoice_year);
     toast(missingCols
       ? `تم حفظ الفاتورة (${rows.length} منتج)؛ نفّذ supabase-setup.sql لإضافة حقول البطاقة والمحصول في جدول الفواتير`
       : `تم حفظ الفاتورة (${rows.length} منتج)`);
+    if (typeof showInvoiceNotifyPrompt === "function") {
+      showInvoiceNotifyPrompt({
+        invoice_no: f.invoice_no,
+        farmer_name: `${f.client_name || ""} ${f.farmer_name || ""}`.trim(),
+        phone: f.phone || "",
+        product_name: rows.length === 1 ? $("#lines .line [data-p]")?.value?.trim() : `${rows.length} أصناف`,
+        qty: rows.reduce((s, r) => s + Number(r.qty || 0), 0),
+        warehouse: rows[0]?.warehouse || ""
+      });
+    }
     e.target.reset(); $("#lines").innerHTML = ""; addLine(); init2(); loadProducts(); loadRecentInvoices();
     $("#cardDupWarn").hidden = true; $("#nameDupWarn").hidden = true;
   } catch (x) { toast(x.code === "23505" ? "منتج مكرر في الفاتورة أو رقم الفاتورة مسجّل بهذا المنتج من قبل" : x.message, 1); }
@@ -503,18 +672,116 @@ function updatePickupStockWarn(inv) {
     box.innerHTML = "";
   }
 }
+let DRIVERS_AUTOFILL = [];
+async function loadDriversAutofill() {
+  let local = [];
+  try { local = JSON.parse(localStorage.getItem("ccls_drivers_registry_v1") || "[]") || []; } catch (_) { local = []; }
+  DRIVERS_AUTOFILL = Array.isArray(local) ? local : [];
+  try {
+    const [dRes, wRes] = await Promise.all([
+      sb.from("drivers_registry").select("driver_name, license_no, truck_no, active").order("driver_name"),
+      sb.from("withdrawals").select("driver_name, truck_no").order("id", { ascending: false }).limit(120)
+    ]);
+    if (!dRes.error && Array.isArray(dRes.data)) {
+      DRIVERS_AUTOFILL = dRes.data.filter(d => d.active !== false);
+    }
+    const merged = [...DRIVERS_AUTOFILL];
+    (wRes.data || []).forEach(w => {
+      if (!w.driver_name) return;
+      const dn = String(w.driver_name).trim().toUpperCase();
+      if (!merged.some(m => String(m.driver_name || "").trim().toUpperCase() === dn)) {
+        merged.push({ driver_name: dn, truck_no: w.truck_no || "", license_no: "" });
+      }
+    });
+    DRIVERS_AUTOFILL = merged;
+  } catch (_) {}
+  if ($("#driverList")) {
+    $("#driverList").innerHTML = [...new Set(DRIVERS_AUTOFILL.map(d => d.driver_name).filter(Boolean))]
+      .map(n => `<option value="${esc(n)}">`).join("");
+  }
+  if ($("#truckList")) {
+    $("#truckList").innerHTML = [...new Set(DRIVERS_AUTOFILL.map(d => d.truck_no).filter(Boolean))]
+      .map(t => `<option value="${esc(t)}">`).join("");
+  }
+}
+
+$("#fp [name=driver_name]")?.addEventListener("change", e => {
+  const val = String(e.target.value || "").trim().toUpperCase();
+  const match = DRIVERS_AUTOFILL.find(d => String(d.driver_name || "").trim().toUpperCase() === val);
+  if (match) {
+    if (match.truck_no && !$("#fp [name=truck_no]").value) $("#fp [name=truck_no]").value = match.truck_no;
+    if ($("#driverLicenseHint")) {
+      $("#driverLicenseHint").textContent = match.license_no ? `رخصة السائق: ${match.license_no}` : "";
+    }
+  } else if ($("#driverLicenseHint")) {
+    $("#driverLicenseHint").textContent = "";
+  }
+});
+
 async function loadPickup() {
   const [invRes, stRes] = await Promise.all([
     sb.from("invoice_balance").select("*").gt("remaining", 0).order("id", { ascending: false }),
     sb.from("stock_analysis").select("name, warehouse, wid, balance")
   ]);
+  loadDriversAutofill();
   if (invRes.error) return toast(invRes.error.message, 1);
   open = invRes.data || [];
-  stockList = stRes.data || [];
+  let adjRows = [];
+  try {
+    const { data, error } = await sb.from("stock_adjustments").select("*");
+    if (!error && Array.isArray(data)) adjRows = data;
+  } catch (_) {}
+  if (!adjRows.length) {
+    try { adjRows = JSON.parse(localStorage.getItem("ccls_stock_adjustments_v1") || "[]") || []; } catch (_) { adjRows = []; }
+  }
+  let trRows = [];
+  try {
+    const { data, error } = await sb.from("warehouse_transfers").select("*");
+    if (!error && Array.isArray(data)) trRows = data;
+  } catch (_) {}
+  if (!trRows.length) {
+    try { trRows = JSON.parse(localStorage.getItem("ccls_warehouse_transfers_v1") || "[]") || []; } catch (_) { trRows = []; }
+  }
+
+  const adjMap = new Map();
+  adjRows.forEach(a => {
+    const tp = a.adjustment_type || a.adj_type;
+    const delta = tp === "returned_farmer" ? Number(a.qty || 0) : -Number(a.qty || 0);
+    const k = `${a.warehouse_id || ""}|${String(a.product_name || "").trim().toUpperCase()}`;
+    adjMap.set(k, (adjMap.get(k) || 0) + delta);
+  });
+  const trMap = new Map();
+  const trMeta = new Map();
+  trRows.forEach(tr => {
+    const pUp = String(tr.product_name || "").trim().toUpperCase();
+    const q = Number(tr.qty || 0);
+    if (!pUp || !Number.isFinite(q) || q <= 0) return;
+    trMap.set(`${tr.from_warehouse_id || ""}|${pUp}`, (trMap.get(`${tr.from_warehouse_id || ""}|${pUp}`) || 0) - q);
+    const toKey = `${tr.to_warehouse_id || ""}|${pUp}`;
+    trMap.set(toKey, (trMap.get(toKey) || 0) + q);
+    if (tr.to_warehouse_id != null && !trMeta.has(toKey)) {
+      trMeta.set(toKey, { wid: tr.to_warehouse_id, warehouse: tr.to_warehouse_name || "مخزن", name: tr.product_name, balance: 0 });
+    }
+  });
+
+  const baseStock = [...(stRes.data || [])];
+  const seen = new Set(baseStock.map(r => `${r.wid || ""}|${String(r.name || "").trim().toUpperCase()}`));
+  trMeta.forEach((meta, key) => {
+    if (!seen.has(key)) baseStock.push(meta);
+  });
+
+  stockList = baseStock.map(r => {
+    const kExact = `${r.wid || ""}|${String(r.name || "").trim().toUpperCase()}`;
+    const kAny = `|${String(r.name || "").trim().toUpperCase()}`;
+    const adjDelta = (adjMap.get(kExact) || 0) + (r.wid != null ? (adjMap.get(kAny) || 0) : 0);
+    const trDelta = trMap.get(kExact) || 0;
+    return { ...r, balance: Number((Number(r.balance || 0) + adjDelta + trDelta).toFixed(2)) };
+  });
   $("#pi").innerHTML = open.length
     ? open.map(i => `<option value="${i.id}">${esc(i.invoice_no)}/${i.invoice_year} - ${esc(`${i.client_name ? i.client_name + " " : ""}${i.farmer_name || ""}`)}${i.phone ? ` (${esc(i.phone)})` : ""} - ${esc(i.product_name)}</option>`).join("")
     : `<option value="">لا توجد فواتير بها كمية متبقية</option>`;
   filterPick();
+  syncKioskLobby(stockList, QUEUE_ROWS);
 }
 function filterPick() {
   const q = ($("#pq")?.value || "").trim().toLowerCase();
@@ -556,26 +823,61 @@ function cancelPickupEdit() {
 }
 $("#cancelPEdit").onclick = cancelPickupEdit;
 
+async function refreshPickupNotesBar(inv) {
+  const bar = $("#pickupNoteBar");
+  const badge = $("#pickupNoteBadge");
+  const btn = $("#openPickupNoteBtn");
+  if (!bar || !badge || !btn) return;
+  if (!inv) { bar.hidden = true; return; }
+  bar.hidden = false;
+  btn.onclick = () => openInvoiceNotesModal({
+    invoiceId: inv.id,
+    invoiceRef: `${inv.invoice_no}/${inv.invoice_year}`,
+    farmerName: `${inv.client_name || ""} ${inv.farmer_name || ""}`.trim(),
+    onChange: () => refreshPickupNotesBar(inv)
+  });
+  try {
+    const res = typeof fetchInvoiceNotes === "function" ? await fetchInvoiceNotes(inv.id) : { rows: [] };
+    const list = res.rows || [];
+    const urgent = list.filter(x => x.priority === "urgent" && !x.resolved);
+    if (!list.length) {
+      badge.innerHTML = `<span style="color:var(--mu)">لا توجد ملاحظات سريعة للفريق على هذه الفاتورة</span>`;
+    } else if (urgent.length) {
+      badge.innerHTML = `<span class="tag-warn">تنبيه عاجل (${urgent.length})</span> <b>${esc(urgent[0].author_name || "")}:</b> ${esc(urgent[0].note_text)}`;
+    } else {
+      badge.innerHTML = `<strong>ملاحظات الفريق (${list.length}):</strong> ${esc(list[0].note_text)}`;
+    }
+  } catch (_) {
+    badge.textContent = "ملاحظات الفاتورة";
+  }
+}
+
 async function drawPickup() {
   const i = open.find(x => x.id == $("#pi").value);
   const st = findInvoiceStock(i);
   const stockTxt = st ? ` | المتوفر بالمخزن (${st.warehouse}): ${n(st.balance)} قنطار` : "";
-  $("#pinfo").textContent = i ? `${i.client_name || ""} ${i.farmer_name || ""}${i.phone ? ` (${i.phone})` : ""} | ${i.product_name} | الكمية: ${n(i.qty)} | المستلم: ${n(i.taken)} | المتبقي بالفاتورة: ${n(i.remaining)}${stockTxt}` : "";
+  let queueTxt = "";
+  if (i && typeof getAppSettings === "function" && getAppSettings().enableQueueAppointments && typeof getQueueEntryForInvoice === "function") {
+    const qItem = getQueueEntryForInvoice(i);
+    if (qItem) queueTxt = ` | رقم الدور (${qItem.scheduled_date}): #${qItem.queue_no}`;
+  }
+  $("#pinfo").textContent = i ? `${i.client_name || ""} ${i.farmer_name || ""}${i.phone ? ` (${i.phone})` : ""} | ${i.product_name} | الكمية: ${n(i.qty)} | المستلم: ${n(i.taken)} | المتبقي بالفاتورة: ${n(i.remaining)}${stockTxt}${queueTxt}` : "";
+  refreshPickupNotesBar(i);
   updatePickupStockWarn(i);
   if (!i) { lastWithdrawals = []; $("#pT").innerHTML = ""; return; }
   const { data } = await sb.from("withdrawals").select("*").eq("invoice_id", i.id).order("id", { ascending: false });
   lastWithdrawals = data || [];
   $("#pT").innerHTML = tbl(["التاريخ", "الكمية", "المركبة", "السائق", "الشاحنة", "إذن الخروج", "إجراءات"],
     lastWithdrawals.map(w => [
-      w.w_date,
+      esc(w.w_date),
       n(w.qty),
       esc(w.vehicle_ref),
       esc(w.driver_name || "-"),
       esc(w.truck_no || "-"),
       esc(w.bon_no),
-      `<div style="display:flex;gap:4px">
-        <button type="button" class="f" data-edit-p="${w.id}">تعديل</button>
-        <button type="button" class="p" data-del-p="${w.id}" style="background:var(--bad);padding:6px 10px">حذف</button>
+      `<div class="action-group">
+        <button type="button" class="f" data-edit-p="${esc(w.id)}">تعديل</button>
+        <button type="button" class="f btn-danger" data-del-p="${esc(w.id)}">حذف</button>
       </div>`
     ]));
 }
@@ -607,11 +909,18 @@ $("#pT").onclick = async e => {
   const delBtn = e.target.closest("[data-del-p]");
   if (delBtn) {
     const id = delBtn.dataset.delP;
-    if (!confirm("حذف عملية التسليم هذه؟")) return;
-    const { error } = await sb.from("withdrawals").delete().eq("id", id);
-    if (error) return toast(error.message, 1);
+    const row = lastWithdrawals.find(x => String(x.id) === String(id));
+    if (!row || !confirm("نقل عملية التسليم هذه إلى سلة المحذوفات؟")) return;
+    const res = await softDeleteItem({
+      entityType: "عملية تسليم",
+      tableName: "withdrawals",
+      entityLabel: `تسليم ${n(row.qty)} قنطار (${row.w_date || ""})`,
+      originalId: id,
+      payload: row
+    });
+    if (!res.ok) return toast(res.error?.message || "تعذّر الحذف", 1);
     if (String(editingPickupId) === String(id)) cancelPickupEdit();
-    toast("تم حذف الاستلام");
+    toast("تم نقل الاستلام إلى سلة المحذوفات");
     const keep = $("#pi").value;
     await loadPickup();
     $("#pi").value = keep;
@@ -625,10 +934,45 @@ $("#fp").onsubmit = async e => {
   const id = $("#pi").value; if (!id) return;
   const f = Object.fromEntries(new FormData(e.target));
   for (const k in f) if (f[k] === "") f[k] = null;
-  const inv = open.find(x => x.id == id);
+  const pickupQty = Number(f.qty);
+  if (!Number.isFinite(pickupQty) || pickupQty <= 0) return toast("أدخل كمية استلام صالحة أكبر من الصفر", 1);
+  f.qty = pickupQty;
+
+  // تحقق حيّ مباشر من قاعدة البيانات لمنع تجاوز الكمية المتبقية في الفاتورة أو رصيد المخزن
+  let inv = open.find(x => x.id == id);
+  try {
+    const { data: freshInv } = await sb.from("invoice_balance").select("*").eq("id", id).maybeSingle();
+    if (freshInv) inv = freshInv;
+  } catch (_) {}
   const maxAllowed = inv ? Number(inv.remaining) + (editingPickupId != null ? editingPickupOldQty : 0) : Infinity;
-  if (inv && Number(f.qty) > maxAllowed)
-    return toast(`الكمية ${n(f.qty)} تتجاوز المتبقي في الفاتورة. أقصى كمية متاحة للاستلام الآن: ${n(maxAllowed)} قنطار`, 1);
+  if (inv && pickupQty > maxAllowed) {
+    return toast(`الكمية ${n(pickupQty)} تتجاوز المتبقي في الفاتورة. أقصى كمية متاحة للاستلام الآن: ${n(maxAllowed)} قنطار`, 1);
+  }
+
+  const blockStock = typeof getAppSettings !== "function" || getAppSettings().blockOverWithdraw !== false;
+  if (blockStock && inv) {
+    try {
+      const { data: freshStock } = await sb.from("stock_analysis").select("name, warehouse, wid, balance").eq("name", inv.product_name);
+      if (Array.isArray(freshStock) && freshStock.length) {
+        const localMatch = findInvoiceStock(inv);
+        const matched = inv.warehouse_id != null
+          ? freshStock.find(r => String(r.wid) === String(inv.warehouse_id))
+          : inv.warehouse
+          ? freshStock.find(r => r.warehouse === inv.warehouse)
+          : null;
+        const rawBal = localMatch
+          ? Number(localMatch.balance || 0)
+          : matched
+          ? Number(matched.balance || 0)
+          : freshStock.reduce((s, r) => s + Number(r.balance || 0), 0);
+        const availBal = rawBal + (editingPickupId != null ? editingPickupOldQty : 0);
+        if (pickupQty > availBal) {
+          return toast(`ممنوع التسليم: الكمية (${n(pickupQty)}) تتجاوز رصيد المخزن الفعلي (${n(availBal)} قنطار)`, 1);
+        }
+      }
+    } catch (_) {}
+  }
+
   if (editingPickupId != null) {
     const { error } = await sb.from("withdrawals").update(f).eq("id", editingPickupId);
     if (error) return toast(error.message, 1);
@@ -708,6 +1052,13 @@ $("#fi [name=farmer_name]").addEventListener("change", e => {
 
 let invValTimer = null;
 let invValSeq = 0;
+const INV_YEAR_CACHE = new Map();
+const INV_CACHE_TTL_MS = 30000;
+
+function invalidateInvYearCache(yearVal) {
+  if (yearVal != null) INV_YEAR_CACHE.delete(Number(yearVal));
+  else INV_YEAR_CACHE.clear();
+}
 
 function setFieldAlert(el, kind, html) {
   if (!el) return;
@@ -749,6 +1100,30 @@ function formatInvSummary(g) {
   return `فاتورة <b>${esc(g.invoice_no)}/${esc(g.invoice_year)}</b>${dt}${crop}${prods}`;
 }
 
+async function fetchYearInvoicesCached(yearVal) {
+  const y = Number(yearVal);
+  const now = Date.now();
+  const cached = INV_YEAR_CACHE.get(y);
+  if (cached && now - cached.ts < INV_CACHE_TTL_MS) {
+    return cached.data;
+  }
+  let { data, error } = await sb
+    .from("invoices")
+    .select("id, invoice_no, invoice_year, invoice_date, dossier_no, client_name, farmer_name, farmer_card_no, culture, qty, products(name)")
+    .eq("invoice_year", y);
+  if (error && /(farmer_card_no|culture)/i.test(error.message || "")) {
+    const fallback = await sb
+      .from("invoices")
+      .select("id, invoice_no, invoice_year, invoice_date, dossier_no, client_name, farmer_name, qty, products(name)")
+      .eq("invoice_year", y);
+    data = fallback.data;
+    error = fallback.error;
+  }
+  if (error || !Array.isArray(data)) return null;
+  INV_YEAR_CACHE.set(y, { ts: now, data });
+  return data;
+}
+
 async function validateInvoiceRealtime() {
   const cardEl = $("#cardDupWarn");
   const nameEl = $("#nameDupWarn");
@@ -771,13 +1146,10 @@ async function validateInvoiceRealtime() {
   }
 
   const seq = ++invValSeq;
-  const { data, error } = await sb
-    .from("invoices")
-    .select("*, products(name)")
-    .eq("invoice_year", yearVal);
+  const data = await fetchYearInvoicesCached(yearVal);
 
   if (seq !== invValSeq) return;
-  if (error || !Array.isArray(data)) return;
+  if (!Array.isArray(data)) return;
 
   const metaMap = readInvMeta();
   const grouped = new Map();
@@ -895,12 +1267,686 @@ function scheduleInvoiceValidation(immediate) {
   el.addEventListener("change", () => scheduleInvoiceValidation(true));
 });
 
+// ===========================================================
+// نظام المواعيد وأرقام الدور (Queue & Appointments)
+// ===========================================================
+const QUEUE_LOCAL_KEY = "ccls_pickup_queue_v1";
+let QUEUE_ROWS = [];
+let hasRemoteQueue = false;
+const QUEUE_STATUS_META = {
+  waiting: ["في الانتظار", "tag-warn", "loading", "بدء التحميل"],
+  loading: ["قيد التحميل", "tag-ok", "done", "إتمام السحب ✓"],
+  done: ["مكتمل ✓", "tag-ok", "", ""],
+  absent: ["متغيب", "tag-bad", "waiting", "إعادة للانتظار"]
+};
+
+function normalizeQueueRow(r) {
+  if (!r || typeof r !== "object") return r;
+  return {
+    ...r,
+    scheduled_date: r.queue_date || r.scheduled_date || today(),
+    notes: r.note ?? r.notes ?? ""
+  };
+}
+
+function readLocalQueue() {
+  try {
+    const raw = localStorage.getItem(QUEUE_LOCAL_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.map(normalizeQueueRow) : [];
+  } catch (_) { return []; }
+}
+function writeLocalQueue(rows) {
+  try { localStorage.setItem(QUEUE_LOCAL_KEY, JSON.stringify((rows || []).slice(-300))); } catch (_) {}
+}
+
+async function syncKioskLobby(stockOverride = null, queueOverride = null) {
+  try {
+    const prev = JSON.parse(localStorage.getItem("ccls_kiosk_snapshot_v1") || "{}") || {};
+    const qSource = Array.isArray(queueOverride) ? queueOverride : (QUEUE_ROWS.length ? QUEUE_ROWS : readLocalQueue());
+    const safeQueue = qSource
+      .filter(r => (r.queue_date || r.scheduled_date) === today())
+      .map(r => ({
+        queue_no: Number(r.queue_no || 0),
+        status: r.status || "waiting",
+        display_name: r.farmer_name || "",
+        product_name: r.product_name || "",
+        warehouse_name: r.warehouse_name || "",
+        qty: Number(r.qty || 0)
+      }));
+    const safeStock = Array.isArray(stockOverride)
+      ? stockOverride.map(r => ({ name: r.name, warehouse: r.warehouse || "المخزن", balance: Number(r.balance || 0) }))
+      : (Array.isArray(prev.stock) ? prev.stock : []);
+
+    const snapshot = {
+      orgName: (typeof getAppSettings === "function" ? getAppSettings().orgName : "") || "تعاونية الحبوب والبقول الجافة أدرار",
+      updatedAt: new Date().toISOString(),
+      queue: safeQueue,
+      stock: safeStock
+    };
+    localStorage.setItem("ccls_kiosk_snapshot_v1", JSON.stringify(snapshot));
+
+    const sess = await sb.auth.getSession();
+    const token = sess?.data?.session?.access_token;
+    if (!token) return;
+    await fetch("/api/public/kiosk-sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify(snapshot)
+    });
+  } catch (_) {}
+}
+
+function getQueueEntryForInvoice(inv) {
+  if (!inv) return null;
+  const t = today();
+  const list = QUEUE_ROWS.length ? QUEUE_ROWS : readLocalQueue();
+  return list.find(q =>
+    (String(q.invoice_id || "") === String(inv.id) ||
+      String(q.farmer_name || "").trim().toUpperCase() === `${inv.client_name || ""} ${inv.farmer_name || ""}`.trim().toUpperCase()) &&
+    (q.queue_date || q.scheduled_date) >= t && q.status !== "done"
+  ) || null;
+}
+
+function syncFeatureVisibility() {
+  const s = typeof getAppSettings === "function" ? getAppSettings() : { enableQueueAppointments: true, enableFarmerNotifications: true };
+  const qOn = s.enableQueueAppointments !== false;
+  const nOn = s.enableFarmerNotifications !== false;
+  if ($("#queueDisabledBanner")) $("#queueDisabledBanner").hidden = qOn;
+  if ($("#queueContent")) $("#queueContent").hidden = !qOn;
+  if ($("#toggleQueueFeatureBtn")) $("#toggleQueueFeatureBtn").textContent = qOn ? "إيقاف نظام الدور مؤقتاً" : "تفعيل نظام الدور";
+  if ($("#notifyDisabledBanner")) $("#notifyDisabledBanner").hidden = nOn;
+  if ($("#notifyContent")) $("#notifyContent").hidden = !nOn;
+  if ($("#toggleNotifyFeatureBtn")) $("#toggleNotifyFeatureBtn").textContent = nOn ? "إيقاف الإشعارات مؤقتاً" : "تفعيل الإشعارات";
+}
+
+window.addEventListener("ccls:settings-change", () => {
+  syncFeatureVisibility();
+  if (!$("#queueSec").hidden) renderQueueTable();
+  if (!$("#notifySec").hidden) renderNotifyOpenInvoices();
+});
+
+$("#toggleQueueFeatureBtn").onclick = () => {
+  const cur = getAppSettings().enableQueueAppointments !== false;
+  saveAppSettings({ enableQueueAppointments: !cur });
+  toast(!cur ? "تم تفعيل نظام المواعيد وأرقام الدور" : "تم إيقاف نظام المواعيد وأرقام الدور");
+  syncFeatureVisibility();
+};
+$("#reEnableQueueBtn").onclick = () => {
+  saveAppSettings({ enableQueueAppointments: true });
+  toast("تم تفعيل نظام المواعيد وأرقام الدور");
+  syncFeatureVisibility();
+  loadQueueTab();
+};
+$("#toggleNotifyFeatureBtn").onclick = () => {
+  const cur = getAppSettings().enableFarmerNotifications !== false;
+  saveAppSettings({ enableFarmerNotifications: !cur });
+  toast(!cur ? "تم تفعيل إشعارات SMS وواتساب" : "تم إيقاف إشعارات SMS وواتساب");
+  syncFeatureVisibility();
+};
+$("#reEnableNotifyBtn").onclick = () => {
+  saveAppSettings({ enableFarmerNotifications: true });
+  toast("تم تفعيل إشعارات SMS وواتساب");
+  syncFeatureVisibility();
+  loadNotifyTab();
+};
+
+function suggestNextQueueNo(dateStr) {
+  const dt = dateStr || $("#fqApp [name=scheduled_date]")?.value || today();
+  const maxQ = QUEUE_ROWS.filter(r => (r.queue_date || r.scheduled_date) === dt).reduce((m, r) => Math.max(m, Number(r.queue_no || 0)), 0);
+  if ($("#fqApp [name=queue_no]")) $("#fqApp [name=queue_no]").value = String(maxQ + 1);
+}
+
+async function loadQueueTab() {
+  syncFeatureVisibility();
+  if (!$("#fqApp [name=scheduled_date]").value) $("#fqApp [name=scheduled_date]").value = today();
+  if (!$("#qfDate").value) $("#qfDate").value = today();
+
+  QUEUE_ROWS = readLocalQueue();
+  hasRemoteQueue = false;
+  try {
+    let qRes = await sb.from("pickup_appointments").select("*").order("queue_date", { ascending: false }).order("queue_no", { ascending: true }).limit(300);
+    if (qRes.error && /queue_date/i.test(qRes.error.message || "")) {
+      qRes = await sb.from("pickup_appointments").select("*").order("scheduled_date", { ascending: false }).order("queue_no", { ascending: true }).limit(300);
+    }
+    const invRes = open.length
+      ? { data: open }
+      : await sb.from("invoice_balance").select("*").gt("remaining", 0).order("id", { ascending: false }).limit(200);
+    if (!qRes.error && Array.isArray(qRes.data)) {
+      hasRemoteQueue = true;
+      QUEUE_ROWS = qRes.data.map(normalizeQueueRow);
+      writeLocalQueue(QUEUE_ROWS);
+      $("#queueDbBadge").textContent = "متصل بقاعدة البيانات Supabase ✓";
+    } else {
+      $("#queueDbBadge").textContent = "حفظ محلي (لتفعيل المزامنة نفّذ supabase-ops.sql)";
+    }
+    if (Array.isArray(invRes.data)) open = invRes.data;
+  } catch (_) {
+    $("#queueDbBadge").textContent = "حفظ محلي (لتفعيل المزامنة نفّذ supabase-ops.sql)";
+  }
+
+  $("#qInvSelect").innerHTML = '<option value="">— اختيار فاتورة تلقائياً —</option>' +
+    open.map(i => `<option value="${esc(i.id)}">${esc(i.invoice_no)}/${i.invoice_year} · ${esc(`${i.client_name || ""} ${i.farmer_name || ""}`.trim())} · ${esc(i.product_name)} (${n(i.remaining)})</option>`).join("");
+
+  suggestNextQueueNo($("#fqApp [name=scheduled_date]").value);
+  renderQueueTable();
+  syncKioskLobby(stockList.length ? stockList : null, QUEUE_ROWS);
+}
+
+$("#fqApp [name=scheduled_date]").addEventListener("change", e => suggestNextQueueNo(e.target.value));
+$("#qInvSelect").addEventListener("change", e => {
+  const inv = open.find(x => String(x.id) === String(e.target.value));
+  if (!inv) return;
+  $("#fqApp [name=farmer_name]").value = `${inv.client_name || ""} ${inv.farmer_name || ""}`.trim();
+  $("#fqApp [name=phone]").value = inv.phone || "";
+  $("#fqApp [name=product_name]").value = inv.product_name || "";
+  $("#fqApp [name=qty]").value = inv.remaining || inv.qty || "";
+  $("#fqApp [name=warehouse_name]").value = inv.warehouse || "";
+});
+
+function filteredQueueRows() {
+  const d = $("#qfDate").value;
+  const st = $("#qfStatus").value;
+  const q = ($("#qfSearch").value || "").trim().toLowerCase();
+  return QUEUE_ROWS.filter(r =>
+    (!d || (r.queue_date || r.scheduled_date) === d) &&
+    (!st || r.status === st) &&
+    (!q || [r.farmer_name, r.invoice_no, r.phone, r.product_name, r.warehouse_name].join(" ").toLowerCase().includes(q))
+  ).sort((a, b) => Number(a.queue_no || 0) - Number(b.queue_no || 0));
+}
+
+function renderQueueTable() {
+  const todayStr = $("#qfDate").value || today();
+  const dayRows = QUEUE_ROWS.filter(r => (r.queue_date || r.scheduled_date) === todayStr);
+  const rows = filteredQueueRows();
+  $("#qCards").innerHTML = [
+    [`مواعيد ${todayStr}`, dayRows.length],
+    ["في الانتظار", dayRows.filter(r => r.status === "waiting").length],
+    ["قيد التحميل", dayRows.filter(r => r.status === "loading").length],
+    ["مكتمل", dayRows.filter(r => r.status === "done").length]
+  ].map(([l, v]) => `<div class="card"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
+
+  const nOn = getAppSettings().enableFarmerNotifications !== false;
+  $("#queueT").innerHTML = tbl(
+    ["رقم الدور", "التاريخ", "الفلاح", "الهاتف", "الفاتورة", "الصنف / الكمية", "المخزن", "الحالة", "إجراءات"],
+    rows.map(r => {
+      const meta = QUEUE_STATUS_META[r.status] || QUEUE_STATUS_META.waiting;
+      const nextBtn = meta[2]
+        ? `<button type="button" class="f" data-queue-status="${esc(r.id)}:${esc(meta[2])}">${esc(meta[3])}</button>`
+        : "";
+      const absentBtn = r.status === "waiting"
+        ? `<button type="button" class="f" data-queue-status="${esc(r.id)}:absent">تغيب</button>`
+        : "";
+      const notifyBtn = nOn && r.phone
+        ? `<button type="button" class="f" data-queue-notify="${esc(r.id)}">إشعار بالدور</button>`
+        : "";
+      return [
+        `<b style="font-size:1.05rem;color:var(--pr)">#${esc(r.queue_no)}</b>`,
+        esc(r.queue_date || r.scheduled_date),
+        `<b>${esc(r.farmer_name)}</b>${(r.note || r.notes) ? `<br><small style="color:var(--mu)">${esc(r.note || r.notes)}</small>` : ""}`,
+        esc(r.phone || "—"),
+        esc(r.invoice_no || "—"),
+        `${esc(r.product_name || "—")}${r.qty ? ` (${n(r.qty)})` : ""}`,
+        esc(r.warehouse_name || "—"),
+        `<span class="${meta[1]}">${meta[0]}</span>`,
+        `<div class="action-group">${nextBtn}${absentBtn}${notifyBtn}<button type="button" class="f btn-danger" data-del-queue="${esc(r.id)}">حذف</button></div>`
+      ];
+    })
+  );
+  if (typeof applyActionPermissions === "function") applyActionPermissions($("#queueSec"));
+}
+["#qfDate", "#qfStatus", "#qfSearch"].forEach(sel => $(sel)?.addEventListener("input", renderQueueTable));
+
+$("#fqApp").onsubmit = async e => {
+  e.preventDefault();
+  if (getAppSettings().enableQueueAppointments === false) return toast("نظام المواعيد متوقف حالياً", 1);
+  const f = Object.fromEntries(new FormData(e.target));
+  const inv = open.find(x => String(x.id) === String($("#qInvSelect").value || ""));
+  const row = {
+    queue_date: f.scheduled_date,
+    queue_no: Number(f.queue_no || 1),
+    invoice_id: inv ? Number(inv.id) : null,
+    invoice_no: inv ? `${inv.invoice_no}/${inv.invoice_year}` : null,
+    farmer_name: f.farmer_name.trim(),
+    phone: (f.phone || "").trim() || null,
+    product_name: (f.product_name || "").trim() || null,
+    qty: f.qty ? Number(f.qty) : null,
+    warehouse_name: (f.warehouse_name || "").trim() || null,
+    status: "waiting",
+    note: (f.notes || "").trim() || null,
+    created_by: ME?.full_name || ME?.email || null
+  };
+  if (hasRemoteQueue) {
+    const { data, error } = await sb.from("pickup_appointments").insert(row).select().single();
+    if (error) return toast(error.message, 1);
+    QUEUE_ROWS.push(normalizeQueueRow(data));
+  } else {
+    QUEUE_ROWS.push(normalizeQueueRow({ id: Date.now(), ...row }));
+  }
+  writeLocalQueue(QUEUE_ROWS);
+  toast(`تم تسجيل الموعد برقم الدور #${row.queue_no}`);
+  e.target.reset();
+  $("#qInvSelect").value = "";
+  $("#fqApp [name=scheduled_date]").value = row.queue_date;
+  $("#qfDate").value = row.queue_date;
+  suggestNextQueueNo(row.queue_date);
+  renderQueueTable();
+  syncKioskLobby(null, QUEUE_ROWS);
+};
+
+$("#queueT").onclick = async e => {
+  const stBtn = e.target.closest("[data-queue-status]");
+  if (stBtn) {
+    const [id, nextStatus] = stBtn.dataset.queueStatus.split(":");
+    if (hasRemoteQueue) {
+      const { error } = await sb.from("pickup_appointments").update({ status: nextStatus }).eq("id", id);
+      if (error) return toast(error.message, 1);
+    }
+    QUEUE_ROWS = QUEUE_ROWS.map(r => String(r.id) === String(id) ? { ...r, status: nextStatus } : r);
+    writeLocalQueue(QUEUE_ROWS);
+    renderQueueTable();
+    syncKioskLobby(null, QUEUE_ROWS);
+    toast("تم تحديث حالة الدور");
+    return;
+  }
+  const notBtn = e.target.closest("[data-queue-notify]");
+  if (notBtn) {
+    const r = QUEUE_ROWS.find(x => String(x.id) === notBtn.dataset.queueNotify);
+    if (!r || !r.phone) return toast("رقم الهاتف غير متوفر لهذا الموعد", 1);
+    const ch = getAppSettings().notifyChannelDefault || "whatsapp";
+    const msg = renderNotificationMessage("queue", {
+      farmer: r.farmer_name,
+      queue: r.queue_no,
+      date: r.queue_date || r.scheduled_date,
+      warehouse: r.warehouse_name || "المخزن الرئيسي",
+      product: r.product_name || "السماد"
+    });
+    try {
+      const res = await dispatchFarmerNotification({
+        farmer_name: r.farmer_name,
+        phone: r.phone,
+        channel: ch,
+        event_type: "queue_reminder",
+        message: msg,
+        invoice_no: r.invoice_no,
+        product_name: r.product_name
+      });
+      const href = ch === "sms" ? res.smsUrl : res.waUrl;
+      if (href && !res.webhookSent) {
+        const a = document.createElement("a");
+        a.href = href;
+        if (ch !== "sms") { a.target = "_blank"; a.rel = "noopener noreferrer"; }
+        a.click();
+      }
+      toast(res.webhookSent ? "تم إرسال إشعار الدور عبر البوابة ✓" : "تم تجهيز إشعار الدور وحفظه ✓");
+    } catch (err) {
+      toast(err?.message || "تعذّر تجهيز الإشعار", 1);
+    }
+    return;
+  }
+  const delBtn = e.target.closest("[data-del-queue]");
+  if (delBtn) {
+    const id = delBtn.dataset.delQueue;
+    const target = QUEUE_ROWS.find(r => String(r.id) === String(id));
+    if (!target || !confirm("نقل هذا الموعد إلى سلة المحذوفات؟")) return;
+    const cleanTarget = { ...target };
+    delete cleanTarget.scheduled_date;
+    delete cleanTarget.notes;
+    const res = await softDeleteItem({
+      entityType: "موعد دور",
+      tableName: "pickup_appointments",
+      entityLabel: `دور #${target.queue_no} — ${target.farmer_name}`,
+      originalId: id,
+      payload: cleanTarget,
+      localOnly: !hasRemoteQueue
+    });
+    if (!res.ok) return toast(res.error?.message || "تعذّر الحذف", 1);
+    QUEUE_ROWS = QUEUE_ROWS.filter(r => String(r.id) !== String(id));
+    writeLocalQueue(QUEUE_ROWS);
+    renderQueueTable();
+    syncKioskLobby(null, QUEUE_ROWS);
+    toast("تم نقل الموعد إلى سلة المحذوفات");
+  }
+};
+
+$("#xQueue").onclick = () => {
+  const rows = filteredQueueRows();
+  csv("pickup-queue-schedule",
+    ["رقم الدور", "التاريخ", "الفلاح", "الهاتف", "الفاتورة", "الصنف", "الكمية", "المخزن", "الحالة", "ملاحظة"],
+    rows.map(r => [r.queue_no, r.queue_date || r.scheduled_date, r.farmer_name, r.phone || "", r.invoice_no || "", r.product_name || "", r.qty || "", r.warehouse_name || "", (QUEUE_STATUS_META[r.status]?.[0] || r.status), r.note || r.notes || ""]));
+};
+
+$("#printQueueBtn").onclick = () => {
+  const rows = filteredQueueRows();
+  if (!rows.length) return toast("لا توجد مواعيد في القائمة للطباعة", 1);
+  const dt = $("#qfDate").value || today();
+  const s = getAppSettings();
+  const el = $("#queuePrintArea");
+  el.innerHTML = `<div class="etat-doc" dir="rtl">
+    <div style="text-align:center;margin-bottom:10px">
+      <h2 style="margin:0">${esc(s.orgName)}</h2>
+      <div>برنامج المواعيد وأرقام الدور لاستلام الأسمدة — بتاريخ ${esc(dt)}</div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:.85rem">
+      <thead><tr style="background:#175236;color:#fff">
+        <th style="border:1px solid #333;padding:6px">الدور</th>
+        <th style="border:1px solid #333;padding:6px">الفلاح</th>
+        <th style="border:1px solid #333;padding:6px">الهاتف</th>
+        <th style="border:1px solid #333;padding:6px">الفاتورة</th>
+        <th style="border:1px solid #333;padding:6px">الصنف والكمية</th>
+        <th style="border:1px solid #333;padding:6px">المخزن</th>
+        <th style="border:1px solid #333;padding:6px">الحالة</th>
+      </tr></thead>
+      <tbody>${rows.map(r => `<tr>
+        <td style="border:1px solid #333;padding:6px;text-align:center"><b>#${esc(r.queue_no)}</b></td>
+        <td style="border:1px solid #333;padding:6px">${esc(r.farmer_name)}</td>
+        <td style="border:1px solid #333;padding:6px">${esc(r.phone || "—")}</td>
+        <td style="border:1px solid #333;padding:6px">${esc(r.invoice_no || "—")}</td>
+        <td style="border:1px solid #333;padding:6px">${esc(r.product_name || "—")} ${r.qty ? `(${n(r.qty)})` : ""}</td>
+        <td style="border:1px solid #333;padding:6px">${esc(r.warehouse_name || "—")}</td>
+        <td style="border:1px solid #333;padding:6px">${esc(QUEUE_STATUS_META[r.status]?.[0] || r.status)}</td>
+      </tr>`).join("")}</tbody>
+    </table>
+  </div>`;
+  document.body.classList.add("printing-list");
+  el.hidden = false;
+  const cleanupQueuePrint = () => {
+    document.body.classList.remove("printing-list");
+    el.hidden = true;
+    window.removeEventListener("afterprint", cleanupQueuePrint);
+  };
+  window.addEventListener("afterprint", cleanupQueuePrint, { once: true });
+  window.print();
+  setTimeout(cleanupQueuePrint, 1200);
+};
+
+// ===========================================================
+// إشعارات SMS وواتساب للفلاحين (Notifications)
+// ===========================================================
+const NOTIFY_LOCAL_KEY = "ccls_farmer_notifications_v1";
+let NOTIFY_LOGS = [];
+let hasRemoteNotify = false;
+
+function readLocalNotifyLogs() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(NOTIFY_LOCAL_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_) { return []; }
+}
+
+function updateNotifyMessagePreview() {
+  const ev = $("#nEventType")?.value || "invoice_ready";
+  const tplKey = ev === "stock_arrival" ? "arrival" : ev === "queue_reminder" ? "queue" : "invoice";
+  const invObj = open.find(x => String(x.id) === String($("#nInvSelect")?.value || ""));
+  const msg = renderNotificationMessage(tplKey, {
+    farmer: $("#nFarmerName")?.value?.trim() || "الفلاح الكريم",
+    invoice: $("#nInvoiceNo")?.value?.trim() || "—",
+    product: $("#nProductName")?.value?.trim() || "السماد",
+    qty: invObj?.remaining || invObj?.qty || "—",
+    date: today(),
+    queue: "1",
+    warehouse: invObj?.warehouse || "المخزن الرئيسي"
+  });
+  if ($("#nMessage")) $("#nMessage").value = msg;
+  syncNotifyDirectLink();
+}
+
+function syncNotifyDirectLink() {
+  const a = $("#nDirectLink");
+  if (!a) return;
+  const phone = $("#nPhone")?.value || "";
+  const message = $("#nMessage")?.value || "";
+  const ch = $("#nChannel")?.value || "whatsapp";
+  const links = buildFarmerNotificationLinks({ phone, message });
+  const href = ch === "sms" ? links.smsUrl : links.waUrl;
+  if (href) {
+    a.href = href;
+    a.hidden = false;
+    a.textContent = ch === "sms" ? "فتح تطبيق SMS" : "فتح محادثة واتساب";
+  } else {
+    a.hidden = true;
+  }
+}
+
+async function loadNotifyTab() {
+  syncFeatureVisibility();
+  NOTIFY_LOGS = readLocalNotifyLogs();
+  hasRemoteNotify = false;
+  try {
+    const [logRes, invRes] = await Promise.all([
+      sb.from("farmer_notifications").select("*").order("id", { ascending: false }).limit(100),
+      sb.from("invoice_balance").select("*").gt("remaining", 0).order("id", { ascending: false }).limit(200)
+    ]);
+    if (!logRes.error && Array.isArray(logRes.data)) {
+      hasRemoteNotify = true;
+      NOTIFY_LOGS = logRes.data;
+      $("#notifyDbBadge").textContent = "متصل بقاعدة البيانات Supabase ✓";
+    } else {
+      $("#notifyDbBadge").textContent = "سجل محلي (لتفعيل المزامنة نفّذ supabase-ops.sql)";
+    }
+    if (!invRes.error && Array.isArray(invRes.data)) open = invRes.data;
+  } catch (_) {
+    $("#notifyDbBadge").textContent = "سجل محلي (لتفعيل المزامنة نفّذ supabase-ops.sql)";
+  }
+
+  $("#nChannel").value = getAppSettings().notifyChannelDefault || "whatsapp";
+  const withPhone = open.filter(i => String(i.phone || "").trim());
+  $("#nInvSelect").innerHTML = '<option value="">— اختر فلاحاً / فاتورة —</option>' +
+    withPhone.map(i => `<option value="${esc(i.id)}">${esc(i.invoice_no)}/${i.invoice_year} · ${esc(`${i.client_name || ""} ${i.farmer_name || ""}`.trim())} (${esc(i.phone)})</option>`).join("");
+
+  if (!$("#nMessage").value) updateNotifyMessagePreview();
+  renderNotifyOpenInvoices();
+  renderNotifyLogs();
+}
+
+function renderNotifyOpenInvoices() {
+  const withPhone = open.filter(i => String(i.phone || "").trim());
+  $("#notifyOpenInvT").innerHTML = tbl(
+    ["الفاتورة", "الفلاح", "الهاتف", "السماد", "المتبقي", "إرسال فوري"],
+    withPhone.slice(0, 30).map(i => {
+      const farmer = `${i.client_name || ""} ${i.farmer_name || ""}`.trim();
+      const msg = renderNotificationMessage("invoice", {
+        farmer,
+        invoice: `${i.invoice_no}/${i.invoice_year}`,
+        product: i.product_name,
+        qty: i.remaining,
+        warehouse: i.warehouse || "المخزن"
+      });
+      const links = buildFarmerNotificationLinks({ phone: i.phone, message: msg });
+      return [
+        `<b>${esc(i.invoice_no)}/${esc(i.invoice_year)}</b>`,
+        esc(farmer),
+        esc(i.phone),
+        esc(i.product_name),
+        `<b>${n(i.remaining)}</b>`,
+        `<div class="action-group">
+          ${links.waUrl ? `<a class="f" style="text-decoration:none" href="${esc(links.waUrl)}" target="_blank" rel="noopener noreferrer" data-quick-notify="whatsapp" data-inv="${esc(i.id)}">واتساب</a>` : ""}
+          ${links.smsUrl ? `<a class="f" style="text-decoration:none" href="${esc(links.smsUrl)}" data-quick-notify="sms" data-inv="${esc(i.id)}">SMS</a>` : ""}
+        </div>`
+      ];
+    })
+  );
+}
+
+function renderNotifyLogs() {
+  $("#notifyLogT").innerHTML = tbl(
+    ["التاريخ", "الفلاح", "الهاتف", "القناة", "نوع الحدث", "الرسالة", "الحالة"],
+    NOTIFY_LOGS.slice(0, 80).map(l => [
+      esc((l.created_at || "").slice(0, 16).replace("T", " ") || today()),
+      `<b>${esc(l.farmer_name)}</b>`,
+      esc(l.phone),
+      l.channel === "sms" ? "SMS" : "WhatsApp",
+      l.event_type === "stock_arrival" ? "وصول صنف" : l.event_type === "queue_reminder" ? "تذكير بالدور" : "جاهزية فاتورة",
+      esc(l.message),
+      l.status === "sent_gateway" ? `<span class="tag-ok">مرسلة آلياً ✓</span>` : `<span style="color:var(--pr)">مُجهّزة ✓</span>`
+    ])
+  );
+}
+
+$("#nInvSelect").onchange = e => {
+  const i = open.find(x => String(x.id) === String(e.target.value));
+  if (!i) return;
+  $("#nFarmerName").value = `${i.client_name || ""} ${i.farmer_name || ""}`.trim();
+  $("#nPhone").value = i.phone || "";
+  $("#nProductName").value = i.product_name || "";
+  $("#nInvoiceNo").value = `${i.invoice_no}/${i.invoice_year}`;
+  updateNotifyMessagePreview();
+};
+["#nEventType", "#nFarmerName", "#nProductName", "#nInvoiceNo"].forEach(s => $(s)?.addEventListener("change", updateNotifyMessagePreview));
+["#nPhone", "#nMessage", "#nChannel"].forEach(s => $(s)?.addEventListener("input", syncNotifyDirectLink));
+
+$("#fNotify").onsubmit = async e => {
+  e.preventDefault();
+  try {
+    const ch = $("#nChannel").value;
+    const res = await dispatchFarmerNotification({
+      farmer_name: $("#nFarmerName").value,
+      phone: $("#nPhone").value,
+      channel: ch,
+      event_type: $("#nEventType").value,
+      message: $("#nMessage").value,
+      invoice_no: $("#nInvoiceNo").value || null,
+      product_name: $("#nProductName").value || null
+    });
+    const href = ch === "sms" ? res.smsUrl : res.waUrl;
+    if (href && !res.webhookSent) {
+      const a = document.createElement("a");
+      a.href = href;
+      if (ch !== "sms") { a.target = "_blank"; a.rel = "noopener noreferrer"; }
+      a.click();
+    }
+    toast(res.webhookSent ? "تم إرسال الإشعار تلقائياً وحفظه ✓" : "تم فتح رابط الإرسال وحفظ الإشعار ✓");
+    loadNotifyTab();
+  } catch (err) {
+    toast(err?.message || "تعذّر إرسال الإشعار", 1);
+  }
+};
+
+$("#notifyOpenInvT").onclick = async e => {
+  const link = e.target.closest("[data-quick-notify]");
+  if (!link) return;
+  const inv = open.find(x => String(x.id) === String(link.dataset.inv));
+  if (!inv) return;
+  const farmer = `${inv.client_name || ""} ${inv.farmer_name || ""}`.trim();
+  const msg = renderNotificationMessage("invoice", {
+    farmer,
+    invoice: `${inv.invoice_no}/${inv.invoice_year}`,
+    product: inv.product_name,
+    qty: inv.remaining,
+    warehouse: inv.warehouse || "المخزن"
+  });
+  try {
+    await dispatchFarmerNotification({
+      farmer_name: farmer,
+      phone: inv.phone,
+      channel: link.dataset.quickNotify,
+      event_type: "invoice_ready",
+      message: msg,
+      invoice_no: `${inv.invoice_no}/${inv.invoice_year}`,
+      product_name: inv.product_name
+    });
+    setTimeout(() => loadNotifyTab(), 300);
+  } catch (_) {}
+};
+
+function showInvoiceNotifyPrompt({ invoice_no, farmer_name, phone, product_name, qty, warehouse }) {
+  const box = $("#invNotifyBanner");
+  if (!box) return;
+  const s = typeof getAppSettings === "function" ? getAppSettings() : {};
+  if (!s.enableFarmerNotifications || !phone || !String(phone).trim()) {
+    box.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+  const msg = renderNotificationMessage("invoice", {
+    farmer: farmer_name,
+    invoice: invoice_no,
+    product: product_name,
+    qty,
+    warehouse: warehouse || "المخزن الرئيسي"
+  });
+  const links = buildFarmerNotificationLinks({ phone, message: msg });
+  if (!links.cleanPhone) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <span><strong>إشعار الفلاح الفوري:</strong> أرسل إشعار جاهزية الفاتورة <b>${esc(invoice_no)}</b> إلى <b>${esc(farmer_name)}</b> (${esc(links.cleanPhone)}):</span>
+      <div class="action-group">
+        ${links.waUrl ? `<a class="p" style="text-decoration:none;padding:6px 12px;border-radius:8px" href="${esc(links.waUrl)}" target="_blank" rel="noopener noreferrer" id="invQuickWa">إرسال واتساب</a>` : ""}
+        ${links.smsUrl ? `<a class="f" style="text-decoration:none;padding:6px 12px;border-radius:8px" href="${esc(links.smsUrl)}" id="invQuickSms">إرسال SMS</a>` : ""}
+        <button type="button" class="f" id="invQuickClose">إغلاق</button>
+      </div>
+    </div>`;
+  const logIt = ch => dispatchFarmerNotification({
+    farmer_name, phone, channel: ch, event_type: "invoice_ready", message: msg, invoice_no, product_name
+  }).catch(() => {});
+  $("#invQuickWa")?.addEventListener("click", () => logIt("whatsapp"));
+  $("#invQuickSms")?.addEventListener("click", () => logIt("sms"));
+  $("#invQuickClose")?.addEventListener("click", () => { box.hidden = true; });
+}
+
+async function showArrivalNotifySuggestions(productIdVal, productName, addedQty) {
+  const box = $("#receiptArrivalBox");
+  if (!box) return;
+  const s = typeof getAppSettings === "function" ? getAppSettings() : {};
+  if (!s.enableFarmerNotifications) { box.hidden = true; return; }
+  try {
+    const { data, error } = await sb
+      .from("invoice_balance")
+      .select("id, invoice_no, invoice_year, client_name, farmer_name, phone, product_name, remaining, warehouse")
+      .gt("remaining", 0)
+      .ilike("product_name", productName)
+      .limit(20);
+    if (error || !Array.isArray(data)) { box.hidden = true; return; }
+    const waiting = data.filter(i => String(i.phone || "").trim());
+    if (!waiting.length) { box.hidden = true; return; }
+    box.hidden = false;
+    box.innerHTML = `
+      <div style="margin-bottom:8px"><strong>فلاحون بانتظار وصول الصنف (${esc(productName)} +${n(addedQty)}):</strong></div>
+      <div style="display:grid;gap:6px">${waiting.map(i => {
+        const farmer = `${i.client_name || ""} ${i.farmer_name || ""}`.trim();
+        const msg = renderNotificationMessage("arrival", {
+          farmer,
+          invoice: `${i.invoice_no}/${i.invoice_year}`,
+          product: i.product_name || productName,
+          qty: i.remaining,
+          warehouse: i.warehouse || "المخزن الرئيسي"
+        });
+        const links = buildFarmerNotificationLinks({ phone: i.phone, message: msg });
+        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 8px;border:1px solid var(--bd);border-radius:6px;background:var(--card)">
+          <span><b>${esc(farmer)}</b> · فاتورة ${esc(i.invoice_no)}/${esc(i.invoice_year)} · متبقي ${n(i.remaining)} (${esc(i.phone)})</span>
+          <span class="action-group">
+            ${links.waUrl ? `<a class="p" style="text-decoration:none;padding:4px 10px;border-radius:6px;font-size:.82rem" href="${esc(links.waUrl)}" target="_blank" rel="noopener noreferrer" data-arr-notify="whatsapp" data-arr-farmer="${esc(farmer)}" data-arr-phone="${esc(i.phone)}" data-arr-inv="${esc(i.invoice_no)}/${esc(i.invoice_year)}" data-arr-prod="${esc(productName)}" data-arr-msg="${esc(msg)}">واتساب</a>` : ""}
+            ${links.smsUrl ? `<a class="f" style="text-decoration:none;padding:4px 10px;border-radius:6px;font-size:.82rem" href="${esc(links.smsUrl)}" data-arr-notify="sms" data-arr-farmer="${esc(farmer)}" data-arr-phone="${esc(i.phone)}" data-arr-inv="${esc(i.invoice_no)}/${esc(i.invoice_year)}" data-arr-prod="${esc(productName)}" data-arr-msg="${esc(msg)}">SMS</a>` : ""}
+          </span>
+        </div>`;
+      }).join("")}</div>`;
+    box.onclick = ev => {
+      const a = ev.target.closest("[data-arr-notify]");
+      if (!a) return;
+      dispatchFarmerNotification({
+        farmer_name: a.dataset.arrFarmer,
+        phone: a.dataset.arrPhone,
+        channel: a.dataset.arrNotify,
+        event_type: "stock_arrival",
+        message: a.dataset.arrMsg,
+        invoice_no: a.dataset.arrInv,
+        product_name: a.dataset.arrProd
+      }).catch(() => {});
+    };
+  } catch (_) {
+    box.hidden = true;
+  }
+}
+
 startApp({
   page: "index",
   tabs: [
     ["invoices", "تسجيل فاتورة", ["invoices"], () => { loadLookups(); loadDossierAutofill(); loadRecentInvoices(); }],
     ["pickup", "تسليم السماد للفلاحين", ["pickup"], loadPickup],
-    ["receipts", "الأسمدة الواردة للمخزن", ["receipts"], () => { loadLookups().then(loadReceipts); }]
+    ["receipts", "الأسمدة الواردة للمخزن", ["receipts"], () => { loadLookups().then(loadReceipts); }],
+    ["queue", "المواعيد وأرقام الدور", ["queueSec"], loadQueueTab, "pickup"],
+    ["notify", "إشعارات SMS وواتساب", ["notifySec"], loadNotifyTab, "invoices"]
   ],
   ready() {
     if (!$("#lines").children.length) addLine();
@@ -908,6 +1954,7 @@ startApp({
     $("#fi [name=invoice_date]").value = today();
     $("#fp [name=w_date]").value = today();
     $("#fr [name=entry_date]").value = today();
+    syncFeatureVisibility();
     loadDossierAutofill();
     loadRecentInvoices();
   }

@@ -4,19 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>إحصائيات الزراعات والمساحات - تسيير مخزون الأسمدة</title>
+<meta name="description" content="تحليل وتوزيع المساحات المزروعة حسب نوع الزراعة والمنطقة مع تصدير PDF وCSV.">
+<meta name="theme-color" content="#175236">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif">
 <link rel="stylesheet" href="common.css">
 </head>
 <body>
 <header>
   <div style="display:flex;gap:10px;align-items:center">
-    <button class="p" id="menu" aria-label="القائمة" style="background:var(--ac);color:#1d2b22">☰</button>
+    <button class="f" id="menu" aria-label="القائمة">☰</button>
     <h1>إحصائيات الزراعات والمساحات المزروعة</h1>
   </div>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-    <span id="links" style="display:flex;gap:6px;flex-wrap:wrap"></span>
-    <span id="who" style="font-size:.85rem"></span>
-    <button class="p" id="pwb" hidden style="background:var(--ac);color:#1d2b22">كلمة المرور</button>
-    <button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button>
+    <span id="links" style="display:flex;gap:4px;flex-wrap:wrap"></span>
+    <span id="who"></span>
+    <button class="f" id="pwb" hidden>الإعدادات</button>
+    <button class="f" id="out" hidden>خروج</button>
   </div>
 </header>
 <main>
@@ -124,25 +128,28 @@ function renderCrops() {
 
   $("#dT").innerHTML = tbl(
     ["رقم الملف", "اسم الفلاح", "المنطقة", "الزراعة", "المساحة (هكتار)", "التاريخ"],
-    rows.map(d => [
-      `<b>${esc(d.dossier_no)}</b>`,
-      esc(d.farmer_name),
-      esc(d.zone || "-"),
-      esc(d.culture || "-"),
-      `<input type="number" step="any" min="0" data-sup="${esc(d.dossier_no)}" value="${d.superficie !== "" && d.superficie != null ? esc(d.superficie) : ""}" placeholder="0" style="width:95px">`,
-      esc(d.reception_date)
-    ])
+    rows.map(d => {
+      const idx = DOSSIERS.indexOf(d);
+      return [
+        `<b>${esc(d.dossier_no)}</b>`,
+        esc(d.farmer_name),
+        esc(d.zone || "-"),
+        esc(d.culture || "-"),
+        `<input type="number" step="any" min="0" data-sup-idx="${idx}" value="${d.superficie !== "" && d.superficie != null ? esc(d.superficie) : ""}" placeholder="0" style="width:95px">`,
+        esc(d.reception_date)
+      ];
+    })
   );
 }
 
 $("#dT").addEventListener("change", async e => {
-  const inp = e.target.closest("input[data-sup]");
+  const inp = e.target.closest("input[data-sup-idx]");
   if (!inp) return;
-  const no = inp.dataset.sup;
+  const idx = Number(inp.dataset.supIdx);
   const val = inp.value.trim();
   const num = val === "" ? "" : Number(val);
   if (val !== "" && (!Number.isFinite(num) || num < 0)) return toast("أدخل مساحة صحيحة", 1);
-  const target = DOSSIERS.find(x => String(x.dossier_no) === no);
+  const target = DOSSIERS[idx];
   if (!target) return;
   target.superficie = num;
   if (hasRemoteDb && target.id) {
@@ -151,7 +158,7 @@ $("#dT").addEventListener("change", async e => {
   }
   writeLocalDossiers(DOSSIERS);
   renderCrops();
-  toast(`تم تحديث مساحة الملف ${no}`);
+  toast(`تم تحديث مساحة الملف ${target.dossier_no}`);
 });
 
 function getFilteredCrops() {

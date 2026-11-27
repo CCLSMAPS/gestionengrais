@@ -4,19 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>استقبال ملفات الفلاحين (Accusé de réception) - CCLS ADRAR</title>
+<meta name="description" content="إيداع ملفات الفلاحين، التحقق من التكرار، وإصدار وطباعة وصل الاستلام.">
+<meta name="theme-color" content="#175236">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif">
 <link rel="stylesheet" href="common.css">
 </head>
 <body>
 <header>
   <div style="display:flex;gap:10px;align-items:center">
-    <button class="p" id="menu" aria-label="القائمة" style="background:var(--ac);color:#1d2b22">☰</button>
+    <button class="f" id="menu" aria-label="القائمة">☰</button>
     <h1>استقبال ملفات الفلاحين (Accusé de réception)</h1>
   </div>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-    <span id="links" style="display:flex;gap:6px;flex-wrap:wrap"></span>
-    <span id="who" style="font-size:.85rem"></span>
-    <button class="p" id="pwb" hidden style="background:var(--ac);color:#1d2b22">كلمة المرور</button>
-    <button class="p" id="out" hidden style="background:var(--ac);color:#1d2b22">خروج</button>
+    <span id="links" style="display:flex;gap:4px;flex-wrap:wrap"></span>
+    <span id="who"></span>
+    <button class="f" id="pwb" hidden>الإعدادات</button>
+    <button class="f" id="out" hidden>خروج</button>
   </div>
 </header>
 <main>
@@ -55,7 +59,7 @@
       <strong>وصل استلام الملف (Accusé de réception de dossier)</strong>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button type="button" class="p" id="doPrintBtn">طباعة الوصل</button>
-        <button type="button" class="p" id="pdfSlipBtn" style="background:var(--ac);color:#1d2b22">تحميل الوصل PDF</button>
+        <button type="button" class="f" id="pdfSlipBtn">تحميل الوصل PDF</button>
         <button type="button" class="f" id="hidePrintBtn">إخفاء</button>
       </div>
     </div>
@@ -347,10 +351,10 @@ function renderArchive() {
       esc(d.phone || "-"),
       d.superficie !== "" && d.superficie != null ? n(d.superficie) : "-",
       esc(d.secteur || "/"),
-      `<div style="display:flex;gap:4px;flex-wrap:wrap">
+      `<div class="action-group">
         <button type="button" class="f" data-edit="${idx}">تعديل</button>
         <button type="button" class="f" data-slip="${idx}">طباعة الوصل</button>
-        <button type="button" class="p" data-del="${idx}" style="background:var(--bad);padding:6px 10px">حذف</button>
+        <button type="button" class="f btn-danger" data-del="${idx}">حذف</button>
       </div>`
     ])
   );
@@ -696,11 +700,16 @@ $("#dT").onclick = async e => {
     const idx = Number(delBtn.dataset.del);
     const target = DOSSIERS[idx];
     if (!target) return;
-    if (!confirm(`حذف الملف رقم ${target.dossier_no} (${target.farmer_name})؟`)) return;
-    if (hasRemoteDb && target.id) {
-      const { error } = await sb.from("dossier_receptions").delete().eq("id", target.id);
-      if (error) return toast(error.message, 1);
-    }
+    if (!confirm(`نقل الملف رقم ${target.dossier_no} (${target.farmer_name}) إلى سلة المحذوفات؟`)) return;
+    const res = await softDeleteItem({
+      entityType: "ملف فلاح",
+      tableName: "dossier_receptions",
+      entityLabel: `ملف ${target.dossier_no} — ${target.farmer_name}`,
+      originalId: target.id || target.dossier_no,
+      payload: target,
+      localOnly: !(hasRemoteDb && target.id)
+    });
+    if (!res.ok) return toast(res.error?.message || "تعذّر الحذف", 1);
     DOSSIERS.splice(idx, 1);
     if (editingIdx === idx) cancelEdit(false);
     else if (editingIdx !== null && idx < editingIdx) editingIdx -= 1;
@@ -708,7 +717,7 @@ $("#dT").onclick = async e => {
     syncLists();
     renderArchive();
     renderDupAlert();
-    toast("تم حذف الملف");
+    toast("تم نقل الملف إلى سلة المحذوفات");
   }
 };
 

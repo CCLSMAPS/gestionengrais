@@ -16,12 +16,32 @@ create table if not exists public.bon_sorties (
   created_at timestamptz default now()
 );
 
+create index if not exists idx_bon_sorties_bon_no on public.bon_sorties (bon_no);
+create index if not exists idx_bon_sorties_date on public.bon_sorties (sortie_date);
+
 alter table public.bon_sorties enable row level security;
 
 drop policy if exists "authenticated read bons" on public.bon_sorties;
 create policy "authenticated read bons" on public.bon_sorties
-  for select to authenticated using (true);
+  for select to authenticated using (
+    not exists (
+      select 1 from public.profiles p
+      where p.user_id = auth.uid() and coalesce(p.is_blocked, false)
+    )
+  );
 
 drop policy if exists "authenticated write bons" on public.bon_sorties;
 create policy "authenticated write bons" on public.bon_sorties
-  for all to authenticated using (true) with check (true);
+  for all to authenticated
+  using (
+    not exists (
+      select 1 from public.profiles p
+      where p.user_id = auth.uid() and coalesce(p.is_blocked, false)
+    )
+  )
+  with check (
+    not exists (
+      select 1 from public.profiles p
+      where p.user_id = auth.uid() and coalesce(p.is_blocked, false)
+    )
+  );
