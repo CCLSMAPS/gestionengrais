@@ -646,4 +646,9 @@ assert.equal(commonSandbox.hasPageAccess(["rbac:v2", "page:gate"], "gate.html"),
 assert.equal(commonSandbox.hasPageAccess(["rbac:v2", "page:gate"], "index.html"), false);
 assert.equal(commonSandbox.hasPageAccess(["rbac:v2", "page:gate"], "bons.html"), false);
 
+// Security regression checks: director publishing is admin-only and public kiosk names are anonymized.
+assert.equal((serverSrc.match(/if \(!\(await isAdminAuth\(auth\)\)\) return res\.status\(403\)/g) || []).length, 2);
+assert.match(serverSrc, /display_name: safeStr\(t\?\.queue_no \? `فلاح رقم \\u\{?\$\{/);
+assert.doesNotMatch(serverSrc, /display_name: safeStr\(t\?\.display_name \|\| t\?\.farmer_name/);
+
 console.log(`ALL ${htmlPages.length} PAGES, BUNDLES, MANIFEST, AGGREGATOR, RBAC, SETTINGS, QR-BON, OPS-SUITE, 9-PRO-FEATURES, PHOTO-PROOF, LOSS-TOLERANCE, AND SECURITY CHECKS PASSED`);
