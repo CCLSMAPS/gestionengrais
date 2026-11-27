@@ -1746,7 +1746,8 @@ html[data-theme="dark"] .row-bad {
   body.printing-list #dossiersPrintReport,
   body.printing-list #etatPrintReport,
   body.printing-list #analyticsPrintReport,
-  body.printing-list #queuePrintArea {
+  body.printing-list #queuePrintArea,
+  body.printing-list #gatePrintReport {
     display: block !important;
   }
 }

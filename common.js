@@ -939,6 +939,7 @@ const PAGE_PERMS = {
   "page:reception": ["reception.html", "1. استقبال الملفات"],
   "page:index": ["index.html", "2. الفواتير والوارد"],
   "page:bons": ["bons.html", "3. أذون الخروج"],
+  "page:gate": ["gate.html", "بوابة أعوان الأمن (QR)"],
   "page:warehouse": ["warehouse.html", "4. تسيير المخزن"],
   "page:crops": ["crops.html", "5. إحصائيات الزراعات"],
   "page:users": ["users.html", "6. المستخدمون والصلاحيات"]
@@ -967,6 +968,7 @@ const PAGES = [
   ["reception.html", "1. استقبال الملفات", ["index.html", "reception.html"]],
   ["index.html", "2. الفواتير والوارد", ["index.html"]],
   ["bons.html", "3. أذون الخروج", ["index.html", "warehouse.html", "bons.html"]],
+  ["gate.html", "بوابة الأمن (QR)", ["bons.html", "pickup", "log", "invoices"]],
   ["warehouse.html", "4. تسيير المخزن", ["warehouse.html"]],
   ["crops.html", "5. إحصائيات الزراعات", ["index.html", "warehouse.html", "crops.html"]],
   ["users.html", "6. المستخدمون", ["users.html"]]
@@ -1085,22 +1087,22 @@ function applyActionPermissions(root = document) {
     });
   };
 
-  toggleEls("[data-del], [data-del-i], [data-del-p], [data-del-r], [data-del-inv], [data-del-log], [data-del-adj], [data-del-queue], [data-del-transfer], [data-del-driver], [data-del-note], [data-purge-bin], [data-act='del'], button.btn-danger", canDelete);
-  toggleEls("[data-edit], [data-edit-i], [data-edit-p], [data-edit-r], [data-edit-inv], [data-edit-log], [data-edit-bon], [data-edit-adj], [data-edit-driver], [data-queue-status], [data-toggle-note]", canEdit);
+  toggleEls("[data-del], [data-del-i], [data-del-p], [data-del-r], [data-del-inv], [data-del-log], [data-del-adj], [data-del-queue], [data-del-transfer], [data-del-driver], [data-del-note], [data-purge-bin], [data-act='del'], button.btn-danger:not(#gateStopCam):not(#denyGateExitBtn):not(#logUnknownBlockBtn)", canDelete);
+  toggleEls("[data-edit], [data-edit-i], [data-edit-p], [data-edit-r], [data-edit-inv], [data-edit-log], [data-edit-bon], [data-edit-adj], [data-edit-driver], [data-queue-status], [data-toggle-note], [data-visitor-exit], [data-toggle-incident], [data-toggle-watch]", canEdit);
   toggleEls("[data-restore-bin]", canEdit || canCreate);
   toggleEls("[data-revoke-session]", isAdmin);
   toggleEls("input[data-sup-idx]", canEdit, true);
   toggleEls("#wT button[data-id]:not([data-act='del']), #cT button[data-id]:not([data-act='del']), #pT button[data-id]", canEdit);
 
-  toggleEls("#printDashBtn, #printDossiers, #doPrintBtn, #printBonBtn, #printEtatBtn, #printQueueBtn, [data-bon], [data-slip]", canPrint);
+  toggleEls("#printDashBtn, #printDossiers, #doPrintBtn, #printBonBtn, #printEtatBtn, #printQueueBtn, #printGateReportBtn, [data-bon], [data-slip]", canPrint);
   toggleEls("#pdfDashBtn, #pdfDossiers, #pdfSlipBtn, #pdfBonBtn", canPdf);
-  toggleEls("#exportCropCsv, #exportRemainingCsv, #exportMonthlyCsv, #exportYoYCsv, #xd, #xb, #xlow, #xi, #xl, #xc, #xAdj, #xQueue, #xTransfers, #xDrivers", canCsv);
-  toggleEls("#dashRefresh", canRefresh);
+  toggleEls("#exportCropCsv, #exportRemainingCsv, #exportMonthlyCsv, #exportYoYCsv, #xd, #xb, #xlow, #xi, #xl, #xc, #xAdj, #xQueue, #xTransfers, #xDrivers, #xVisitors, #xGateLog", canCsv);
+  toggleEls("#dashRefresh, #gateRefreshBtn", canRefresh);
 
   // Create forms submit buttons (allow save if creating or currently in edit mode with edit permission)
-  toggleEls("#addLine, #submitDossierBtn, #submitInvBtn, #submitPickupBtn, #submitReceiptBtn, #submitAdjBtn, #submitQueueBtn, #submitTransferBtn, #submitDriverBtn, #addStickyNoteBtn, #fw button.p, #fc button.p, #fp2 button.p, #fBon button.p, #fu button.p, #fro button.p", canCreate);
+  toggleEls("#addLine, #submitDossierBtn, #submitInvBtn, #submitPickupBtn, #submitReceiptBtn, #submitAdjBtn, #submitQueueBtn, #submitTransferBtn, #submitDriverBtn, #addStickyNoteBtn, #submitVisitorBtn, #submitIncidentBtn, #submitWatchBtn, #submitShiftBtn, #confirmGateExitBtn, #denyGateExitBtn, #fw button.p, #fc button.p, #fp2 button.p, #fBon button.p, #fu button.p, #fro button.p", canCreate);
   if (!canCreate && !canEdit) {
-    toggleEls("#fi button.p, #fp button.p, #fr button.p, #fAdj button.p, #fqApp button.p, #fTransfer button.p, #fDriver button.p", false);
+    toggleEls("#fi button.p, #fp button.p, #fr button.p, #fAdj button.p, #fqApp button.p, #fTransfer button.p, #fDriver button.p, #fVisitor button.p, #fIncident button.p, #fWatch button.p, #fShift button.p", false);
   }
   toggleEls("#fInvEdit button.p, #fLogEdit button.p", canEdit);
   toggleEls("#toggleQueueFeatureBtn, #toggleNotifyFeatureBtn", canSysSettings, true);
@@ -1601,7 +1603,8 @@ function startApp({ page, tabs, ready }) {
       "ccls_dossiers_2026_2027", "ccls_invoice_meta", "ccls_bons_2026_2027", "ccls_stock_in_expiry",
       "ccls_stock_adjustments_v1", "ccls_pickup_queue_v1", "ccls_farmer_notifications_v1",
       "ccls_warehouse_transfers_v1", "ccls_drivers_registry_v1", PRODUCT_LOSS_PCT_KEY, BON_PHOTOS_KEY,
-      FARMER_CARD_PHOTOS_KEY, RECYCLE_BIN_KEY, INVOICE_NOTES_KEY
+      FARMER_CARD_PHOTOS_KEY, RECYCLE_BIN_KEY, INVOICE_NOTES_KEY,
+      "ccls_gate_verifications_v1", "ccls_gate_visitors_v1", "ccls_gate_incidents_v1", "ccls_gate_watchlist_v1", "ccls_gate_shifts_v1"
     ];
     const data = {};
     keys.forEach(k => {
@@ -1630,7 +1633,8 @@ function startApp({ page, tabs, ready }) {
         "ccls_dossiers_2026_2027", "ccls_invoice_meta", "ccls_bons_2026_2027", "ccls_stock_in_expiry",
         "ccls_stock_adjustments_v1", "ccls_pickup_queue_v1", "ccls_farmer_notifications_v1",
         "ccls_warehouse_transfers_v1", "ccls_drivers_registry_v1", PRODUCT_LOSS_PCT_KEY, BON_PHOTOS_KEY,
-        FARMER_CARD_PHOTOS_KEY, RECYCLE_BIN_KEY, INVOICE_NOTES_KEY
+        FARMER_CARD_PHOTOS_KEY, RECYCLE_BIN_KEY, INVOICE_NOTES_KEY,
+        "ccls_gate_verifications_v1", "ccls_gate_visitors_v1", "ccls_gate_incidents_v1", "ccls_gate_watchlist_v1", "ccls_gate_shifts_v1"
       ]);
       Object.entries(parsed.data).forEach(([k, v]) => {
         if (allowedKeys.has(k) && typeof v === "string") localStorage.setItem(k, v);
@@ -1666,7 +1670,8 @@ function startApp({ page, tabs, ready }) {
       "ccls_dossiers_2026_2027", "ccls_invoice_meta", "ccls_bons_2026_2027", "ccls_stock_in_expiry",
       "ccls_stock_adjustments_v1", "ccls_pickup_queue_v1", "ccls_farmer_notifications_v1",
       "ccls_warehouse_transfers_v1", "ccls_drivers_registry_v1", PRODUCT_LOSS_PCT_KEY, BON_PHOTOS_KEY,
-      FARMER_CARD_PHOTOS_KEY, RECYCLE_BIN_KEY, INVOICE_NOTES_KEY
+      FARMER_CARD_PHOTOS_KEY, RECYCLE_BIN_KEY, INVOICE_NOTES_KEY,
+      "ccls_gate_verifications_v1", "ccls_gate_visitors_v1", "ccls_gate_incidents_v1", "ccls_gate_watchlist_v1", "ccls_gate_shifts_v1"
     ].forEach(k => {
       try { localStorage.removeItem(k); } catch (_) {}
     });
@@ -1700,6 +1705,11 @@ function startApp({ page, tabs, ready }) {
       .map(p => `<a class="lk" href="${p[0]}"${p[0] === currentPageFile ? ' aria-current="page"' : ""}>${p[1]}</a>`).join("");
     nav.querySelectorAll("button").forEach(b => b.hidden = !ok.some(t => t[0] === b.dataset.t));
     if (!ok.length) {
+      const allowedList = PAGES.filter(p => hasPageAccess(P, p[0]));
+      if (me?.is_blocked !== true && allowedList.length === 1 && allowedList[0][0] !== currentPageFile && typeof window !== "undefined" && window.location) {
+        window.location.replace(allowedList[0][0]);
+        return;
+      }
       $("#app").hidden = true;
       $("#cfg").textContent = me?.is_blocked === true
         ? "تم تعليق هذا الحساب من قِبل مسؤول النظام. يرجى مراجعة الإدارة."

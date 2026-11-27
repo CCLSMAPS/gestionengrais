@@ -48,6 +48,7 @@ const ALLOWED_ROOT_FILES = new Map([
   ["/analytics.html", "analytics.html"],
   ["/reception.html", "reception.html"],
   ["/bons.html", "bons.html"],
+  ["/gate.html", "gate.html"],
   ["/warehouse.html", "warehouse.html"],
   ["/crops.html", "crops.html"],
   ["/users.html", "users.html"],

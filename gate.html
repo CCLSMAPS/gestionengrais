@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>بوابة أعوان الأمن - التحقق والمراقبة (CCLS ADRAR)</title>
+<meta name="description" content="الصفحة المخصصة لأعوان الأمن عند بوابة المخزن: التحقق من أذون الخروج عبر QR، سجل دخول وخروج المركبات والزوار، البلاغات الأمنية، وتسليم النوبات.">
+<meta name="theme-color" content="#175236">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif">
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<header>
+  <div style="display:flex;gap:10px;align-items:center">
+    <button class="f" id="menu" aria-label="القائمة">☰</button>
+    <h1>بوابة أعوان الأمن — التحقق والمراقبة</h1>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span id="links" style="display:flex;gap:4px;flex-wrap:wrap"></span>
+    <span id="who"></span>
+    <button class="f" id="pwb" hidden>الإعدادات</button>
+    <button class="f" id="out" hidden>خروج</button>
+  </div>
+</header>
+<main>
+<div id="cfg" class="box" hidden></div>
+<div id="app" hidden>
+<nav></nav>
+
+<section id="gateVerifySec" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+    <div>
+      <h2 style="margin:0;padding:0;border:0">التحقق من إذن الخروج عند البوابة (QR)</h2>
+      <div id="gateSyncState" style="font-size:.82rem;color:var(--mu);margin-top:4px">جارٍ التحميل...</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button type="button" class="f" id="gateRefreshBtn">تحديث السجلات</button>
+      <a class="f" href="verify.html" target="_blank" rel="noopener noreferrer" style="text-decoration:none">صفحة التحقق العامة</a>
+    </div>
+  </div>
+
+  <div class="cards" id="gateKpiCards"></div>
+
+  <div id="gateAlertBanner" class="alert-bad" hidden></div>
+
+  <div class="verify-scanner-grid">
+    <div class="verify-panel">
+      <h3 style="margin-top:0">مسح بالقارئ أو إدخال رقم الإذن</h3>
+      <form id="gateVerifyForm" style="grid-template-columns:1fr auto;gap:8px;align-items:end">
+        <label style="margin:0">رقم إذن الخروج أو رابط QR
+          <input id="gateVerifyInput" placeholder="امسح رمز QR أو أدخل رقم الإذن (مثال: 1692)" autocomplete="off" autofocus>
+        </label>
+        <button type="submit" class="p" id="gateCheckBtn">فحص الإذن</button>
+      </form>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-top:10px">
+        <input id="gateQuickPlateInput" placeholder="تحقق سريع من ترقيم شاحنة في قائمة المراقبة (مثال: 1128-517-16)" autocomplete="off">
+        <button type="button" class="f" id="gateQuickPlateBtn">فحص الترقيم</button>
+      </div>
+      <div id="gateQuickPlateMsg" style="font-size:.82rem;margin-top:6px" hidden></div>
+      <div style="font-size:.8rem;color:var(--mu);margin-top:8px">
+        يعمل مع قارئ الباركود/QR اليدوي (USB)، الإدخال المباشر لرقم الإذن، أو مسح الرمز المطبوع على إذن الخروج.
+      </div>
+    </div>
+
+    <div class="verify-panel">
+      <h3 style="margin-top:0">المسح بالكاميرا أو صورة QR</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button type="button" class="p" id="gateStartCam">تشغيل الكاميرا للمسح</button>
+        <button type="button" class="f btn-danger" id="gateStopCam" hidden>إيقاف الكاميرا</button>
+        <label class="f" style="display:inline-flex;flex-direction:row;align-items:center;gap:6px;margin:0;cursor:pointer;padding:9px 14px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx);min-height:42px">
+          <span>فحص من صورة QR</span>
+          <input type="file" id="gateQrFile" accept="image/*" hidden>
+        </label>
+      </div>
+      <div id="gateCamStatus" style="font-size:.82rem;color:var(--mu);margin-top:8px"></div>
+      <div id="gateCamBox" class="verify-cam-box" hidden>
+        <video id="gateVideo" playsinline muted></video>
+      </div>
+      <canvas id="gateCanvas" hidden></canvas>
+    </div>
+  </div>
+
+  <div id="gateResultBox" hidden></div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:16px 0 8px">
+    <h3 style="margin:0">آخر عمليات الفحص والعبور عند البوابة</h3>
+    <span style="font-size:.81rem;color:var(--mu)">تُحدَّث تلقائياً بعد كل تأكيد خروج أو منع عبور</span>
+  </div>
+  <div class="w" id="gateRecentTable"></div>
+</section>
+
+<section id="gateVisitorsSec" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+    <div>
+      <h2 style="margin:0;padding:0;border:0">سجل دخول وخروج المركبات والفلاحين والزوار</h2>
+      <span style="font-size:.82rem;color:var(--mu)">تتبع فوري لكل من يدخل محيط التعاونية مع حساب وقت المكوث وتسجيل المغادرة بنقرة واحدة</span>
+    </div>
+    <button type="button" class="f" id="xVisitors">تصدير سجل الزوار CSV</button>
+  </div>
+
+  <div class="cards" id="visitorCards"></div>
+
+  <form id="fVisitor" style="margin-bottom:16px">
+    <label>نوع الحركة
+      <select name="entry_type" required>
+        <option value="truck_load">شاحنة شحن / نقل أسمدة</option>
+        <option value="truck_supply">شاحنة توريد / إدخال بضاعة</option>
+        <option value="farmer">فلاح / مستفيد</option>
+        <option value="official">زائر / مصلحة رسمية</option>
+      </select>
+    </label>
+    <label>الاسم الكامل (السائق / الفلاح / الزائر)
+      <input name="full_name" required placeholder="مثال: بن علي محمد" autocomplete="off">
+    </label>
+    <label>ترقيم المركبة (إن وُجد)
+      <input name="truck_no" placeholder="مثال: 1128-517-16" autocomplete="off">
+    </label>
+    <label>رقم بطاقة التعريف / بطاقة الفلاح / الرخصة
+      <input name="id_doc" placeholder="رقم الوثيقة" autocomplete="off">
+    </label>
+    <label>رقم الهاتف
+      <input name="phone" type="tel" placeholder="06XXXXXXXX" autocomplete="off">
+    </label>
+    <label>الغرض من الدخول / الوجهة
+      <select name="purpose">
+        <option value="سحب أسمدة">سحب أسمدة من المخزن</option>
+        <option value="إيداع أو متابعة ملف">إيداع أو متابعة ملف</option>
+        <option value="تفريغ حمولة وارد">تفريغ حمولة وارد</option>
+        <option value="مراجعة الإدارة">مراجعة الإدارة</option>
+        <option value="صيانة أو خدمات">صيانة أو خدمات</option>
+      </select>
+    </label>
+    <label style="grid-column:1/-1">ملاحظات الحارس عند الدخول
+      <input name="note" placeholder="مثال: الشاحنة فارغة عند الدخول / مرفق بوصل...">
+    </label>
+    <button class="p" id="submitVisitorBtn">تسجيل دخول إلى التعاونية</button>
+  </form>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:10px;align-items:end;margin-bottom:10px">
+    <label>بحث في سجل الدخول والخروج
+      <input id="visSearch" placeholder="الاسم، ترقيم المركبة، الوثيقة، الغرض...">
+    </label>
+    <label>تصفية حسب التواجد
+      <select id="visStatusFilter">
+        <option value="inside">المتواجدون داخل الموقع الآن فقط</option>
+        <option value="">الكل (الداخل والخارج)</option>
+        <option value="exited">الذين غادروا الموقع</option>
+      </select>
+    </label>
+    <label>تصفية حسب التاريخ
+      <input id="visDateFilter" type="date">
+    </label>
+  </div>
+
+  <div class="w" id="visitorsTable"></div>
+</section>
+
+<section id="gateSecuritySec" hidden>
+  <h2>البلاغات الأمنية، قائمة المركبات المراقبة، وتسليم النوبات</h2>
+
+  <div class="settings-tabs" id="secSubTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+    <button type="button" class="f" data-sec-pane="incidents" aria-pressed="true">البلاغات والمخالفات الأمنية</button>
+    <button type="button" class="f" data-sec-pane="watchlist" aria-pressed="false">قائمة المركبات المراقبة / الممنوعة</button>
+    <button type="button" class="f" data-sec-pane="shifts" aria-pressed="false">دفتر النوبات وتفقد البوابة</button>
+  </div>
+
+  <div data-sec-panel="incidents">
+    <form id="fIncident" style="margin-bottom:16px">
+      <label>نوع البلاغ
+        <select name="incident_type" required>
+          <option value="mismatch">عدم تطابق الحمولة أو ترقيم الشاحنة</option>
+          <option value="duplicate_bon">محاولة استعمال إذن خروج مكرر</option>
+          <option value="unauthorized">دخول أو خروج بدون إذن / وثيقة</option>
+          <option value="dispute">خلاف أو إشكال أمام البوابة</option>
+          <option value="facility">ملاحظة أمنية حول الأبواب / الإنارة / السياج</option>
+        </select>
+      </label>
+      <label>درجة الأهمية
+        <select name="severity" required>
+          <option value="medium">تنبيه متوسط</option>
+          <option value="high">طارئ / عاجل</option>
+          <option value="low">ملاحظة عادية</option>
+        </select>
+      </label>
+      <label>رقم إذن الخروج (إن وجد)
+        <input name="bon_no" id="incBonInput" placeholder="مثال: 1692" autocomplete="off">
+      </label>
+      <label>ترقيم المركبة (إن وجد)
+        <input name="truck_no" id="incTruckInput" placeholder="مثال: 1128-517-16" autocomplete="off">
+      </label>
+      <label style="grid-column:1/-1">عنوان البلاغ
+        <input name="title" required placeholder="وصف مختصر للحادثة أو الملاحظة الأمنية">
+      </label>
+      <label style="grid-column:1/-1">التفاصيل والإجراء المتخذ
+        <textarea name="details" rows="2" required placeholder="اذكر التفاصيل الدقيقة والإجراء الذي قام به عون الأمن..." style="width:100%;padding:8px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx);font-family:inherit"></textarea>
+      </label>
+      <button class="p" id="submitIncidentBtn">تسجيل البلاغ الأمني</button>
+    </form>
+    <div class="w" id="incidentsTable"></div>
+  </div>
+
+  <div data-sec-panel="watchlist" hidden>
+    <p style="margin:0 0 12px;color:var(--mu);font-size:.88rem">
+      أي مركبة مضافة هنا يُظهر النظام تنبيهاً فورياً لعون الأمن عند مسح إذن خروجها أو عند تسجيل دخولها من البوابة.
+    </p>
+    <form id="fWatch" style="margin-bottom:16px">
+      <label>ترقيم المركبة
+        <input name="plate_no" required placeholder="مثال: 1128-517-16" autocomplete="off">
+      </label>
+      <label>مستوى الإجراء
+        <select name="flag_level" required>
+          <option value="watch">مراقبة وتفتيش دقيق عند العبور</option>
+          <option value="ban">ممنوعة من الدخول / الخروج إلا بإذن الإدارة</option>
+        </select>
+      </label>
+      <label style="grid-column:1/-1">سبب الإدراج في قائمة المراقبة
+        <input name="reason" required placeholder="مثال: تكرار مخالفة الوزن / قرار إداري...">
+      </label>
+      <button class="p" id="submitWatchBtn">إضافة إلى قائمة المراقبة</button>
+    </form>
+    <div class="w" id="watchlistTable"></div>
+  </div>
+
+  <div data-sec-panel="shifts" hidden>
+    <form id="fShift" style="margin-bottom:16px">
+      <label>تاريخ النوبة
+        <input name="shift_date" type="date" required>
+      </label>
+      <label>فترة النوبة
+        <select name="shift_period" required>
+          <option value="morning">الصباحية (06:00 - 14:00)</option>
+          <option value="evening">المسائية (14:00 - 22:00)</option>
+          <option value="night">الليلية (22:00 - 06:00)</option>
+        </select>
+      </label>
+      <label>حالة البوابة والمخزن
+        <select name="status" required>
+          <option value="normal">هادئة ومستقرة</option>
+          <option value="busy">حركة شحن كثيفة</option>
+          <option value="incident">تحتوي على ملاحظات أو بلاغ مسجّل</option>
+        </select>
+      </label>
+      <label>تفقد المداخل والإنارة والأقفال
+        <select name="perimeter_ok">
+          <option value="yes">الأقفال، الأختام، والإنارة سليمة ✓</option>
+          <option value="warn">توجد ملاحظة تحتاج صيانة</option>
+        </select>
+      </label>
+      <label style="grid-column:1/-1">تقرير تسليم النوبة للعون الموالي
+        <textarea name="checklist_note" rows="2" required placeholder="عدد المفاتيح المسلمة، الشحنات المتبقية، أي تنبيهات للفترة القادمة..." style="width:100%;padding:8px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx);font-family:inherit"></textarea>
+      </label>
+      <button class="p" id="submitShiftBtn">حفظ محضر النوبة</button>
+    </form>
+    <div class="w" id="shiftsTable"></div>
+  </div>
+</section>
+
+<section id="gateHistorySec" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+    <h2 style="margin:0;padding:0;border:0">سجل عبور الشحنات وعمليات التحقق الكامل</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button type="button" class="p" id="printGateReportBtn">طباعة التقرير اليومي للبوابة</button>
+      <button type="button" class="f" id="xGateLog">تصدير CSV</button>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:10px;align-items:end;margin-bottom:12px">
+    <label>بحث
+      <input id="gateHistSearch" placeholder="رقم الإذن، الفلاح، السائق، الشاحنة، الحارس...">
+    </label>
+    <label>القرار عند البوابة
+      <select id="gateHistDecision">
+        <option value="">كل القرارات</option>
+        <option value="allowed">مسموح بالخروج ✓</option>
+        <option value="blocked">مرفوض / موقوف ✕</option>
+      </select>
+    </label>
+    <label>من تاريخ<input id="gateHistD1" type="date"></label>
+    <label>إلى تاريخ<input id="gateHistD2" type="date"></label>
+  </div>
+
+  <div class="w" id="gateFullLogTable"></div>
+</section>
+
+</div>
+</main>
+
+<div id="gatePrintReport" hidden></div>
+
+<div id="gatePhotoModal" class="sticky-modal-backdrop" hidden>
+  <div class="sticky-modal" role="dialog" aria-modal="true" aria-labelledby="gatePhotoModalTitle">
+    <div class="sticky-modal-head">
+      <div>
+        <strong id="gatePhotoModalTitle" style="font-size:1.05rem">صورة التحميل الموثّقة</strong>
+        <div id="gatePhotoModalMeta" style="font-size:.84rem;color:var(--mu);margin-top:2px"></div>
+      </div>
+      <button type="button" class="f" id="closeGatePhotoModalBtn">إغلاق</button>
+    </div>
+    <div id="gatePhotoModalBody" style="margin-top:12px;display:grid;gap:10px"></div>
+  </div>
+</div>
+
+<div id="toast" role="status"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="common.js"></script>
+<script src="bons-data.js"></script>
+<script src="dist/dossiers-pdf.js"></script>
+<script>
+const GATE_CHECKS_KEY = "ccls_gate_verifications_v1";
+const GATE_VISITORS_KEY = "ccls_gate_visitors_v1";
+const GATE_INCIDENTS_KEY = "ccls_gate_incidents_v1";
+const GATE_WATCHLIST_KEY = "ccls_gate_watchlist_v1";
+const GATE_SHIFTS_KEY = "ccls_gate_shifts_v1";
+const BON_PHOTOS_KEY_LOCAL = "ccls_bon_photos_v1";
+
+let BONS_CACHE = [];
+let GATE_LOGS = [];
+let VISITORS = [];
+let INCIDENTS = [];
+let WATCHLIST = [];
+let SHIFTS = [];
+let remoteFlags = { bons: false, checks: false, visitors: false, incidents: false, watchlist: false, shifts: false };
+let gateCamStream = null;
+let gateCamTimer = null;
+let pendingUrlBon = new URLSearchParams(window.location.search).get("bon")
+  || new URLSearchParams(window.location.search).get("verify")
+  || "";
+
+function isSafePhotoUrl(raw) {
+  return typeof raw === "string" && /^data:image\/(?:jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/i.test(raw.trim());
+}
+
+function readLocalArr(key) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_) { return []; }
+}
+
+function writeLocalArr(key, rows, limit = 300) {
+  try {
+    localStorage.setItem(key, JSON.stringify((rows || []).slice(-limit)));
+  } catch (_) {}
+}
+
+function getBonPhotoForGate(bonNo, rows) {
+  const key = String(bonNo || "").trim().toUpperCase();
+  const list = Array.isArray(rows) ? rows : BONS_CACHE;
+  const hit = key ? list.find(b => String(b.bon_no || "").trim().toUpperCase() === key && isSafePhotoUrl(b.truck_photo)) : null;
+  if (hit) return { photo: hit.truck_photo.trim(), note: String(hit.photo_note || "").trim() };
+  try {
+    const map = JSON.parse(localStorage.getItem(BON_PHOTOS_KEY_LOCAL) || "{}");
+    const entry = key ? map?.[key] : null;
+    if (entry && isSafePhotoUrl(entry.photo)) {
+      return { photo: entry.photo.trim(), note: String(entry.note || "").trim() };
+    }
+  } catch (_) {}
+  return { photo: "", note: "" };
+}
+
+function normalizePlate(plate) {
+  return String(plate || "").trim().toUpperCase().replace(/\s+/g, "");
+}
+
+function findWatchlistHit(plateNo) {
+  const target = normalizePlate(plateNo);
+  if (!target) return null;
+  return WATCHLIST.find(w => w.active !== false && normalizePlate(w.plate_no) === target) || null;
+}
+
+function fmtDate(d) {
+  if (!d) return "—";
+  const parts = String(d).slice(0, 10).split("-");
+  return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : String(d);
+}
+
+function fmtDateTime(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString("fr-FR", {
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"
+    });
+  } catch (_) {
+    return String(iso).slice(0, 16).replace("T", " ");
+  }
+}
+
+function formatDurationMinutes(startIso, endIso) {
+  if (!startIso) return "—";
+  const t1 = new Date(startIso).getTime();
+  const t2 = endIso ? new Date(endIso).getTime() : Date.now();
+  if (!Number.isFinite(t1) || !Number.isFinite(t2) || t2 < t1) return "—";
+  const mins = Math.round((t2 - t1) / 60000);
+  if (mins < 60) return `${mins} دقيقة`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${h} س ${m} د`;
+}
+
+async function loadAllGateData() {
+  BONS_CACHE = typeof readLocalBons === "function" ? readLocalBons() : [];
+  GATE_LOGS = readLocalArr(GATE_CHECKS_KEY);
+  VISITORS = readLocalArr(GATE_VISITORS_KEY);
+  INCIDENTS = readLocalArr(GATE_INCIDENTS_KEY);
+  WATCHLIST = readLocalArr(GATE_WATCHLIST_KEY);
+  SHIFTS = readLocalArr(GATE_SHIFTS_KEY);
+
+  try {
+    const [bRes, gRes, vRes, iRes, wRes, sRes] = await Promise.all([
+      sb.from("bon_sorties").select("*").order("id", { ascending: true }),
+      sb.from("gate_verifications").select("*").order("verified_at", { ascending: false }).limit(300),
+      sb.from("gate_visitors").select("*").order("entered_at", { ascending: false }).limit(300),
+      sb.from("gate_incidents").select("*").order("created_at", { ascending: false }).limit(200),
+      sb.from("gate_watchlist").select("*").order("created_at", { ascending: false }).limit(200),
+      sb.from("gate_shifts").select("*").order("created_at", { ascending: false }).limit(100)
+    ]);
+
+    if (!bRes.error && Array.isArray(bRes.data)) {
+      remoteFlags.bons = true;
+      if (bRes.data.length) {
+        BONS_CACHE = bRes.data;
+        if (typeof writeLocalBons === "function") writeLocalBons(BONS_CACHE);
+      }
+    }
+    if (!gRes.error && Array.isArray(gRes.data)) {
+      remoteFlags.checks = true;
+      if (gRes.data.length || !GATE_LOGS.length) {
+        GATE_LOGS = [...gRes.data].reverse();
+        writeLocalArr(GATE_CHECKS_KEY, GATE_LOGS);
+      }
+    }
+    if (!vRes.error && Array.isArray(vRes.data)) {
+      remoteFlags.visitors = true;
+      VISITORS = vRes.data;
+      writeLocalArr(GATE_VISITORS_KEY, VISITORS);
+    }
+    if (!iRes.error && Array.isArray(iRes.data)) {
+      remoteFlags.incidents = true;
+      INCIDENTS = iRes.data;
+      writeLocalArr(GATE_INCIDENTS_KEY, INCIDENTS);
+    }
+    if (!wRes.error && Array.isArray(wRes.data)) {
+      remoteFlags.watchlist = true;
+      WATCHLIST = wRes.data;
+      writeLocalArr(GATE_WATCHLIST_KEY, WATCHLIST);
+    }
+    if (!sRes.error && Array.isArray(sRes.data)) {
+      remoteFlags.shifts = true;
+      SHIFTS = sRes.data;
+      writeLocalArr(GATE_SHIFTS_KEY, SHIFTS);
+    }
+  } catch (_) {}
+
+  const syncEl = $("#gateSyncState");
+  if (syncEl) {
+    if (remoteFlags.bons && remoteFlags.checks) {
+      syncEl.textContent = "متصل مباشرة بقاعدة بيانات التعاونية (Supabase) ✓";
+      syncEl.style.color = "var(--pr)";
+    } else if (remoteFlags.bons) {
+      syncEl.textContent = "أذون الخروج متصلة بـ Supabase · سجلات البوابة محفوظة محلياً (نفّذ supabase-ops.sql للمزامنة السحابية الكاملة)";
+      syncEl.style.color = "var(--mu)";
+    } else {
+      syncEl.textContent = "يعمل بالوضع المحلي الاحتياطي على هذا الجهاز";
+      syncEl.style.color = "var(--ac)";
+    }
+  }
+
+  renderGateKpis();
+  renderRecentGateLog();
+  renderVisitors();
+  renderIncidents();
+  renderWatchlist();
+  renderShifts();
+  renderFullGateLog();
+
+  if (pendingUrlBon) {
+    const code = pendingUrlBon;
+    pendingUrlBon = "";
+    verifyAtGate(code);
+  }
+}
+
+function renderGateKpis() {
+  const td = today();
+  const todayLogs = GATE_LOGS.filter(x => String(x.verified_at || "").slice(0, 10) === td);
+  const todayAllowed = todayLogs.filter(x => x.decision !== "blocked");
+  const todayQty = todayAllowed.reduce((s, x) => s + Number(x.total_qty || 0), 0);
+  const insideCount = VISITORS.filter(v => v.status === "inside").length;
+  const openInc = INCIDENTS.filter(i => i.status !== "resolved").length;
+  const unitLabel = typeof getAppSettings === "function" ? getAppSettings().unitLabel : "قنطار";
+
+  $("#gateKpiCards").innerHTML = [
+    ["شحنات عبرت البوابة اليوم", todayAllowed.length],
+    [`الكمية الخارجة اليوم (${unitLabel})`, n(todayQty)],
+    ["مركبات وزوار داخل الموقع الآن", insideCount],
+    ["بلاغات أمنية مفتوحة", openInc]
+  ].map(([l, v]) => `<div class="card"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
+
+  const banner = $("#gateAlertBanner");
+  const blockedToday = todayLogs.filter(x => x.decision === "blocked").length;
+  const urgentInc = INCIDENTS.filter(i => i.status !== "resolved" && i.severity === "high");
+  if (urgentInc.length || blockedToday > 0) {
+    banner.hidden = false;
+    const parts = [];
+    if (urgentInc.length) parts.push(`يوجد ${urgentInc.length} بلاغ أمني طارئ مفتوح`);
+    if (blockedToday > 0) parts.push(`تم تسجيل ${blockedToday} حالة رفض عبور عند البوابة اليوم`);
+    banner.innerHTML = `<strong>تنبيه وردية الأمن:</strong> ${esc(parts.join(" · "))}`;
+  } else {
+    banner.hidden = true;
+    banner.innerHTML = "";
+  }
+}
+
+function renderRecentGateLog() {
+  const box = $("#gateRecentTable");
+  if (!box) return;
+  const recent = [...GATE_LOGS].slice(-12).reverse();
+  box.innerHTML = tbl(
+    ["رقم الإذن", "الفلاح", "السائق والشاحنة", "الكمية", "القرار", "التوقيت", "عون الأمن", "إجراء"],
+    recent.map(x => {
+      const isBlocked = x.decision === "blocked";
+      return [
+        `<b>${esc(x.bon_no)}</b>`,
+        esc(x.farmer_name || "—"),
+        `${esc(x.driver_name || "—")} <small>(${esc(x.truck_no || "—")})</small>`,
+        `<b>${n(x.total_qty || 0)}</b>`,
+        isBlocked ? `<span class="tag-bad">مرفوض / موقوف ✕</span>` : `<span class="tag-ok">مسموح بالخروج ✓</span>`,
+        esc(x.verified_at_label || fmtDateTime(x.verified_at)),
+        esc(x.verified_by || "عون الأمن"),
+        `<button type="button" class="f" data-recheck-bon="${esc(x.bon_no)}">إعادة فحص</button>`
+      ];
+    })
+  );
+}
+
+function stopGateCam() {
+  if (gateCamTimer) { clearTimeout(gateCamTimer); gateCamTimer = null; }
+  if (gateCamStream) { gateCamStream.getTracks().forEach(t => t.stop()); gateCamStream = null; }
+  const v = $("#gateVideo");
+  if (v) v.srcObject = null;
+  $("#gateCamBox").hidden = true;
+  $("#gateStopCam").hidden = true;
+  $("#gateStartCam").hidden = false;
+}
+
+function openGatePhotoModal(bonNo, lines) {
+  const modal = $("#gatePhotoModal");
+  if (!modal) return;
+  const rows = Array.isArray(lines) && lines.length
+    ? lines
+    : BONS_CACHE.filter(b => String(b.bon_no || "").trim().toUpperCase() === String(bonNo || "").trim().toUpperCase());
+  const h = rows[0] || {};
+  const { photo, note } = getBonPhotoForGate(bonNo, rows);
+  $("#gatePhotoModalTitle").textContent = `دليل الشاحنة — إذن خروج N° ${bonNo}`;
+  $("#gatePhotoModalMeta").textContent = `${h.farmer_name || ""} · الشاحنة: ${h.truck_no || "—"} · السائق: ${h.driver_name || "—"}`;
+  const cargo = rows.map(r => `${esc(r.designation)} (${n(r.qty)})`).join(" · ");
+  $("#gatePhotoModalBody").innerHTML = `
+    ${photo ? `<img class="bon-evidence-img" src="${photo}" alt="صورة الشاحنة للإذن ${esc(bonNo)}">` : `<p class="empty-state">لا توجد صورة تحميل مرفقة لهذا الإذن.</p>`}
+    <div style="display:grid;gap:4px;font-size:.88rem;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:10px">
+      <div><strong>التاريخ:</strong> ${esc(fmtDate(h.sortie_date))} · <strong>المنطقة:</strong> ${esc(h.zone || "—")}</div>
+      <div><strong>الحمولة المصرَّح بها:</strong> ${cargo || "—"}</div>
+      ${note ? `<div><strong>ملاحظة الموثِّق:</strong> ${esc(note)}</div>` : ""}
+    </div>`;
+  modal.hidden = false;
+}
+
+$("#closeGatePhotoModalBtn").onclick = () => { $("#gatePhotoModal").hidden = true; };
+$("#gatePhotoModal").onclick = e => { if (e.target === $("#gatePhotoModal")) $("#gatePhotoModal").hidden = true; };
+
+async function recordGateDecision({ bonHeader, totalQty, decision, note = "" }) {
+  const nowIso = new Date().toISOString();
+  const nowLabel = fmtDateTime(nowIso);
+  const rec = {
+    bon_no: String(bonHeader.bon_no || ""),
+    farmer_name: String(bonHeader.farmer_name || ""),
+    driver_name: String(bonHeader.driver_name || ""),
+    truck_no: String(bonHeader.truck_no || ""),
+    total_qty: Number(totalQty || 0),
+    decision: decision === "blocked" ? "blocked" : "allowed",
+    note: String(note || "").trim().slice(0, 240) || null,
+    verified_at: nowIso,
+    verified_at_label: nowLabel,
+    verified_by: ME?.full_name || ME?.email || "عون الأمن"
+  };
+
+  let savedRow = { id: `local-${Date.now()}`, ...rec };
+  try {
+    const { data, error } = await sb.from("gate_verifications").insert(rec).select().single();
+    if (!error && data) {
+      savedRow = data;
+      remoteFlags.checks = true;
+    }
+  } catch (_) {}
+
+  GATE_LOGS.push(savedRow);
+  writeLocalArr(GATE_CHECKS_KEY, GATE_LOGS);
+  renderGateKpis();
+  renderRecentGateLog();
+  renderFullGateLog();
+
+  // If the truck had an active visitor entry "inside", auto-offer / mark exited when allowed
+  if (rec.decision === "allowed" && rec.truck_no) {
+    const activeVisitor = VISITORS.find(v => v.status === "inside" && normalizePlate(v.truck_no) === normalizePlate(rec.truck_no));
+    if (activeVisitor) {
+      await markVisitorExited(activeVisitor.id, true);
+    }
+  }
+}
+
+async function verifyAtGate(rawInput) {
+  const cleanNo = typeof window.extractBonNoFromScan === "function"
+    ? window.extractBonNoFromScan(rawInput)
+    : String(rawInput || "").trim();
+  if (!cleanNo) return toast("أدخل رقم الإذن أو امسح رمز QR أولاً", 1);
+  $("#gateVerifyInput").value = cleanNo;
+
+  let lines = [];
+  try {
+    const { data, error } = await sb
+      .from("bon_sorties")
+      .select("*")
+      .ilike("bon_no", cleanNo)
+      .order("id", { ascending: true });
+    if (!error && Array.isArray(data) && data.length) lines = data;
+  } catch (_) {}
+  if (!lines.length) {
+    lines = BONS_CACHE.filter(b => String(b.bon_no || "").trim().toLowerCase() === cleanNo.toLowerCase());
+  }
+
+  const box = $("#gateResultBox");
+  box.hidden = false;
+
+  if (!lines.length) {
+    box.innerHTML = `
+      <div class="verify-card verify-bad">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <strong style="font-size:1.06rem;color:var(--bad)">✕ إذن خروج غير صالح أو غير مسجل في النظام</strong>
+          <span class="tag-bad">مرفوض عند البوابة</span>
+        </div>
+        <p style="margin:0 0 12px;font-size:.92rem">لم يتم العثور على إذن خروج برقم <b>${esc(cleanNo)}</b> في قاعدة البيانات. يُمنع عبور الشحنة وتُبلَّغ مصلحة الفوترة فوراً.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="f btn-danger" id="logUnknownBlockBtn">تسجيل محاولة عبور مرفوضة</button>
+          <button type="button" class="f" id="prefillUnknownIncidentBtn">فتح بلاغ أمني</button>
+        </div>
+      </div>`;
+    $("#logUnknownBlockBtn").onclick = async () => {
+      await recordGateDecision({
+        bonHeader: { bon_no: cleanNo, farmer_name: "غير مسجل", driver_name: "—", truck_no: "—" },
+        totalQty: 0,
+        decision: "blocked",
+        note: "إذن غير موجود في النظام"
+      });
+      toast("تم توثيق محاولة العبور المرفوضة في سجل البوابة", 1);
+    };
+    $("#prefillUnknownIncidentBtn").onclick = () => openIncidentWith({ bonNo: cleanNo, title: `محاولة عبور بإذن غير مسجل (${cleanNo})` });
+    toast(`الإذن رقم ${cleanNo} غير موجود في السجل`, 1);
+    return;
+  }
+
+  const h = lines[0];
+  const totalQty = lines.reduce((s, r) => s + Number(r.qty || 0), 0);
+  const prevAllowed = [...GATE_LOGS].reverse().find(x =>
+    String(x.bon_no || "").trim().toLowerCase() === String(h.bon_no || "").trim().toLowerCase() &&
+    x.decision !== "blocked"
+  );
+  const watchHit = findWatchlistHit(h.truck_no);
+  const gatePhoto = getBonPhotoForGate(h.bon_no, lines);
+  const unitLabel = typeof getAppSettings === "function" ? getAppSettings().unitLabel : "قنطار";
+
+  const isSevere = Boolean(watchHit && watchHit.flag_level === "ban");
+  const hasWarn = Boolean(prevAllowed || watchHit);
+  const cardClass = isSevere ? "verify-card verify-bad" : (hasWarn ? "verify-card verify-warn" : "verify-card verify-valid");
+  const titleColor = isSevere ? "var(--bad)" : (hasWarn ? "var(--ac)" : "var(--pr)");
+  const headline = isSevere
+    ? `⛔ تنبيه حظر: الشاحنة (${esc(h.truck_no)}) مدرجة في قائمة المنع الأمني!`
+    : prevAllowed
+    ? `⚠ تحذير تكرار: تم تأكيد خروج الإذن رقم ${esc(h.bon_no)} مسبقاً!`
+    : watchHit
+    ? `⚠ شاحنة تحت المراقبة الأمنية الخاصة — إذن رقم ${esc(h.bon_no)}`
+    : `✓ إذن خروج صالح ومعتمد — مطابق للعبور (N° ${esc(h.bon_no)})`;
+
+  const alertsHtml = [
+    watchHit
+      ? `<div class="field-alert ${watchHit.flag_level === "ban" ? "field-alert-bad" : "field-alert-warn"}" style="margin-bottom:8px">
+          <strong>تنبيه قائمة المركبات:</strong> الترقيم <b>${esc(watchHit.plate_no)}</b> (${watchHit.flag_level === "ban" ? "ممنوعة من العبور" : "تحت المراقبة الخاصة"}) — السبب: ${esc(watchHit.reason)}
+        </div>`
+      : "",
+    prevAllowed
+      ? `<div class="field-alert field-alert-warn" style="margin-bottom:8px">
+          تم تأكيد خروج هذا الإذن مسبقاً بتاريخ <b>${esc(prevAllowed.verified_at_label || fmtDateTime(prevAllowed.verified_at))}</b> بواسطة <b>${esc(prevAllowed.verified_by || "عون الأمن")}</b>. تأكد من عدم استخدام نفس الإذن مرتين!
+        </div>`
+      : ""
+  ].join("");
+
+  const photoHtml = gatePhoto.photo
+    ? `<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:10px;margin-bottom:12px">
+        <img src="${gatePhoto.photo}" class="bon-photo-preview-img" alt="صورة الشاحنة عند التحميل" style="cursor:pointer" id="gatePhotoImg">
+        <div style="display:grid;gap:4px;font-size:.86rem">
+          <strong>صورة التحميل الموثّقة للمطابقة البصرية عند البوابة</strong>
+          <span>ترقيم الشاحنة المسجل: <b style="color:var(--pr);font-family:var(--font-mono)">${esc(h.truck_no || "—")}</b></span>
+          ${gatePhoto.note ? `<span style="color:var(--mu)">${esc(gatePhoto.note)}</span>` : ""}
+          <button type="button" class="f" id="gateZoomPhotoBtn" style="justify-self:start">تكبير صورة الشاحنة</button>
+        </div>
+      </div>`
+    : `<div style="font-size:.83rem;color:var(--mu);margin-bottom:10px">لا توجد صورة تحميل مرفقة — يُنصح بمطابقة ترقيم الشاحنة وعدد الأكياس يدوياً.</div>`;
+
+  const itemsRows = lines.map((ln, idx) => `
+    <tr>
+      <td>${idx + 1}</td>
+      <td>${esc(ln.designation)}</td>
+      <td><b>${n(ln.qty)} ${esc(unitLabel)}</b></td>
+    </tr>`).join("");
+
+  box.innerHTML = `
+    <div class="${cardClass}">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <strong style="font-size:1.06rem;color:${titleColor}">${headline}</strong>
+        <span style="font-family:var(--font-mono);font-size:.88rem;font-weight:700">BON N° ${esc(h.bon_no)}</span>
+      </div>
+      ${alertsHtml}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,185px),1fr));gap:8px 14px;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:12px;margin-bottom:12px;font-size:.9rem">
+        <div><span style="color:var(--mu)">الفلاح / المستفيد:</span><br><b>${esc(h.farmer_name || "—")}</b></div>
+        <div><span style="color:var(--mu)">تاريخ الإذن:</span><br><b>${esc(fmtDate(h.sortie_date))}</b></div>
+        <div><span style="color:var(--mu)">رقم الفاتورة:</span><br><b>${esc(h.invoice_no || "—")}</b></div>
+        <div><span style="color:var(--mu)">المنطقة:</span><br><b>${esc(h.zone || "—")}</b></div>
+        <div><span style="color:var(--mu)">اسم السائق:</span><br><b>${esc(h.driver_name || "—")}</b></div>
+        <div><span style="color:var(--mu)">ترقيم الشاحنة:</span><br><b style="color:var(--pr);font-family:var(--font-mono)">${esc(h.truck_no || "—")}</b></div>
+        <div><span style="color:var(--mu)">بطاقة الفلاح:</span><br><b>${esc(h.carte_fellah || "—")}</b></div>
+        <div><span style="color:var(--mu)">الموسم:</span><br><b>${esc(h.camp || "2025/2026")}</b></div>
+      </div>
+      ${photoHtml}
+      <div class="w" style="margin-bottom:12px">
+        <table>
+          <thead><tr><th>#</th><th>الصنف (Désignation)</th><th>الكمية</th></tr></thead>
+          <tbody>
+            ${itemsRows}
+            <tr style="background:var(--surface-2);font-weight:700">
+              <td colspan="2">الإجمالي المصرّح بخروجه</td>
+              <td>${n(totalQty)} ${esc(unitLabel)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="display:grid;gap:8px;margin-bottom:12px">
+        <label style="margin:0">ملاحظة الحارس عند المطابقة (اختياري)
+          <input id="gateDecisionNote" placeholder="مثال: تمت مطابقة الترقيم والحمولة والأختام">
+        </label>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="p" id="confirmGateExitBtn">
+          ${prevAllowed ? "تسجيل عبور إضافي عند البوابة" : "تأكيد خروج الشاحنة من البوابة ✓"}
+        </button>
+        <button type="button" class="f btn-danger" id="denyGateExitBtn">رفض / إيقاف الخروج ✕</button>
+        <button type="button" class="f" id="gateReportIssueBtn">فتح بلاغ أمني</button>
+      </div>
+    </div>`;
+
+  $("#gateZoomPhotoBtn")?.addEventListener("click", () => openGatePhotoModal(h.bon_no, lines));
+  $("#gatePhotoImg")?.addEventListener("click", () => openGatePhotoModal(h.bon_no, lines));
+
+  $("#confirmGateExitBtn").onclick = async () => {
+    const note = $("#gateDecisionNote")?.value || "";
+    await recordGateDecision({ bonHeader: h, totalQty, decision: "allowed", note });
+    toast(`تم تأكيد خروج الإذن رقم ${h.bon_no} بنجاح ✓`);
+    verifyAtGate(h.bon_no);
+  };
+  $("#denyGateExitBtn").onclick = async () => {
+    const note = $("#gateDecisionNote")?.value.trim() || "موقوف عند البوابة للمراجعة";
+    await recordGateDecision({ bonHeader: h, totalQty, decision: "blocked", note });
+    toast(`تم تسجيل إيقاف/منع خروج الإذن رقم ${h.bon_no}`, 1);
+    verifyAtGate(h.bon_no);
+  };
+  $("#gateReportIssueBtn").onclick = () => {
+    openIncidentWith({
+      bonNo: h.bon_no,
+      truckNo: h.truck_no,
+      title: `ملاحظة أمنية بخصوص الإذن ${h.bon_no}`
+    });
+  };
+  if (typeof applyActionPermissions === "function") applyActionPermissions(box);
+}
+
+$("#gateVerifyForm").onsubmit = e => {
+  e.preventDefault();
+  verifyAtGate($("#gateVerifyInput").value);
+};
+
+$("#gateQuickPlateBtn").onclick = () => {
+  const plate = String($("#gateQuickPlateInput")?.value || "").trim();
+  const msgEl = $("#gateQuickPlateMsg");
+  if (!plate) {
+    if (msgEl) { msgEl.hidden = false; msgEl.style.color = "var(--bad)"; msgEl.textContent = "أدخل ترقيم الشاحنة أولاً للفحص."; }
+    return;
+  }
+  const hit = findWatchlistHit(plate);
+  if (msgEl) msgEl.hidden = false;
+  if (hit) {
+    if (msgEl) {
+      msgEl.style.color = "var(--bad)";
+      msgEl.textContent = `تنبيه: المركبة ${hit.plate_no} مدرجة (${hit.flag_level === "ban" ? "ممنوعة" : "مراقبة"}): ${hit.reason}`;
+    }
+    toast(`تنبيه: ${hit.plate_no} مدرجة (${hit.flag_level === "ban" ? "ممنوعة" : "مراقبة"})`, 1);
+  } else {
+    if (msgEl) {
+      msgEl.style.color = "var(--pr)";
+      msgEl.textContent = `الترقيم ${plate.toUpperCase()} سليم وغير مدرج في قائمة المراقبة ✓`;
+    }
+    toast(`الترقيم ${plate.toUpperCase()} سليم ✓`);
+  }
+};
+
+$("#gateStartCam").onclick = async () => {
+  const statusEl = $("#gateCamStatus");
+  try {
+    statusEl.textContent = "جارٍ تشغيل الكاميرا وتهيئة قارئ QR...";
+    statusEl.style.color = "var(--mu)";
+    const [stream, decoderOk] = await Promise.all([
+      typeof window.openQrCameraStream === "function"
+        ? window.openQrCameraStream()
+        : navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false }),
+      typeof window.ensureQrDecoderReady === "function" ? window.ensureQrDecoderReady() : Promise.resolve(true)
+    ]);
+    gateCamStream = stream;
+    const video = $("#gateVideo");
+    video.setAttribute("playsinline", "true");
+    video.muted = true;
+    video.srcObject = gateCamStream;
+    await video.play();
+    $("#gateCamBox").hidden = false;
+    $("#gateStopCam").hidden = false;
+    $("#gateStartCam").hidden = true;
+    statusEl.textContent = decoderOk
+      ? "وجّه الكاميرا نحو رمز QR الموجود على إذن الخروج..."
+      : "تم فتح الكاميرا (استخدم القارئ أو الإدخال اليدوي إن تعذّر الاتصال بالإنترنت).";
+    statusEl.style.color = decoderOk ? "var(--pr)" : "var(--ac)";
+
+    const canvas = $("#gateCanvas");
+    let tickCount = 0;
+    let busy = false;
+    const tick = async () => {
+      if (!gateCamStream) return;
+      if (!busy && video.readyState >= 2 && video.videoWidth && video.videoHeight) {
+        busy = true;
+        try {
+          let decoded = null;
+          if (typeof window.decodeBonQrFromVideo === "function") {
+            decoded = await window.decodeBonQrFromVideo(video, canvas, tickCount++);
+          }
+          if (decoded) {
+            stopGateCam();
+            statusEl.textContent = "تمت قراءة رمز QR بنجاح ✓";
+            statusEl.style.color = "var(--pr)";
+            verifyAtGate(decoded);
+            return;
+          }
+        } catch (_) {
+        } finally {
+          busy = false;
+        }
+      }
+      if (gateCamStream) gateCamTimer = setTimeout(tick, 140);
+    };
+    tick();
+  } catch (err) {
+    stopGateCam();
+    statusEl.textContent = err?.message || "تعذّر تشغيل الكاميرا. استخدم فحص صورة QR أو أدخل الرقم.";
+    statusEl.style.color = "var(--bad)";
+  }
+};
+
+$("#gateStopCam").onclick = () => {
+  stopGateCam();
+  $("#gateCamStatus").textContent = "تم إيقاف الكاميرا.";
+  $("#gateCamStatus").style.color = "var(--mu)";
+};
+
+$("#gateQrFile").onchange = async e => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) return;
+  const statusEl = $("#gateCamStatus");
+  statusEl.textContent = "جارٍ فحص رمز QR من الصورة...";
+  statusEl.style.color = "var(--mu)";
+  try {
+    const decoded = typeof window.decodeBonQrFromImageFile === "function"
+      ? await window.decodeBonQrFromImageFile(file)
+      : null;
+    if (!decoded) {
+      statusEl.textContent = "لم يتم العثور على رمز QR واضح في هذه الصورة.";
+      statusEl.style.color = "var(--bad)";
+      return toast("لم يتم التعرف على رمز QR في الصورة", 1);
+    }
+    statusEl.textContent = "تمت قراءة رمز QR من الصورة ✓";
+    statusEl.style.color = "var(--pr)";
+    verifyAtGate(decoded);
+  } catch (err) {
+    statusEl.textContent = err?.message || "تعذّر قراءة الصورة.";
+    statusEl.style.color = "var(--bad)";
+  }
+};
+
+$("#gateRecentTable").onclick = e => {
+  const btn = e.target.closest("[data-recheck-bon]");
+  if (btn) verifyAtGate(btn.dataset.recheckBon);
+};
+
+// ===== Tab 2: Visitors & Vehicle Entry/Exit =====
+const ENTRY_LABELS = {
+  truck_load: "شاحنة شحن",
+  truck_supply: "شاحنة توريد",
+  farmer: "فلاح / مستفيد",
+  official: "زائر رسمي"
+};
+
+function renderVisitors() {
+  const td = today();
+  const inside = VISITORS.filter(v => v.status === "inside");
+  const todayIn = VISITORS.filter(v => String(v.entered_at || "").slice(0, 10) === td);
+  const todayOut = VISITORS.filter(v => v.status === "exited" && String(v.exited_at || "").slice(0, 10) === td);
+
+  $("#visitorCards").innerHTML = [
+    ["داخل التعاونية الآن", inside.length],
+    ["دخول اليوم", todayIn.length],
+    ["مغادرة اليوم", todayOut.length],
+    ["إجمالي السجل", VISITORS.length]
+  ].map(([l, v]) => `<div class="card"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
+
+  const q = ($("#visSearch")?.value || "").trim().toLowerCase();
+  const st = $("#visStatusFilter")?.value || "";
+  const dt = $("#visDateFilter")?.value || "";
+
+  const filtered = VISITORS.filter(v => {
+    if (st && v.status !== st) return false;
+    if (dt && String(v.entered_at || "").slice(0, 10) !== dt) return false;
+    if (q) {
+      const hay = `${v.full_name || ""} ${v.truck_no || ""} ${v.id_doc || ""} ${v.purpose || ""} ${v.note || ""}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  $("#visitorsTable").innerHTML = tbl(
+    ["النوع", "الاسم الكامل", "المركبة", "الوثيقة / الهاتف", "الغرض", "وقت الدخول", "المدة / الخروج", "الحالة", "إجراء"],
+    filtered.map(v => {
+      const isInside = v.status === "inside";
+      const watch = findWatchlistHit(v.truck_no);
+      const plateHtml = v.truck_no
+        ? `<b style="font-family:var(--font-mono)">${esc(v.truck_no)}</b>${watch ? ` <span class="tag-bad">(${watch.flag_level === "ban" ? "ممنوعة" : "مراقبة"})</span>` : ""}`
+        : "—";
+      return [
+        esc(ENTRY_LABELS[v.entry_type] || v.entry_type || "زائر"),
+        `<b>${esc(v.full_name)}</b>${v.note ? `<br><small style="color:var(--mu)">${esc(v.note)}</small>` : ""}`,
+        plateHtml,
+        `${esc(v.id_doc || "—")}<br><small>${esc(v.phone || "")}</small>`,
+        esc(v.purpose || "—"),
+        fmtDateTime(v.entered_at),
+        isInside ? esc(formatDurationMinutes(v.entered_at, null)) : `${fmtDateTime(v.exited_at)}<br><small>${esc(formatDurationMinutes(v.entered_at, v.exited_at))}</small>`,
+        isInside ? `<span class="tag-warn">داخل الموقع</span>` : `<span class="tag-ok">غادر ✓</span>`,
+        isInside
+          ? `<button type="button" class="p" data-visitor-exit="${esc(v.id)}">تسجيل مغادرة ✓</button>`
+          : `<small style="color:var(--mu)">${esc(v.guard_name || "مكتمل")}</small>`
+      ];
+    })
+  );
+}
+
+async function markVisitorExited(id, silent = false) {
+  const idx = VISITORS.findIndex(v => String(v.id) === String(id));
+  if (idx < 0) return;
+  const nowIso = new Date().toISOString();
+  VISITORS[idx] = { ...VISITORS[idx], status: "exited", exited_at: nowIso };
+  if (id && !String(id).startsWith("local-")) {
+    try {
+      await sb.from("gate_visitors").update({ status: "exited", exited_at: nowIso }).eq("id", id);
+    } catch (_) {}
+  }
+  writeLocalArr(GATE_VISITORS_KEY, VISITORS);
+  renderGateKpis();
+  renderVisitors();
+  if (!silent) toast("تم تسجيل مغادرة المركبة / الزائر بنجاح ✓");
+}
+
+$("#fVisitor").onsubmit = async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  const plate = String(f.truck_no || "").trim().toUpperCase();
+  const watchHit = findWatchlistHit(plate);
+  if (watchHit && watchHit.flag_level === "ban") {
+    toast(`تنبيه حظر: المركبة ${watchHit.plate_no} مدرجة في قائمة المنع (${watchHit.reason})`, 1);
+  } else if (watchHit) {
+    toast(`تنبيه مراقبة: المركبة ${watchHit.plate_no} تحت المراقبة الخاصة`, 1);
+  }
+
+  const row = {
+    entry_type: f.entry_type || "truck_load",
+    full_name: String(f.full_name || "").trim(),
+    truck_no: plate || null,
+    id_doc: String(f.id_doc || "").trim() || null,
+    phone: String(f.phone || "").trim() || null,
+    purpose: String(f.purpose || "").trim() || null,
+    note: String(f.note || "").trim() || null,
+    entered_at: new Date().toISOString(),
+    exited_at: null,
+    status: "inside",
+    guard_name: ME?.full_name || ME?.email || "عون الأمن"
+  };
+
+  let saved = { id: `local-${Date.now()}`, ...row };
+  try {
+    const { data, error } = await sb.from("gate_visitors").insert(row).select().single();
+    if (!error && data) saved = data;
+  } catch (_) {}
+
+  VISITORS.unshift(saved);
+  writeLocalArr(GATE_VISITORS_KEY, VISITORS);
+  renderGateKpis();
+  renderVisitors();
+  e.target.reset();
+  toast("تم تسجيل الدخول عند البوابة ✓");
+};
+
+$("#visitorsTable").onclick = e => {
+  const btn = e.target.closest("[data-visitor-exit]");
+  if (btn) markVisitorExited(btn.dataset.visitorExit);
+};
+["#visSearch", "#visStatusFilter", "#visDateFilter"].forEach(s => $(s).addEventListener("input", renderVisitors));
+
+$("#xVisitors").onclick = () => csv(
+  "gate-visitors",
+  ["النوع", "الاسم", "المركبة", "الوثيقة", "الهاتف", "الغرض", "الدخول", "الخروج", "الحالة", "الحارس"],
+  VISITORS.map(v => [ENTRY_LABELS[v.entry_type] || v.entry_type, v.full_name, v.truck_no || "", v.id_doc || "", v.phone || "", v.purpose || "", fmtDateTime(v.entered_at), fmtDateTime(v.exited_at), v.status === "inside" ? "داخل الموقع" : "غادر", v.guard_name || ""])
+);
+
+// ===== Tab 3: Security Incidents, Watchlist & Shift Handover =====
+function switchSecPane(target) {
+  $("#secSubTabs").querySelectorAll("[data-sec-pane]").forEach(b =>
+    b.setAttribute("aria-pressed", String(b.dataset.secPane === target))
+  );
+  document.querySelectorAll("[data-sec-panel]").forEach(p => {
+    p.hidden = p.dataset.secPanel !== target;
+  });
+}
+
+$("#secSubTabs").onclick = e => {
+  const btn = e.target.closest("[data-sec-pane]");
+  if (btn) switchSecPane(btn.dataset.secPane);
+};
+
+function openIncidentWith({ bonNo = "", truckNo = "", title = "" }) {
+  if (typeof window.showAppTab === "function") window.showAppTab("security");
+  switchSecPane("incidents");
+  if ($("#incBonInput")) $("#incBonInput").value = bonNo || "";
+  if ($("#incTruckInput")) $("#incTruckInput").value = truckNo || "";
+  const titleEl = $("#fIncident [name=title]");
+  if (titleEl && title) titleEl.value = title;
+  $("#fIncident")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+const INC_TYPE_LABELS = {
+  mismatch: "عدم تطابق الحمولة/الترقيم",
+  duplicate_bon: "إذن خروج مكرر",
+  unauthorized: "دخول/خروج غير مصرّح",
+  dispute: "إشكال عند البوابة",
+  facility: "ملاحظة منشأة/أقفال"
+};
+
+function renderIncidents() {
+  $("#incidentsTable").innerHTML = tbl(
+    ["التوقيت", "النوع", "الأهمية", "العنوان والتفاصيل", "الإذن / الشاحنة", "المُبلِّغ", "الحالة", "إجراء"],
+    INCIDENTS.map(inc => {
+      const sevText = inc.severity === "high"
+        ? `<span class="tag-bad">طارئ</span>`
+        : inc.severity === "medium"
+        ? `<span class="tag-warn">متوسط</span>`
+        : `<span style="color:var(--mu)">عادي</span>`;
+      const isResolved = inc.status === "resolved";
+      return [
+        fmtDateTime(inc.created_at),
+        esc(INC_TYPE_LABELS[inc.incident_type] || inc.incident_type || "بلاغ"),
+        sevText,
+        `<strong>${esc(inc.title)}</strong><br><small style="white-space:normal">${esc(inc.details || "")}</small>`,
+        `${esc(inc.bon_no || "—")} · <small>${esc(inc.truck_no || "—")}</small>`,
+        esc(inc.reported_by || "عون الأمن"),
+        isResolved ? `<span class="tag-ok">مُعالج ✓</span>` : `<span class="tag-bad">مفتوح</span>`,
+        `<button type="button" class="f" data-toggle-incident="${esc(inc.id)}">${isResolved ? "إعادة فتح" : "تمت المعالجة ✓"}</button>`
+      ];
+    })
+  );
+}
+
+$("#fIncident").onsubmit = async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  const row = {
+    incident_type: f.incident_type || "mismatch",
+    severity: f.severity || "medium",
+    bon_no: String(f.bon_no || "").trim() || null,
+    truck_no: String(f.truck_no || "").trim().toUpperCase() || null,
+    title: String(f.title || "").trim(),
+    details: String(f.details || "").trim(),
+    status: "open",
+    reported_by: ME?.full_name || ME?.email || "عون الأمن",
+    created_at: new Date().toISOString()
+  };
+  let saved = { id: `local-${Date.now()}`, ...row };
+  try {
+    const { data, error } = await sb.from("gate_incidents").insert(row).select().single();
+    if (!error && data) saved = data;
+  } catch (_) {}
+  INCIDENTS.unshift(saved);
+  writeLocalArr(GATE_INCIDENTS_KEY, INCIDENTS);
+  renderGateKpis();
+  renderIncidents();
+  e.target.reset();
+  toast("تم تسجيل البلاغ الأمني بنجاح");
+};
+
+$("#incidentsTable").onclick = async e => {
+  const btn = e.target.closest("[data-toggle-incident]");
+  if (!btn) return;
+  const id = btn.dataset.toggleIncident;
+  const idx = INCIDENTS.findIndex(x => String(x.id) === String(id));
+  if (idx < 0) return;
+  const nextStatus = INCIDENTS[idx].status === "resolved" ? "open" : "resolved";
+  const resolvedBy = nextStatus === "resolved" ? (ME?.full_name || "عون الأمن") : null;
+  INCIDENTS[idx] = { ...INCIDENTS[idx], status: nextStatus, resolved_by: resolvedBy };
+  if (id && !String(id).startsWith("local-")) {
+    try {
+      await sb.from("gate_incidents").update({ status: nextStatus, resolved_by: resolvedBy }).eq("id", id);
+    } catch (_) {}
+  }
+  writeLocalArr(GATE_INCIDENTS_KEY, INCIDENTS);
+  renderGateKpis();
+  renderIncidents();
+  toast(nextStatus === "resolved" ? "تم إغلاق البلاغ الأمني ✓" : "تمت إعادة فتح البلاغ");
+};
+
+function renderWatchlist() {
+  $("#watchlistTable").innerHTML = tbl(
+    ["ترقيم المركبة", "الإجراء", "السبب", "أضيف بواسطة", "التاريخ", "الحالة", "إجراء"],
+    WATCHLIST.map(w => {
+      const active = w.active !== false;
+      return [
+        `<b style="font-family:var(--font-mono)">${esc(w.plate_no)}</b>`,
+        w.flag_level === "ban" ? `<span class="tag-bad">ممنوعة من العبور</span>` : `<span class="tag-warn">مراقبة وتفتيش</span>`,
+        esc(w.reason || "—"),
+        esc(w.added_by || "الأمن"),
+        fmtDateTime(w.created_at),
+        active ? `<span class="tag-bad">مفعَّل</span>` : `<span style="color:var(--mu)">موقوف</span>`,
+        `<button type="button" class="f" data-toggle-watch="${esc(w.id)}">${active ? "إلغاء التفعيل" : "تفعيل"}</button>`
+      ];
+    })
+  );
+}
+
+$("#fWatch").onsubmit = async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  const row = {
+    plate_no: String(f.plate_no || "").trim().toUpperCase(),
+    flag_level: f.flag_level === "ban" ? "ban" : "watch",
+    reason: String(f.reason || "").trim(),
+    active: true,
+    added_by: ME?.full_name || ME?.email || "عون الأمن",
+    created_at: new Date().toISOString()
+  };
+  let saved = { id: `local-${Date.now()}`, ...row };
+  try {
+    const { data, error } = await sb.from("gate_watchlist").insert(row).select().single();
+    if (!error && data) saved = data;
+  } catch (_) {}
+  WATCHLIST.unshift(saved);
+  writeLocalArr(GATE_WATCHLIST_KEY, WATCHLIST);
+  renderWatchlist();
+  e.target.reset();
+  toast("تمت إضافة المركبة إلى قائمة المراقبة الأمنية");
+};
+
+$("#watchlistTable").onclick = async e => {
+  const btn = e.target.closest("[data-toggle-watch]");
+  if (!btn) return;
+  const id = btn.dataset.toggleWatch;
+  const idx = WATCHLIST.findIndex(w => String(w.id) === String(id));
+  if (idx < 0) return;
+  const nextActive = WATCHLIST[idx].active === false;
+  WATCHLIST[idx] = { ...WATCHLIST[idx], active: nextActive };
+  if (id && !String(id).startsWith("local-")) {
+    try { await sb.from("gate_watchlist").update({ active: nextActive }).eq("id", id); } catch (_) {}
+  }
+  writeLocalArr(GATE_WATCHLIST_KEY, WATCHLIST);
+  renderWatchlist();
+  toast(nextActive ? "تم تفعيل المراقبة على المركبة" : "تم رفع المراقبة عن المركبة");
+};
+
+const SHIFT_LABELS = { morning: "الصباحية (06-14)", evening: "المسائية (14-22)", night: "الليلية (22-06)" };
+
+function renderShifts() {
+  $("#shiftsTable").innerHTML = tbl(
+    ["التاريخ", "الفترة", "عون الأمن", "الوضع العام", "الأقفال والإنارة", "محضر التسليم"],
+    SHIFTS.map(s => [
+      fmtDate(s.shift_date),
+      esc(SHIFT_LABELS[s.shift_period] || s.shift_period || "—"),
+      esc(s.guard_name || "عون الأمن"),
+      s.status === "incident" ? `<span class="tag-bad">بملاحظة/بلاغ</span>` : s.status === "busy" ? `<span class="tag-warn">حركة كثيفة</span>` : `<span class="tag-ok">مستقرة</span>`,
+      s.perimeter_ok === "warn" ? `<span class="tag-warn">تحتاج صيانة</span>` : `<span class="tag-ok">سليمة ✓</span>`,
+      `<span style="white-space:normal">${esc(s.checklist_note || "—")}</span>`
+    ])
+  );
+}
+
+$("#fShift").onsubmit = async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  const row = {
+    shift_date: f.shift_date || today(),
+    shift_period: f.shift_period || "morning",
+    guard_name: ME?.full_name || ME?.email || "عون الأمن",
+    status: f.status || "normal",
+    perimeter_ok: f.perimeter_ok === "warn" ? "warn" : "yes",
+    checklist_note: String(f.checklist_note || "").trim(),
+    created_at: new Date().toISOString()
+  };
+  let saved = { id: `local-${Date.now()}`, ...row };
+  try {
+    const { data, error } = await sb.from("gate_shifts").insert(row).select().single();
+    if (!error && data) saved = data;
+  } catch (_) {}
+  SHIFTS.unshift(saved);
+  writeLocalArr(GATE_SHIFTS_KEY, SHIFTS);
+  renderShifts();
+  e.target.reset();
+  $("#fShift [name=shift_date]").value = today();
+  toast("تم حفظ محضر استلام/تسليم النوبة ✓");
+};
+
+// ===== Tab 4: Full History & Print Report =====
+function filteredFullGateLogs() {
+  const q = ($("#gateHistSearch")?.value || "").trim().toLowerCase();
+  const dec = $("#gateHistDecision")?.value || "";
+  const d1 = $("#gateHistD1")?.value || "";
+  const d2 = $("#gateHistD2")?.value || "";
+  return [...GATE_LOGS].reverse().filter(x => {
+    const dt = String(x.verified_at || "").slice(0, 10);
+    if (dec && (x.decision || "allowed") !== dec) return false;
+    if (d1 && dt < d1) return false;
+    if (d2 && dt > d2) return false;
+    if (q) {
+      const hay = `${x.bon_no || ""} ${x.farmer_name || ""} ${x.driver_name || ""} ${x.truck_no || ""} ${x.verified_by || ""} ${x.note || ""}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function renderFullGateLog() {
+  const rows = filteredFullGateLogs();
+  $("#gateFullLogTable").innerHTML = tbl(
+    ["رقم الإذن", "الفلاح", "السائق", "الشاحنة", "الكمية", "القرار", "التوقيت", "عون الأمن", "ملاحظة"],
+    rows.map(x => [
+      `<b>${esc(x.bon_no)}</b>`,
+      esc(x.farmer_name || "—"),
+      esc(x.driver_name || "—"),
+      `<span style="font-family:var(--font-mono)">${esc(x.truck_no || "—")}</span>`,
+      `<b>${n(x.total_qty || 0)}</b>`,
+      x.decision === "blocked" ? `<span class="tag-bad">مرفوض ✕</span>` : `<span class="tag-ok">مسموح ✓</span>`,
+      esc(x.verified_at_label || fmtDateTime(x.verified_at)),
+      esc(x.verified_by || "—"),
+      `<span style="white-space:normal">${esc(x.note || "—")}</span>`
+    ])
+  );
+}
+
+["#gateHistSearch", "#gateHistDecision", "#gateHistD1", "#gateHistD2"].forEach(s =>
+  $(s).addEventListener("input", renderFullGateLog)
+);
+
+$("#xGateLog").onclick = () => csv(
+  "gate-exit-log",
+  ["رقم الإذن", "الفلاح", "السائق", "الشاحنة", "الكمية", "القرار", "التوقيت", "عون الأمن", "ملاحظة"],
+  filteredFullGateLogs().map(x => [x.bon_no, x.farmer_name, x.driver_name, x.truck_no, x.total_qty, x.decision === "blocked" ? "مرفوض" : "مسموح", x.verified_at_label || fmtDateTime(x.verified_at), x.verified_by, x.note || ""])
+);
+
+$("#printGateReportBtn").onclick = () => {
+  const rows = filteredFullGateLogs();
+  const el = $("#gatePrintReport");
+  const cfg = typeof getAppSettings === "function" ? getAppSettings() : {};
+  el.hidden = false;
+  el.innerHTML = `
+    <div style="background:#fff;color:#111;padding:18px;font-family:inherit">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #175236;padding-bottom:10px;margin-bottom:12px">
+        <div>
+          <strong style="font-size:1.05rem;color:#175236">${esc(cfg.orgName || "تعاونية الحبوب والبقول الجافة أدرار (CCLS ADRAR)")}</strong>
+          <div style="font-size:.86rem">التقرير الأمني اليومي لبوابة المخزن — ${esc(fmtDate(today()))}</div>
+        </div>
+        <div style="font-size:.84rem">عون الأمن: <b>${esc(ME?.full_name || "—")}</b></div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+        <thead>
+          <tr style="background:#eef2ed">
+            <th style="border:1px solid #333;padding:6px">رقم الإذن</th>
+            <th style="border:1px solid #333;padding:6px">الفلاح</th>
+            <th style="border:1px solid #333;padding:6px">السائق</th>
+            <th style="border:1px solid #333;padding:6px">الشاحنة</th>
+            <th style="border:1px solid #333;padding:6px">الكمية</th>
+            <th style="border:1px solid #333;padding:6px">القرار</th>
+            <th style="border:1px solid #333;padding:6px">التوقيت</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(x => `
+            <tr>
+              <td style="border:1px solid #333;padding:5px"><b>${esc(x.bon_no)}</b></td>
+              <td style="border:1px solid #333;padding:5px">${esc(x.farmer_name || "—")}</td>
+              <td style="border:1px solid #333;padding:5px">${esc(x.driver_name || "—")}</td>
+              <td style="border:1px solid #333;padding:5px">${esc(x.truck_no || "—")}</td>
+              <td style="border:1px solid #333;padding:5px">${n(x.total_qty || 0)}</td>
+              <td style="border:1px solid #333;padding:5px">${x.decision === "blocked" ? "مرفوض" : "مسموح"}</td>
+              <td style="border:1px solid #333;padding:5px">${esc(x.verified_at_label || fmtDateTime(x.verified_at))}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>`;
+  document.body.classList.add("printing-list");
+  const cleanup = () => {
+    document.body.classList.remove("printing-list");
+    el.hidden = true;
+    window.removeEventListener("afterprint", cleanup);
+  };
+  window.addEventListener("afterprint", cleanup, { once: true });
+  window.print();
+  setTimeout(cleanup, 1200);
+};
+
+$("#gateRefreshBtn").onclick = loadAllGateData;
+
+startApp({
+  page: "gate",
+  tabs: [
+    ["gateVerify", "التحقق عند البوابة (QR)", ["gateVerifySec"], loadAllGateData, ["bons", "pickup", "log", "invoices"]],
+    ["visitors", "سجل الدخول والخروج", ["gateVisitorsSec"], loadAllGateData, ["bons", "pickup", "log", "invoices"]],
+    ["security", "البلاغات والمراقبة والنوبات", ["gateSecuritySec"], loadAllGateData, ["bons", "pickup", "log", "invoices"]],
+    ["history", "سجل عبور الشحنات الكامل", ["gateHistorySec"], loadAllGateData, ["bons", "pickup", "log", "invoices"]]
+  ],
+  ready() {
+    if ($("#fShift [name=shift_date]")) $("#fShift [name=shift_date]").value = today();
+    document.querySelectorAll("nav button").forEach(btn => {
+      if (btn.dataset.t !== "gateVerify") btn.addEventListener("click", stopGateCam);
+    });
+  }
+});
+</script>
+</body>
+</html>

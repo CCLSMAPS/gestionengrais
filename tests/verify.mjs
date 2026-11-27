@@ -12,6 +12,7 @@ const htmlPages = [
   "warehouse.html",
   "reception.html",
   "bons.html",
+  "gate.html",
   "crops.html",
   "users.html",
   "dashboard.html",
@@ -618,5 +619,31 @@ const scaledDecoded = await commonSandbox.window.decodeBonQrFromVideo({ readySta
 assert.equal(scaledDecoded, "BON:1692");
 assert.equal(seenScanSize.w, 720);
 assert.equal(seenScanSize.h, 405);
+
+// 17. Validate Dedicated Security Guards Portal (gate.html) & RBAC/DB/Server integration
+const gateHtml = fs.readFileSync(path.join(ROOT, "gate.html"), "utf8");
+assert.match(gateHtml, /gateVerifySec/);
+assert.match(gateHtml, /gateVisitorsSec/);
+assert.match(gateHtml, /gateSecuritySec/);
+assert.match(gateHtml, /gateHistorySec/);
+assert.match(gateHtml, /gateStartCam/);
+assert.match(gateHtml, /gateQrFile/);
+assert.match(gateHtml, /decodeBonQrFromVideo/);
+assert.match(gateHtml, /fVisitor/);
+assert.match(gateHtml, /fIncident/);
+assert.match(gateHtml, /fWatch/);
+assert.match(gateHtml, /fShift/);
+assert.match(gateHtml, /printGateReportBtn/);
+assert.match(serverSrc, /"\/gate\.html"/);
+assert.match(usersHtml, /security_guard/);
+assert.match(setupSql, /page:gate/);
+assert.match(opsSql, /gate_verifications/);
+assert.match(opsSql, /gate_visitors/);
+assert.match(opsSql, /gate_incidents/);
+assert.match(opsSql, /gate_watchlist/);
+assert.match(opsSql, /gate_shifts/);
+assert.equal(commonSandbox.hasPageAccess(["rbac:v2", "page:gate"], "gate.html"), true);
+assert.equal(commonSandbox.hasPageAccess(["rbac:v2", "page:gate"], "index.html"), false);
+assert.equal(commonSandbox.hasPageAccess(["rbac:v2", "page:gate"], "bons.html"), false);
 
 console.log(`ALL ${htmlPages.length} PAGES, BUNDLES, MANIFEST, AGGREGATOR, RBAC, SETTINGS, QR-BON, OPS-SUITE, 9-PRO-FEATURES, PHOTO-PROOF, LOSS-TOLERANCE, AND SECURITY CHECKS PASSED`);

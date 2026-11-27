@@ -138,6 +138,7 @@ function permMatrixHtml(rawSel, dis, collapsible = false) {
   const presetsHtml = dis ? "" : `
     <div class="preset-bar">
       <button type="button" class="f" data-preset="all">تحديد الكل</button>
+      <button type="button" class="f" data-preset="security_guard">عون أمن البوابة فقط</button>
       <button type="button" class="f" data-preset="director_mobile">مدير (قراءة فقط من الهاتف)</button>
       <button type="button" class="f" data-preset="readonly">قراءة وطباعة فقط</button>
       <button type="button" class="f" data-preset="operator">إدخال وتعديل بدون حذف</button>
@@ -176,6 +177,10 @@ function applyPresetToScope(scope, preset) {
     setChecked(() => true);
   } else if (preset === "none") {
     setChecked(() => false);
+  } else if (preset === "security_guard") {
+    setChecked(v => [
+      "page:gate", "btn:create", "btn:edit", "btn:print", "btn:csv", "btn:refresh", "bons"
+    ].includes(v));
   } else if (preset === "director_mobile") {
     setChecked(v => [
       "page:analytics", "btn:refresh", "feat:financials"
