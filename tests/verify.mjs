@@ -655,7 +655,8 @@ assert.equal(commonSandbox.hasPageAccess(["rbac:v2", "page:gate"], "index.html")
 assert.equal(commonSandbox.hasPageAccess(["rbac:v2", "page:gate"], "bons.html"), false);
 
 // Security regression checks: director publishing is admin-only and public kiosk names are anonymized.
-assert.equal((serverSrc.match(/if \(!\(await isAdminAuth\(auth\)\)\) return res\.status\(403\)/g) || []).length, 2);
+assert.match(serverSrc, /app\.post\("\/api\/director-link"[\s\S]*?if \(!\(await isAdminAuth\(auth\)\)\) return res\.status\(403\)/);
+assert.match(serverSrc, /app\.post\("\/api\/director-snapshot"[\s\S]*?if \(!\(await isAdminAuth\(auth\)\)\) return res\.status\(403\)/);
 assert.ok(serverSrc.includes('display_name: safeStr(t?.queue_no ? `فلاح رقم ${safeNum(t.queue_no)}` : "فلاح", 60)'), "public kiosk display names must be anonymized");
 assert.doesNotMatch(serverSrc, /display_name: safeStr\(t\?\.display_name \|\| t\?\.farmer_name/);
 assert.ok(setupSql.replace(/\s+/g, " ").includes("and exists ( select 1 from public.profiles p where p.user_id = auth.uid() and not coalesce(p.is_blocked, false) )"), "active users must have a non-blocked profile");
