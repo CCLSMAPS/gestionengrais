@@ -10,7 +10,7 @@ alter table public.profiles drop constraint if exists profiles_role_check;
 
 -- 3) دوال مساعدة آمنة (SECURITY DEFINER مع search_path فارغ لمنع التلاعب بالمخطط)
 create or replace function public.is_admin() returns boolean
-language sql stable security definer set search_path = '' as $$
+language sql stable security definer set search_path = '' as $active_user$$
   select exists (
     select 1 from public.profiles p
     where p.user_id = auth.uid()
@@ -30,7 +30,7 @@ language sql stable security definer set search_path = '' as $
       where p.user_id = auth.uid()
         and not coalesce(p.is_blocked, false)
     );
-$;
+$active_user$;
 
 -- 4) المسؤول يقرأ وينشئ ويعدّل كل الملفات الشخصية
 drop policy if exists "admin manage profiles" on public.profiles;
