@@ -32,7 +32,7 @@ drop policy if exists "permission update dossier_receptions" on public.dossier_r
 drop policy if exists "permission delete dossier_receptions" on public.dossier_receptions;
 
 create policy "permission read dossier_receptions" on public.dossier_receptions
-  for select to authenticated using (public.has_app_permission('page:reception'));
+  for select to authenticated using (public.has_app_permission('page:reception') or public.has_app_permission('page:analytics'));
 
 create policy "permission insert dossier_receptions" on public.dossier_receptions
   for insert to authenticated

@@ -672,6 +672,10 @@ const bonsMigrationSql = fs.readFileSync(path.join(ROOT, "supabase-bons.sql"), "
 const dossiersMigrationSql = fs.readFileSync(path.join(ROOT, "supabase-dossiers.sql"), "utf8");
 assert.match(bonsMigrationSql, /public\.has_app_permission\('page:bons'\)/);
 assert.match(dossiersMigrationSql, /public\.has_app_permission\('page:reception'\)/);
+assert.match(opsSql, /permission read stock_adjustments[\s\S]*?page:analytics/);
+assert.match(opsSql, /permission read warehouse_transfers[\s\S]*?page:index[\s\S]*?page:analytics/);
+assert.match(opsSql, /permission read drivers_registry[\s\S]*?page:bons/);
+assert.match(opsSql, /permission read dossier_receptions[\s\S]*?page:analytics/);
 assert.doesNotMatch(bonsMigrationSql, /not exists \(\s*select 1 from public\.profiles p\s*where p\.user_id = auth\.uid\(\) and coalesce\(p\.is_blocked, false\)/);
 assert.doesNotMatch(dossiersMigrationSql, /not exists \(\s*select 1 from public\.profiles p\s*where p\.user_id = auth\.uid\(\) and coalesce\(p\.is_blocked, false\)/);
 assert.match(opsSql, /public\.has_app_permission\('btn:create'\)/);

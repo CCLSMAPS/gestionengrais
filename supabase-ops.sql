@@ -85,7 +85,7 @@ drop policy if exists "permission update stock_adjustments" on public.stock_adju
 drop policy if exists "permission delete stock_adjustments" on public.stock_adjustments;
 
 create policy "permission read stock_adjustments" on public.stock_adjustments
-  for select to authenticated using (public.has_app_permission('page:warehouse'));
+  for select to authenticated using (public.has_app_permission('page:warehouse') or public.has_app_permission('page:index') or public.has_app_permission('page:analytics'));
 
 create policy "permission insert stock_adjustments" on public.stock_adjustments
   for insert to authenticated with check ((public.has_app_permission('page:warehouse')) and public.has_app_permission('btn:create'));
@@ -272,7 +272,7 @@ drop policy if exists "permission update dossier_receptions" on public.dossier_r
 drop policy if exists "permission delete dossier_receptions" on public.dossier_receptions;
 
 create policy "permission read dossier_receptions" on public.dossier_receptions
-  for select to authenticated using (public.has_app_permission('page:reception'));
+  for select to authenticated using (public.has_app_permission('page:reception') or public.has_app_permission('page:analytics'));
 
 create policy "permission insert dossier_receptions" on public.dossier_receptions
   for insert to authenticated with check ((public.has_app_permission('page:reception')) and public.has_app_permission('btn:create'));
@@ -352,7 +352,7 @@ drop policy if exists "permission update warehouse_transfers" on public.warehous
 drop policy if exists "permission delete warehouse_transfers" on public.warehouse_transfers;
 
 create policy "permission read warehouse_transfers" on public.warehouse_transfers
-  for select to authenticated using (public.has_app_permission('page:warehouse'));
+  for select to authenticated using (public.has_app_permission('page:warehouse') or public.has_app_permission('page:index') or public.has_app_permission('page:analytics'));
 
 create policy "permission insert warehouse_transfers" on public.warehouse_transfers
   for insert to authenticated with check ((public.has_app_permission('page:warehouse')) and public.has_app_permission('btn:create'));
@@ -393,7 +393,7 @@ drop policy if exists "permission update drivers_registry" on public.drivers_reg
 drop policy if exists "permission delete drivers_registry" on public.drivers_registry;
 
 create policy "permission read drivers_registry" on public.drivers_registry
-  for select to authenticated using (public.has_app_permission('page:warehouse'));
+  for select to authenticated using (public.has_app_permission('page:warehouse') or public.has_app_permission('page:index') or public.has_app_permission('page:bons'));
 
 create policy "permission insert drivers_registry" on public.drivers_registry
   for insert to authenticated with check ((public.has_app_permission('page:warehouse')) and public.has_app_permission('btn:create'));
