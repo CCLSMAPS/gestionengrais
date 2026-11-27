@@ -668,7 +668,6 @@ assert.doesNotMatch(setupSql, /\$active_user\$\$/);
 assert.match(opsSql, /permission insert gate_visitors/);
 assert.match(opsSql, /public\.has_app_permission\('page:gate'\)/);
 assert.match(opsSql, /permission insert pickup_appointments/);
-const bonsMigrationSql = fs.readFileSync(path.join(ROOT, "supabase-bons.sql"), "utf8");
 const dossiersMigrationSql = fs.readFileSync(path.join(ROOT, "supabase-dossiers.sql"), "utf8");
 assert.match(bonsMigrationSql, /public\.has_app_permission\('page:bons'\)/);
 assert.match(dossiersMigrationSql, /public\.has_app_permission\('page:reception'\)/);
