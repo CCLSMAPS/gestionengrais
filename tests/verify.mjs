@@ -649,7 +649,7 @@ assert.equal(commonSandbox.hasPageAccess(["rbac:v2", "page:gate"], "bons.html"),
 
 // Security regression checks: director publishing is admin-only and public kiosk names are anonymized.
 assert.equal((serverSrc.match(/if \(!\(await isAdminAuth\(auth\)\)\) return res\.status\(403\)/g) || []).length, 2);
-assert.match(serverSrc, /display_name: safeStr\(t\?\.queue_no \? `فلاح رقم \\u\{?\$\{/);
+assert.ok(serverSrc.includes('display_name: safeStr(t?.queue_no ? `فلاح رقم ${safeNum(t.queue_no)}` : "فلاح", 60)'), "public kiosk display names must be anonymized");
 assert.doesNotMatch(serverSrc, /display_name: safeStr\(t\?\.display_name \|\| t\?\.farmer_name/);
 assert.ok(setupSql.includes("and exists (\n    select 1 from public.profiles p\n    where p.user_id = auth.uid()\n      and not coalesce(p.is_blocked, false)\n    )"), "active users must have a non-blocked profile");
 assert.ok(opsSql.includes('for delete to authenticated using (public.is_admin());'), "recycle-bin purge must be admin-only");
