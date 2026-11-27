@@ -73,6 +73,85 @@ function fmtDate(d) {
   return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : d;
 }
 
+const PUBLIC_SB_URL = "https://ibznldpkdrqgcdnrxwnj.supabase.co";
+const PUBLIC_SB_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imliem5sZHBrZHJxZ2NkbnJ4d25qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5OTUwODUsImV4cCI6MjExMDU3MTA4NX0.LUyefDjCMWnac-cytLMkmOOLIPtgr0GdsPTWAqewJfw";
+
+async function fetchPublicBonVerification(bonNo) {
+  // 1) Try local/Node Express verification API when hosted with backend
+  try {
+    const resp = await fetch(`/api/public/verify-bon?bon=${encodeURIComponent(bonNo)}`, { cache: "no-store" });
+    const ctype = (resp.headers.get("content-type") || "").toLowerCase();
+    if (resp.ok && ctype.includes("application/json")) {
+      return await resp.json();
+    }
+  } catch (_) {}
+
+  // 2) Static hosting fallback (e.g. GitHub Pages): call privacy-safe Supabase RPC `verify_bon_public`
+  const rpcResp = await fetch(`${PUBLIC_SB_URL}/rest/v1/rpc/verify_bon_public`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: PUBLIC_SB_ANON,
+      Authorization: `Bearer ${PUBLIC_SB_ANON}`
+    },
+    body: JSON.stringify({ p_bon_no: bonNo })
+  });
+  if (rpcResp.ok) {
+    const rows = await rpcResp.json();
+    if (Array.isArray(rows) && rows.length > 0) {
+      const items = rows.map(r => ({
+        designation: String(r.designation || "سماد"),
+        qty: Number(r.qty || 0)
+      }));
+      const totalQty = items.reduce((s, x) => s + x.qty, 0);
+      return {
+        valid: true,
+        source: "supabase_rpc",
+        bon_no: String(rows[0].bon_no || bonNo),
+        sortie_date: String(rows[0].sortie_date || ""),
+        camp: String(rows[0].camp || "2025/2026"),
+        total_qty: Number(totalQty.toFixed(2)),
+        item_count: items.length,
+        items
+      };
+    }
+    return { valid: false, bon_no: bonNo };
+  }
+
+  // 3) Check if RPC function isn't installed yet in Supabase, and check same-device non-PII local fallback
+  let errCode = "";
+  try {
+    const errBody = await rpcResp.json();
+    errCode = String(errBody?.code || errBody?.message || "");
+  } catch (_) {}
+  try {
+    const rawLocal = JSON.parse(localStorage.getItem("ccls_bons_2026_2027") || "[]") || [];
+    const matched = rawLocal.filter(b => String(b?.bon_no || "").trim().toLowerCase() === bonNo.toLowerCase());
+    if (matched.length > 0) {
+      const items = matched.map(r => ({
+        designation: String(r.designation || "سماد"),
+        qty: Number(r.qty || 0)
+      }));
+      const totalQty = items.reduce((s, x) => s + x.qty, 0);
+      return {
+        valid: true,
+        source: "local",
+        bon_no: String(matched[0].bon_no || bonNo),
+        sortie_date: String(matched[0].sortie_date || ""),
+        camp: String(matched[0].camp || "2025/2026"),
+        total_qty: Number(totalQty.toFixed(2)),
+        item_count: items.length,
+        items
+      };
+    }
+  } catch (_) {}
+
+  if (/PGRST202|verify_bon_public|42883/i.test(errCode) || rpcResp.status === 404) {
+    throw new Error("دالة التحقق العام غير مفعّلة في قاعدة البيانات بعد. يرجى تنفيذ ملف supabase-ops.sql في Supabase SQL Editor.");
+  }
+  throw new Error("تعذّر الاتصال بخادم التحقق حالياً. يرجى المحاولة لاحقاً.");
+}
+
 async function runPublicVerify(raw) {
   let bonNo = typeof window.extractBonNoFromScan === "function"
     ? window.extractBonNoFromScan(raw)
@@ -92,9 +171,8 @@ async function runPublicVerify(raw) {
   box.innerHTML = `<p style="margin:0;color:var(--mu)">جارٍ التحقق من صحة الوثيقة رقم <b>${esc(bonNo)}</b>...</p>`;
 
   try {
-    const resp = await fetch(`/api/public/verify-bon?bon=${encodeURIComponent(bonNo)}`, { cache: "no-store" });
-    const data = await resp.json();
-    if (!resp.ok || !data?.valid) {
+    const data = await fetchPublicBonVerification(bonNo);
+    if (!data?.valid) {
       box.innerHTML = `
         <div class="verify-card verify-bad">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
@@ -137,7 +215,7 @@ async function runPublicVerify(raw) {
         </div>
       </div>`;
   } catch (err) {
-    box.innerHTML = `<div class="alert-bad">تعذّر الاتصال بخادم التحقق حالياً. يرجى المحاولة لاحقاً.</div>`;
+    box.innerHTML = `<div class="alert-bad">${esc(err?.message || "تعذّر الاتصال بخادم التحقق حالياً. يرجى المحاولة لاحقاً.")}</div>`;
   }
 }
 

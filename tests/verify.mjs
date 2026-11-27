@@ -588,6 +588,8 @@ assert.match(bonsHtml, /openQrCameraStream/);
 const verifyHtml = fs.readFileSync(path.join(ROOT, "verify.html"), "utf8");
 assert.match(verifyHtml, /BarcodeDetector/);
 assert.match(verifyHtml, /openPubCameraStream/);
+assert.match(verifyHtml, /verify_bon_public/);
+assert.match(verifyHtml, /fetchPublicBonVerification/);
 
 // Test BarcodeDetector decoding directly from video element
 commonSandbox.window.BarcodeDetector = class FakeBarcodeDetector {
