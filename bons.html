@@ -48,6 +48,26 @@
       <label>المنطقة (ZONE)<input name="zone" list="bzl" autocomplete="off"></label>
       <label>اسم السائق (NOM DE CHAUFFEUR)<input name="driver_name" list="bdl" required autocomplete="off"></label>
       <label>ترقيم الشاحنة (IMMATRICULATION)<input name="truck_no" required autocomplete="off" placeholder="1128-517-16"></label>
+      <div class="bon-photo-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div>
+            <strong>صورة الشاحنة عند التحميل (لوحة الترقيم والحمولة)</strong>
+            <div style="font-size:.79rem;color:var(--mu)">تُضغط وتُحفظ تلقائياً مع إذن الخروج كدليل مرئي عند أي نزاع أو فحص عند البوابة.</div>
+          </div>
+          <label class="f" style="display:inline-flex;flex-direction:row;align-items:center;gap:6px;margin:0;cursor:pointer;padding:8px 14px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx);min-height:40px">
+            <span>التقاط / رفع صورة الشاحنة</span>
+            <input type="file" id="bonPhotoInput" accept="image/*" capture="environment" hidden>
+          </label>
+        </div>
+        <label style="margin:0">ملاحظة الصورة (اختياري)<input id="bonPhotoNote" placeholder="مثال: لوحة الترقيم 1128-517-16 ظاهرة مع كامل الحمولة"></label>
+        <div id="bonPhotoPreviewWrap" class="bon-photo-preview-row" hidden>
+          <img id="bonPhotoPreviewImg" class="bon-photo-preview-img" alt="معاينة صورة الشاحنة">
+          <div style="display:grid;gap:6px">
+            <span id="bonPhotoInfo" style="font-size:.82rem;color:var(--pr);font-weight:700"></span>
+            <button type="button" class="f btn-danger" id="clearBonPhotoBtn" style="justify-self:start">إزالة الصورة</button>
+          </div>
+        </div>
+      </div>
       <div id="bonLines" style="grid-column:1/-1;display:grid;gap:8px"></div>
       <button type="button" class="f" id="addBonLine" style="justify-self:start">+ إضافة مادة أخرى (حتى 4)</button>
       <button class="p" id="submitBonBtn">حفظ وإصدار إذن الخروج</button>
@@ -66,6 +86,10 @@
             <option value="half">نصف صفحة (A5 / نصف A4)</option>
             <option value="2up">نصف صفحة × 2 (نسختان للقص على A4)</option>
           </select>
+        </label>
+        <label style="flex-direction:row;align-items:center;gap:6px;margin:0;font-size:.82rem;color:var(--tx)">
+          <input type="checkbox" id="bonIncludePhotoChk" checked>
+          <span>إرفاق صورة الشاحنة بالطباعة (A4)</span>
         </label>
         <button type="button" class="p" id="printBonBtn">طباعة إذن الخروج</button>
         <button type="button" class="f" id="pdfBonBtn">تحميل الإذن PDF</button>
@@ -151,6 +175,18 @@
 </div>
 </main>
 <div id="etatPrintReport" hidden></div>
+<div id="bonPhotoModal" class="sticky-modal-backdrop" hidden>
+  <div class="sticky-modal" role="dialog" aria-modal="true" aria-labelledby="bonPhotoModalTitle">
+    <div class="sticky-modal-head">
+      <div>
+        <strong id="bonPhotoModalTitle" style="font-size:1.05rem">دليل التحميل — صورة الشاحنة</strong>
+        <div id="bonPhotoModalMeta" style="font-size:.84rem;color:var(--mu);margin-top:2px"></div>
+      </div>
+      <button type="button" class="f" id="closeBonPhotoModalBtn">إغلاق</button>
+    </div>
+    <div id="bonPhotoModalBody" style="margin-top:12px;display:grid;gap:10px"></div>
+  </div>
+</div>
 <div id="toast" role="status"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="common.js"></script>
@@ -165,10 +201,153 @@ let currentPreviewHeader = null;
 let currentPreviewLines = [];
 const BON_FORMAT_KEY = "ccls_bon_print_format";
 const GATE_CHECKS_KEY = "ccls_gate_verifications_v1";
+const BON_PHOTOS_STORE_KEY = "ccls_bon_photos_v1";
 let pendingUrlVerify = new URLSearchParams(window.location.search).get("verify") || new URLSearchParams(window.location.search).get("bon") || "";
 let camStream = null;
 let camTimer = null;
 let lastVerifiedBonNo = "";
+let pendingTruckPhoto = "";
+
+function isSafePhotoDataUrl(raw) {
+  return typeof raw === "string" && /^data:image\/(?:jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/i.test(raw.trim());
+}
+
+function readBonPhotoMap() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(BON_PHOTOS_STORE_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveBonPhotoLocal(bonNo, photoUrl, photoNote) {
+  const key = String(bonNo || "").trim().toUpperCase();
+  if (!key) return;
+  const map = readBonPhotoMap();
+  if (isSafePhotoDataUrl(photoUrl)) {
+    map[key] = {
+      photo: photoUrl.trim(),
+      note: String(photoNote || "").trim().slice(0, 200),
+      savedAt: new Date().toISOString()
+    };
+  } else {
+    delete map[key];
+  }
+  try {
+    localStorage.setItem(BON_PHOTOS_STORE_KEY, JSON.stringify(map));
+  } catch (_) {}
+}
+
+function getBonPhotoEntry(bonNo, rows) {
+  const key = String(bonNo || "").trim().toUpperCase();
+  const list = Array.isArray(rows) ? rows : BONS;
+  const matched = key ? list.find(b => String(b.bon_no || "").trim().toUpperCase() === key && isSafePhotoDataUrl(b.truck_photo)) : null;
+  if (matched) {
+    return { photo: matched.truck_photo.trim(), note: String(matched.photo_note || "").trim() };
+  }
+  const map = readBonPhotoMap();
+  const stored = key ? map[key] : null;
+  if (stored && isSafePhotoDataUrl(stored.photo)) {
+    return { photo: stored.photo.trim(), note: String(stored.note || "").trim() };
+  }
+  return { photo: "", note: "" };
+}
+
+function setPendingTruckPhoto(dataUrl, noteText) {
+  pendingTruckPhoto = isSafePhotoDataUrl(dataUrl) ? dataUrl.trim() : "";
+  const wrap = $("#bonPhotoPreviewWrap");
+  const img = $("#bonPhotoPreviewImg");
+  const info = $("#bonPhotoInfo");
+  const noteEl = $("#bonPhotoNote");
+  if (noteEl && noteText !== undefined) noteEl.value = noteText || "";
+  if (pendingTruckPhoto && wrap && img) {
+    img.src = pendingTruckPhoto;
+    const kb = Math.max(1, Math.round((pendingTruckPhoto.length * 0.75) / 1024));
+    if (info) info.textContent = `صورة شاحنة جاهزة للحفظ (~${kb} KB) ✓`;
+    wrap.hidden = false;
+  } else if (wrap && img) {
+    img.removeAttribute("src");
+    if (info) info.textContent = "";
+    wrap.hidden = true;
+  }
+}
+
+async function compressTruckPhoto(file) {
+  if (!file || !String(file.type || "").startsWith("image/")) {
+    throw new Error("يرجى اختيار ملف صورة صالح (JPG / PNG / WebP)");
+  }
+  const objUrl = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("تعذّر قراءة ملف الصورة"));
+      img.src = objUrl;
+    });
+    const encodeWith = (maxDim, quality) => {
+      const scale = Math.min(1, maxDim / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+      const w = Math.max(1, Math.round((img.naturalWidth || 1) * scale));
+      const h = Math.max(1, Math.round((img.naturalHeight || 1) * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("المتصفح لا يدعم معالجة الصور");
+      ctx.drawImage(img, 0, 0, w, h);
+      return canvas.toDataURL("image/jpeg", quality);
+    };
+    let out = encodeWith(960, 0.72);
+    if (out.length > 360000) out = encodeWith(760, 0.56);
+    if (out.length > 520000) out = encodeWith(640, 0.45);
+    if (!isSafePhotoDataUrl(out)) throw new Error("صيغة الصورة الناتجة غير مدعومة");
+    return out;
+  } finally {
+    URL.revokeObjectURL(objUrl);
+  }
+}
+
+function openBonPhotoModal(bonNo) {
+  const modal = $("#bonPhotoModal");
+  if (!modal) return;
+  const rows = BONS.filter(b => String(b.bon_no || "").trim().toUpperCase() === String(bonNo || "").trim().toUpperCase());
+  const h = rows[0] || {};
+  const { photo, note } = getBonPhotoEntry(bonNo, rows);
+  $("#bonPhotoModalTitle").textContent = `دليل التحميل — إذن خروج N° ${bonNo}`;
+  $("#bonPhotoModalMeta").textContent = `${h.farmer_name || ""} · الشاحنة: ${h.truck_no || "—"} · السائق: ${h.driver_name || "—"}`;
+  const cargoTxt = rows.map(r => `${esc(r.designation)} (${n(r.qty)})`).join(" · ");
+  $("#bonPhotoModalBody").innerHTML = `
+    ${photo ? `<img class="bon-evidence-img" src="${photo}" alt="صورة الشاحنة للإذن ${esc(bonNo)}">` : `<p class="empty-state">لا توجد صورة محفوظة لهذا الإذن.</p>`}
+    <div style="display:grid;gap:4px;font-size:.88rem;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:10px">
+      <div><strong>التاريخ:</strong> ${esc(h.sortie_date || "—")} · <strong>المنطقة:</strong> ${esc(h.zone || "—")}</div>
+      <div><strong>الحمولة المسجلة:</strong> ${cargoTxt || "—"}</div>
+      ${note ? `<div><strong>ملاحظة التوثيق:</strong> ${esc(note)}</div>` : ""}
+    </div>`;
+  modal.hidden = false;
+}
+
+$("#closeBonPhotoModalBtn")?.addEventListener("click", () => {
+  if ($("#bonPhotoModal")) $("#bonPhotoModal").hidden = true;
+});
+$("#bonPhotoModal")?.addEventListener("click", e => {
+  if (e.target === $("#bonPhotoModal")) $("#bonPhotoModal").hidden = true;
+});
+$("#bonPhotoInput")?.addEventListener("change", async e => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) return;
+  try {
+    const compressed = await compressTruckPhoto(file);
+    setPendingTruckPhoto(compressed);
+    toast("تم ضغط وتجهيز صورة الشاحنة ✓");
+  } catch (err) {
+    toast(err?.message || "تعذّر معالجة صورة الشاحنة", 1);
+  }
+});
+$("#clearBonPhotoBtn")?.addEventListener("click", () => {
+  setPendingTruckPhoto("", "");
+  toast("تمت إزالة الصورة المرفقة");
+});
 
 async function syncPublicBonRegistry(rows) {
   try {
@@ -312,10 +491,22 @@ async function loadBons() {
     if (!error && Array.isArray(data)) {
       hasRemoteBons = true;
       if (data.length) {
-        BONS = data;
+        const localPhotoMap = readBonPhotoMap();
+        BONS = data.map(row => {
+          const k = String(row.bon_no || "").trim().toUpperCase();
+          if (isSafePhotoDataUrl(row.truck_photo)) {
+            saveBonPhotoLocal(row.bon_no, row.truck_photo, row.photo_note);
+            return row;
+          }
+          const loc = localPhotoMap[k];
+          if (loc && isSafePhotoDataUrl(loc.photo)) {
+            return { ...row, truck_photo: loc.photo, photo_note: row.photo_note || loc.note || "" };
+          }
+          return row;
+        });
         writeLocalBons(BONS);
       } else if (BONS.length) {
-        const seedRows = BONS.map(({ id, ...rest }) => rest);
+        const seedRows = BONS.map(({ id, truck_photo, photo_note, ...rest }) => rest);
         const ins = await sb.from("bon_sorties").insert(seedRows).select();
         if (!ins.error && ins.data) {
           BONS = ins.data;
@@ -375,24 +566,34 @@ function renderEtat() {
   ].map(([l, v]) => `<div class="card"><b>${esc(v)}</b><span>${l}</span></div>`).join("");
 
   $("#bT").innerHTML = tbl(
-    ["N° BON", "N° FACTURE", "DATE", "AGRICULTEUR", "CARTE FELLAH", "DESIGNATION", "QUANTITE", "CHAUFFEUR", "IMMATRICULATION", "ZONE", "إجراءات"],
-    [...rows].reverse().map(b => [
-      `<b>${esc(b.bon_no)}</b>`,
-      esc(b.invoice_no || "-"),
-      esc(b.sortie_date),
-      esc(b.farmer_name),
-      esc(b.carte_fellah || "-"),
-      esc(b.designation),
-      `<b>${n(b.qty)}</b>`,
-      esc(b.driver_name || "-"),
-      esc(b.truck_no || "-"),
-      esc(b.zone || "-"),
-      `<div class="action-group">
-        <button type="button" class="f" data-edit-bon="${esc(b.bon_no)}">تعديل</button>
-        <button type="button" class="f" data-bon="${esc(b.bon_no)}">طباعة الإذن</button>
-        <button type="button" class="f btn-danger" data-del="${esc(b.id || "")}">حذف</button>
-      </div>`
-    ])
+    ["N° BON", "N° FACTURE", "DATE", "AGRICULTEUR", "CARTE FELLAH", "DESIGNATION", "QUANTITE", "CHAUFFEUR", "IMMATRICULATION", "ZONE", "دليل التحميل", "إجراءات"],
+    [...rows].reverse().map(b => {
+      const { photo } = getBonPhotoEntry(b.bon_no, rows);
+      const photoCell = photo
+        ? `<button type="button" class="f" data-photo-bon="${esc(b.bon_no)}" style="display:inline-flex;align-items:center;gap:6px;padding:4px 8px">
+            <img src="${photo}" class="bon-photo-thumb" alt="الشاحنة">
+            <span>عرض الدليل</span>
+          </button>`
+        : `<span style="color:var(--mu);font-size:.8rem">بدون صورة</span>`;
+      return [
+        `<b>${esc(b.bon_no)}</b>`,
+        esc(b.invoice_no || "-"),
+        esc(b.sortie_date),
+        esc(b.farmer_name),
+        esc(b.carte_fellah || "-"),
+        esc(b.designation),
+        `<b>${n(b.qty)}</b>`,
+        esc(b.driver_name || "-"),
+        esc(b.truck_no || "-"),
+        esc(b.zone || "-"),
+        photoCell,
+        `<div class="action-group">
+          <button type="button" class="f" data-edit-bon="${esc(b.bon_no)}">تعديل</button>
+          <button type="button" class="f" data-bon="${esc(b.bon_no)}">طباعة الإذن</button>
+          <button type="button" class="f btn-danger" data-del="${esc(b.id || "")}">حذف</button>
+        </div>`
+      ];
+    })
   );
 }
 
@@ -419,12 +620,13 @@ function syncBonPageStyle(fmt) {
   }
 }
 
-function buildSingleBonHtml(header, lines, qrDataUrl, fmt, copyLabel) {
+function buildSingleBonHtml(header, lines, qrMedia, fmt, copyLabel) {
   const cfg = typeof getAppSettings === "function" ? getAppSettings() : {};
   const showLogo = cfg.printShowLogo !== false;
   const unitLabel = cfg.unitLabel === "طن" ? "T" : "Qx";
   const dt = header.sortie_date ? header.sortie_date.split("-").reverse().join("/") : "";
   const zoneText = header.zone || "";
+  const bonNoText = String(header.bon_no || "").trim() || "PREVIEW";
   const padded = [0, 1, 2, 3].map(i => lines[i] || null);
   const totalQty = lines.reduce((sum, ln) => sum + Number(ln?.qty || 0), 0);
   const rows = padded.map((ln, idx) => `
@@ -439,13 +641,44 @@ function buildSingleBonHtml(header, lines, qrDataUrl, fmt, copyLabel) {
     ? `<img class="bon-logo" src="f761c70c-5eb3-4726-ab98-708bc5fb8c35.jfif" alt="CCLS">`
     : `<span style="width:42px;display:inline-block"></span>`;
 
-  const qrBlock = qrDataUrl
+  const qrSvg = typeof qrMedia === "object" && qrMedia?.qrSvg && String(qrMedia.qrSvg).trim().startsWith("<svg")
+    ? qrMedia.qrSvg
+    : "";
+  const qrDataUrl = typeof qrMedia === "string"
+    ? qrMedia
+    : (qrMedia?.qrDataUrl || "");
+
+  const qrVisual = qrSvg
+    ? `<div class="bon-qr-svg" aria-label="QR ${esc(bonNoText)}">${qrSvg}</div>`
+    : qrDataUrl
+      ? `<img class="bon-qr-img" src="${qrDataUrl}" alt="QR ${esc(bonNoText)}">`
+      : "";
+
+  const qrBlock = qrVisual
     ? `<div class="bon-qr-box">
-        <img class="bon-qr-img" src="${qrDataUrl}" alt="QR ${esc(header.bon_no)}">
-        <span class="bon-qr-code">BON N° ${esc(header.bon_no)}</span>
+        ${qrVisual}
+        <span class="bon-qr-code">BON N° ${esc(bonNoText)}</span>
         <span class="bon-qr-hint">امسح للتحقق عند البوابة</span>
       </div>`
-    : `<div class="bon-qr-box"><span class="bon-qr-code">N° ${esc(header.bon_no)}</span></div>`;
+    : `<div class="bon-qr-box"><span class="bon-qr-code">N° ${esc(bonNoText)}</span></div>`;
+
+  const includePhoto = $("#bonIncludePhotoChk") ? $("#bonIncludePhotoChk").checked : true;
+  const photoEntry = includePhoto && fmt === "a4"
+    ? (isSafePhotoDataUrl(header.truck_photo)
+        ? { photo: header.truck_photo.trim(), note: String(header.photo_note || "").trim() }
+        : getBonPhotoEntry(bonNoText))
+    : { photo: "", note: "" };
+
+  const photoBlock = photoEntry.photo
+    ? `<div class="bon-print-photo">
+        <img src="${photoEntry.photo}" alt="Preuve chargement camion">
+        <div style="font-size:.76rem;line-height:1.45">
+          <strong>PREUVE DE CHARGEMENT / صورة الشاحنة والحمولة:</strong><br>
+          <span>Matricule: <b>${esc(header.truck_no || "—")}</b> · Chauffeur: ${esc(header.driver_name || "—")}</span>
+          ${photoEntry.note ? `<br><span>Note: ${esc(photoEntry.note)}</span>` : ""}
+        </div>
+      </div>`
+    : "";
 
   const cls = fmt === "half" || fmt === "2up" ? "bon-doc bon-fmt-half" : "bon-doc bon-fmt-a4";
 
@@ -500,28 +733,38 @@ function buildSingleBonHtml(header, lines, qrDataUrl, fmt, copyLabel) {
       </div>
       <div class="bon-foot-note">
         <span>${esc(cfg.reportFooter || "CCLS ADRAR - تسيير مخزون الأسمدة")}</span>
-        <span>QR Gate Verification: BON #${esc(header.bon_no)}</span>
+        <span>QR Gate Verification: BON #${esc(bonNoText)}</span>
       </div>
+      ${photoBlock}
     </div>`;
 }
 
 async function renderBonPreview(header, lines) {
-  currentPreviewHeader = header;
+  const effectiveBonNo = String(header?.bon_no || "").trim() || String($("#fb [name=bon_no]")?.value || "").trim() || "PREVIEW";
+  const safeHeader = { ...(header || {}), bon_no: effectiveBonNo };
+  currentPreviewHeader = safeHeader;
   currentPreviewLines = lines;
-  currentBonNo = header.bon_no || "";
+  currentBonNo = effectiveBonNo;
   const fmt = getBonPrintFormat();
   syncBonPageStyle(fmt);
 
+  let qrSvg = "";
   let qrDataUrl = "";
-  if (currentBonNo && typeof window.generateBonQrDataUrl === "function") {
+  if (typeof window.generateBonQrSvg === "function") {
     try {
-      qrDataUrl = await window.generateBonQrDataUrl(currentBonNo);
+      qrSvg = await window.generateBonQrSvg(effectiveBonNo);
     } catch (_) {}
   }
+  if (!qrSvg && typeof window.generateBonQrDataUrl === "function") {
+    try {
+      qrDataUrl = await window.generateBonQrDataUrl(effectiveBonNo);
+    } catch (_) {}
+  }
+  const qrMedia = { qrSvg, qrDataUrl };
 
   if (fmt === "2up") {
-    const copy1 = buildSingleBonHtml(header, lines, qrDataUrl, "2up", "EXEMPLAIRE 1 : MAGASIN / نسخة المخزن");
-    const copy2 = buildSingleBonHtml(header, lines, qrDataUrl, "2up", "EXEMPLAIRE 2 : PORTAIL & CHAUFFEUR / نسخة بوابة المخزن والسائق");
+    const copy1 = buildSingleBonHtml(safeHeader, lines, qrMedia, "2up", "EXEMPLAIRE 1 : MAGASIN / نسخة المخزن");
+    const copy2 = buildSingleBonHtml(safeHeader, lines, qrMedia, "2up", "EXEMPLAIRE 2 : PORTAIL & CHAUFFEUR / نسخة بوابة المخزن والسائق");
     $("#bonPrintArea").innerHTML = `
       <div class="bon-2up-wrap">
         ${copy1}
@@ -529,7 +772,7 @@ async function renderBonPreview(header, lines) {
         ${copy2}
       </div>`;
   } else {
-    $("#bonPrintArea").innerHTML = buildSingleBonHtml(header, lines, qrDataUrl, fmt, "");
+    $("#bonPrintArea").innerHTML = buildSingleBonHtml(safeHeader, lines, qrMedia, fmt, "");
   }
   $("#bonPreviewBox").hidden = false;
 }
@@ -576,6 +819,7 @@ function cancelBonEdit() {
   editingBonIds = [];
   $("#bonEditBanner").hidden = true;
   $("#fb").reset();
+  setPendingTruckPhoto("", "");
   $("#bonLines").innerHTML = "";
   addBonLine();
   $("#fb [name=sortie_date]").value = today();
@@ -617,11 +861,18 @@ function startEditBon(bonNo) {
   $("#fb [name=zone]").value = h.zone || "";
   $("#fb [name=driver_name]").value = h.driver_name || "";
   $("#fb [name=truck_no]").value = h.truck_no || "";
+  const existingPhoto = getBonPhotoEntry(bonNo, lines);
+  setPendingTruckPhoto(existingPhoto.photo, existingPhoto.note);
   $("#bonLines").innerHTML = "";
   lines.slice(0, 4).forEach(ln => addBonLine(ln));
   if (!$("#bonLines").children.length) addBonLine();
   $("#submitBonBtn").textContent = "حفظ تعديل الإذن";
   $("#bonSec").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function isMissingPhotoColumnError(err) {
+  const msg = String(err?.message || "").toLowerCase();
+  return msg.includes("truck_photo") || msg.includes("photo_note") || err?.code === "PGRST204";
 }
 
 $("#fb").onsubmit = async e => {
@@ -638,8 +889,11 @@ $("#fb").onsubmit = async e => {
   if (invCheck.blocked) {
     return toast(invCheck.msg || "الكمية المطلوبة تتجاوز الكمية المتبقية في الفاتورة", 1);
   }
-  const records = lines.map(ln => ({
-    bon_no: f.bon_no.trim(),
+  const photoVal = isSafePhotoDataUrl(pendingTruckPhoto) ? pendingTruckPhoto : null;
+  const photoNoteVal = ($("#bonPhotoNote")?.value || "").trim().slice(0, 200) || null;
+  const cleanBonNo = f.bon_no.trim();
+  const records = lines.map((ln, idx) => ({
+    bon_no: cleanBonNo,
     invoice_no: (f.invoice_no || "").trim(),
     sortie_date: f.sortie_date,
     farmer_name: f.farmer_name.trim().toUpperCase(),
@@ -649,24 +903,45 @@ $("#fb").onsubmit = async e => {
     driver_name: f.driver_name.trim().toUpperCase(),
     truck_no: f.truck_no.trim().toUpperCase(),
     zone: (f.zone || "").trim().toUpperCase(),
-    camp: (f.camp || "2025/2026").trim()
+    camp: (f.camp || "2025/2026").trim(),
+    truck_photo: idx === 0 ? photoVal : null,
+    photo_note: idx === 0 ? photoNoteVal : null
   }));
+  saveBonPhotoLocal(cleanBonNo, photoVal || "", photoNoteVal || "");
+  if (editingOriginalBonNo && editingOriginalBonNo !== cleanBonNo) {
+    saveBonPhotoLocal(editingOriginalBonNo, "", "");
+  }
 
+  let usedPhotoFallback = false;
   if (editingOriginalBonNo) {
     const oldIds = [...editingBonIds];
     if (hasRemoteBons) {
       const updatedRows = [];
       const commonCount = Math.min(records.length, oldIds.length);
       for (let idx = 0; idx < commonCount; idx++) {
-        const { data, error } = await sb.from("bon_sorties").update(records[idx]).eq("id", oldIds[idx]).select();
-        if (error) return toast("تعذّر تعديل السطر: " + error.message, 1);
-        updatedRows.push(data?.[0] || { id: oldIds[idx], ...records[idx] });
+        let res = await sb.from("bon_sorties").update(records[idx]).eq("id", oldIds[idx]).select();
+        if (res.error && isMissingPhotoColumnError(res.error)) {
+          usedPhotoFallback = true;
+          const { truck_photo, photo_note, ...stripped } = records[idx];
+          res = await sb.from("bon_sorties").update(stripped).eq("id", oldIds[idx]).select();
+        }
+        if (res.error) return toast("تعذّر تعديل السطر: " + res.error.message, 1);
+        updatedRows.push({
+          ...(res.data?.[0] || { id: oldIds[idx], ...records[idx] }),
+          truck_photo: records[idx].truck_photo,
+          photo_note: records[idx].photo_note
+        });
       }
       if (records.length > commonCount) {
-        const extra = records.slice(commonCount).map(r => ({ ...r, created_by: ME?.full_name || ME?.email || null }));
-        const { data, error } = await sb.from("bon_sorties").insert(extra).select();
-        if (error) return toast("تعذّر إضافة السطور الجديدة: " + error.message, 1);
-        updatedRows.push(...(data || []));
+        let extra = records.slice(commonCount).map(r => ({ ...r, created_by: ME?.full_name || ME?.email || null }));
+        let insRes = await sb.from("bon_sorties").insert(extra).select();
+        if (insRes.error && isMissingPhotoColumnError(insRes.error)) {
+          usedPhotoFallback = true;
+          extra = extra.map(({ truck_photo, photo_note, ...rest }) => rest);
+          insRes = await sb.from("bon_sorties").insert(extra).select();
+        }
+        if (insRes.error) return toast("تعذّر إضافة السطور الجديدة: " + insRes.error.message, 1);
+        updatedRows.push(...(insRes.data || []));
       }
       if (oldIds.length > records.length) {
         const toDel = oldIds.slice(records.length);
@@ -685,7 +960,7 @@ $("#fb").onsubmit = async e => {
         BONS.push({ id: keepId, ...r });
       });
     }
-    toast("تم تعديل إذن الخروج بنجاح");
+    toast(usedPhotoFallback ? "تم التعديل (الصورة حُفظت محلياً — نفّذ supabase-ops.sql لحفظها سحابياً)" : "تم تعديل إذن الخروج بنجاح");
     writeLocalBons(BONS);
     syncPublicBonRegistry(BONS);
     syncBonLists();
@@ -697,11 +972,21 @@ $("#fb").onsubmit = async e => {
   }
 
   if (hasRemoteBons) {
-    const payload = records.map(r => ({ ...r, created_by: ME?.full_name || ME?.email || null }));
-    const { data, error } = await sb.from("bon_sorties").insert(payload).select();
-    if (error) return toast("تعذّر الحفظ في قاعدة البيانات: " + error.message, 1);
-    BONS.push(...data);
-    toast("تم حفظ إذن الخروج في قاعدة البيانات");
+    let payload = records.map(r => ({ ...r, created_by: ME?.full_name || ME?.email || null }));
+    let ins = await sb.from("bon_sorties").insert(payload).select();
+    if (ins.error && isMissingPhotoColumnError(ins.error)) {
+      usedPhotoFallback = true;
+      payload = payload.map(({ truck_photo, photo_note, ...rest }) => rest);
+      ins = await sb.from("bon_sorties").insert(payload).select();
+    }
+    if (ins.error) return toast("تعذّر الحفظ في قاعدة البيانات: " + ins.error.message, 1);
+    const savedRows = (ins.data || []).map((row, i) => ({
+      ...row,
+      truck_photo: records[i]?.truck_photo || null,
+      photo_note: records[i]?.photo_note || null
+    }));
+    BONS.push(...savedRows);
+    toast(usedPhotoFallback && photoVal ? "تم حفظ الإذن (الصورة حُفظت محلياً — نفّذ supabase-ops.sql لمزامنتها)" : "تم حفظ إذن الخروج في قاعدة البيانات");
   } else {
     let nextId = BONS.reduce((m, x) => Math.max(m, Number(x.id || 0)), 0);
     records.forEach(r => { nextId += 1; BONS.push({ id: nextId, ...r }); });
@@ -714,6 +999,7 @@ $("#fb").onsubmit = async e => {
   currentBonNo = records[0]?.bon_no || "";
   await renderBonPreview(records[0], lines);
   e.target.reset();
+  setPendingTruckPhoto("", "");
   $("#bonLines").innerHTML = "";
   addBonLine();
   $("#fb [name=sortie_date]").value = today();
@@ -729,7 +1015,11 @@ $("#previewBonBtn").onclick = async () => {
     qty: Number(el.querySelector("[data-q]").value || 0)
   })).filter(x => x.designation || x.qty);
   if (!f.farmer_name && !f.bon_no) return toast("أدخل رقم الإذن واسم الفلاح أولاً", 1);
-  await renderBonPreview(f, lines);
+  await renderBonPreview({
+    ...f,
+    truck_photo: isSafePhotoDataUrl(pendingTruckPhoto) ? pendingTruckPhoto : null,
+    photo_note: ($("#bonPhotoNote")?.value || "").trim()
+  }, lines);
 };
 
 $("#bonFormatSelect").onchange = async () => {
@@ -739,6 +1029,11 @@ $("#bonFormatSelect").onchange = async () => {
     await renderBonPreview(currentPreviewHeader, currentPreviewLines);
   }
 };
+$("#bonIncludePhotoChk")?.addEventListener("change", async () => {
+  if (currentPreviewHeader) {
+    await renderBonPreview(currentPreviewHeader, currentPreviewLines);
+  }
+});
 
 $("#verifyFromPreviewBtn").onclick = () => {
   if (!currentBonNo) return;
@@ -986,6 +1281,7 @@ async function verifyBonCode(rawInput) {
   const totalQty = lines.reduce((s, r) => s + Number(r.qty || 0), 0);
   const prevExit = [...readGateChecks()].reverse().find(x => String(x.bon_no).trim().toLowerCase() === String(h.bon_no).trim().toLowerCase());
   const dt = h.sortie_date ? h.sortie_date.split("-").reverse().join("/") : "—";
+  const gatePhoto = getBonPhotoEntry(h.bon_no, lines);
 
   const itemsHtml = lines.map((ln, idx) => `
     <tr>
@@ -1000,6 +1296,18 @@ async function verifyBonCode(rawInput) {
     : `✓ إذن خروج صالح ومعتمد — مسموح بالعبور (N° ${esc(h.bon_no)})`;
   const statusSub = prevExit
     ? `<div class="field-alert field-alert-warn" style="margin-bottom:10px">تم مسح وتأكيد خروج هذا الإذن سابقاً بتاريخ <b>${esc(prevExit.verified_at_label || prevExit.verified_at)}</b> بواسطة <b>${esc(prevExit.verified_by || "مراقب البوابة")}</b>. تحقق من عدم تكرار نفس الوثيقة.</div>`
+    : "";
+
+  const gatePhotoHtml = gatePhoto.photo
+    ? `<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:10px;margin-bottom:12px">
+        <img src="${gatePhoto.photo}" class="bon-photo-preview-img" alt="صورة الشاحنة عند التحميل" style="cursor:pointer" id="verifyGatePhotoImg">
+        <div style="display:grid;gap:4px;font-size:.86rem">
+          <strong>صورة التحميل الموثّقة للمطابقة عند البوابة</strong>
+          <span>الترقيم المسجّل: <b style="color:var(--pr);font-family:var(--font-mono)">${esc(h.truck_no || "—")}</b></span>
+          ${gatePhoto.note ? `<span style="color:var(--mu)">${esc(gatePhoto.note)}</span>` : ""}
+          <button type="button" class="f" id="verifyOpenPhotoBtn" style="justify-self:start">تكبير الصورة</button>
+        </div>
+      </div>`
     : "";
 
   box.innerHTML = `
@@ -1019,6 +1327,7 @@ async function verifyBonCode(rawInput) {
         <div><span style="color:var(--mu)">بطاقة الفلاح:</span><br><b>${esc(h.carte_fellah || "—")}</b></div>
         <div><span style="color:var(--mu)">الموسم:</span><br><b>${esc(h.camp || "2025/2026")}</b></div>
       </div>
+      ${gatePhotoHtml}
       <div class="w" style="margin-bottom:12px">
         <table>
           <thead><tr><th>#</th><th>المادة (Désignation)</th><th>الكمية</th></tr></thead>
@@ -1038,6 +1347,9 @@ async function verifyBonCode(rawInput) {
         <button type="button" class="f" data-bon="${esc(h.bon_no)}" id="previewVerifiedBonBtn">عرض / طباعة الإذن</button>
       </div>
     </div>`;
+
+  $("#verifyOpenPhotoBtn")?.addEventListener("click", () => openBonPhotoModal(h.bon_no));
+  $("#verifyGatePhotoImg")?.addEventListener("click", () => openBonPhotoModal(h.bon_no));
 
   const confirmBtn = $("#confirmGateExitBtn");
   if (confirmBtn) {
@@ -1163,6 +1475,11 @@ $("#clearGateLogBtn").onclick = () => {
 };
 
 $("#bT").onclick = async e => {
+  const photoBtn = e.target.closest("[data-photo-bon]");
+  if (photoBtn) {
+    openBonPhotoModal(photoBtn.dataset.photoBon);
+    return;
+  }
   const editBtn = e.target.closest("[data-edit-bon]");
   if (editBtn) {
     startEditBon(editBtn.dataset.editBon);

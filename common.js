@@ -765,6 +765,87 @@ function stopSessionMonitor() {
 window.describeDeviceLabel = describeDeviceLabel;
 window.getOrCreateSessionKey = getOrCreateSessionKey;
 
+const PRODUCT_LOSS_PCT_KEY = "ccls_product_loss_pct_v1";
+const BON_PHOTOS_KEY = "ccls_bon_photos_v1";
+
+function readProductLossPctMap() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PRODUCT_LOSS_PCT_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveProductLossPctMap(items) {
+  const map = readProductLossPctMap();
+  (items || []).forEach(p => {
+    if (!p) return;
+    const pct = Number(p.normal_loss_pct ?? p.normalLossPct);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) return;
+    const cleanPct = Number(pct.toFixed(2));
+    if (p.id != null && p.id !== "") map[`id:${p.id}`] = cleanPct;
+    const nameKey = String(p.name || "").trim().toUpperCase();
+    if (nameKey) map[`name:${nameKey}`] = cleanPct;
+  });
+  try {
+    localStorage.setItem(PRODUCT_LOSS_PCT_KEY, JSON.stringify(map));
+  } catch (_) {}
+  return map;
+}
+
+function getProductNormalLossPct(product, fallbackMap) {
+  if (product && typeof product === "object") {
+    const direct = Number(product.normal_loss_pct);
+    if (Number.isFinite(direct) && direct >= 0) return direct;
+    const map = fallbackMap || readProductLossPctMap();
+    if (product.id != null && Number.isFinite(Number(map[`id:${product.id}`]))) {
+      return Number(map[`id:${product.id}`]);
+    }
+    const nameKey = String(product.name || "").trim().toUpperCase();
+    if (nameKey && Number.isFinite(Number(map[`name:${nameKey}`]))) {
+      return Number(map[`name:${nameKey}`]);
+    }
+    return 0;
+  }
+  const map = fallbackMap || readProductLossPctMap();
+  const strKey = String(product || "").trim().toUpperCase();
+  if (strKey && Number.isFinite(Number(map[`name:${strKey}`]))) {
+    return Number(map[`name:${strKey}`]);
+  }
+  return 0;
+}
+
+function evaluateProductLossTolerance({ lossQty = 0, baselineQty = 0, normalLossPct = 0 } = {}) {
+  const loss = Math.max(0, Number(lossQty) || 0);
+  const base = Math.max(0, Number(baselineQty) || 0);
+  const pct = Math.min(100, Math.max(0, Number(normalLossPct) || 0));
+  const allowedQty = Number(((base * pct) / 100).toFixed(4));
+  const actualLossPct = base > 0 ? Number(((loss / base) * 100).toFixed(2)) : (loss > 0 ? 100 : 0);
+  const hasLoss = loss > 0;
+  const hasMargin = pct > 0 && base > 0;
+  const withinNormal = hasLoss && hasMargin && loss <= allowedQty + 1e-6;
+  const isAbnormal = hasLoss && !withinNormal;
+  const excessQty = isAbnormal ? Number(Math.max(0, loss - allowedQty).toFixed(2)) : 0;
+  return {
+    lossQty: Number(loss.toFixed(2)),
+    baselineQty: Number(base.toFixed(2)),
+    normalLossPct: Number(pct.toFixed(2)),
+    allowedQty: Number(allowedQty.toFixed(2)),
+    excessQty,
+    actualLossPct,
+    hasLoss,
+    hasMargin,
+    withinNormal,
+    isAbnormal
+  };
+}
+
+window.readProductLossPctMap = readProductLossPctMap;
+window.saveProductLossPctMap = saveProductLossPctMap;
+window.getProductNormalLossPct = getProductNormalLossPct;
+window.evaluateProductLossTolerance = evaluateProductLossTolerance;
+
 
 // ===========================================================
 const $ = s => document.querySelector(s);
@@ -1518,7 +1599,8 @@ function startApp({ page, tabs, ready }) {
       APP_SETTINGS_KEY, LOW_STOCK_KEY, THEME_KEY,
       "ccls_dossiers_2026_2027", "ccls_invoice_meta", "ccls_bons_2026_2027", "ccls_stock_in_expiry",
       "ccls_stock_adjustments_v1", "ccls_pickup_queue_v1", "ccls_farmer_notifications_v1",
-      "ccls_warehouse_transfers_v1", "ccls_drivers_registry_v1", RECYCLE_BIN_KEY, INVOICE_NOTES_KEY
+      "ccls_warehouse_transfers_v1", "ccls_drivers_registry_v1", PRODUCT_LOSS_PCT_KEY, BON_PHOTOS_KEY,
+      RECYCLE_BIN_KEY, INVOICE_NOTES_KEY
     ];
     const data = {};
     keys.forEach(k => {
@@ -1546,7 +1628,8 @@ function startApp({ page, tabs, ready }) {
         APP_SETTINGS_KEY, LOW_STOCK_KEY, THEME_KEY,
         "ccls_dossiers_2026_2027", "ccls_invoice_meta", "ccls_bons_2026_2027", "ccls_stock_in_expiry",
         "ccls_stock_adjustments_v1", "ccls_pickup_queue_v1", "ccls_farmer_notifications_v1",
-        "ccls_warehouse_transfers_v1", "ccls_drivers_registry_v1", RECYCLE_BIN_KEY, INVOICE_NOTES_KEY
+        "ccls_warehouse_transfers_v1", "ccls_drivers_registry_v1", PRODUCT_LOSS_PCT_KEY, BON_PHOTOS_KEY,
+        RECYCLE_BIN_KEY, INVOICE_NOTES_KEY
       ]);
       Object.entries(parsed.data).forEach(([k, v]) => {
         if (allowedKeys.has(k) && typeof v === "string") localStorage.setItem(k, v);
@@ -1581,7 +1664,8 @@ function startApp({ page, tabs, ready }) {
     [
       "ccls_dossiers_2026_2027", "ccls_invoice_meta", "ccls_bons_2026_2027", "ccls_stock_in_expiry",
       "ccls_stock_adjustments_v1", "ccls_pickup_queue_v1", "ccls_farmer_notifications_v1",
-      "ccls_warehouse_transfers_v1", "ccls_drivers_registry_v1", RECYCLE_BIN_KEY, INVOICE_NOTES_KEY
+      "ccls_warehouse_transfers_v1", "ccls_drivers_registry_v1", PRODUCT_LOSS_PCT_KEY, BON_PHOTOS_KEY,
+      RECYCLE_BIN_KEY, INVOICE_NOTES_KEY
     ].forEach(k => {
       try { localStorage.removeItem(k); } catch (_) {}
     });

@@ -156,6 +156,8 @@ function sanitizeDirectorSnapshot(raw) {
         returnedQty: safeNum(raw.adjustments.returnedQty),
         totalAmountDzd: safeNum(raw.adjustments.totalAmountDzd),
         count: safeNum(raw.adjustments.count),
+        abnormalLossCount: safeNum(raw.adjustments.abnormalLossCount),
+        withinNormalOnly: Boolean(raw.adjustments.withinNormalOnly),
       }
     : null;
 
@@ -292,13 +294,14 @@ async function fetchLiveDirectorStatsFromSupabase() {
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
   };
   try {
-    const [invRes, stockRes, adjRes, stockInRes, wRes, dosRes] = await Promise.all([
+    const [invRes, stockRes, adjRes, stockInRes, wRes, dosRes, prodRes] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/invoice_balance?select=id,qty,taken,remaining,culture,product_name,unit_price,dossier_no,farmer_name,client_name&limit=2000`, { headers }),
       fetch(`${SUPABASE_URL}/rest/v1/stock_analysis?select=name,warehouse,received,withdrawn,balance&limit=1000`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/stock_adjustments?select=adjustment_type,qty,amount_dzd&limit=1000`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/stock_adjustments?select=adjustment_type,qty,amount_dzd,product_name&limit=1000`, { headers }),
       fetch(`${SUPABASE_URL}/rest/v1/stock_in?select=entry_date,qty,products(name)&order=entry_date.asc&limit=2000`, { headers }),
       fetch(`${SUPABASE_URL}/rest/v1/withdrawals?select=w_date,qty,invoice_id,invoices(dossier_no,farmer_name,client_name,unit_price,products(name))&order=w_date.asc&limit=2000`, { headers }),
       fetch(`${SUPABASE_URL}/rest/v1/dossier_receptions?select=dossier_no,farmer_name,reception_date&limit=2000`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/products?select=name,normal_loss_pct&limit=500`, { headers }),
     ]);
     if (!invRes.ok || !stockRes.ok) return null;
     const invoices = await invRes.json();
@@ -307,6 +310,7 @@ async function fetchLiveDirectorStatsFromSupabase() {
     const stockIn = stockInRes.ok ? await stockInRes.json() : [];
     const withdrawals = wRes.ok ? await wRes.json() : [];
     const dossiers = dosRes.ok ? await dosRes.json() : [];
+    const prods = prodRes.ok ? await prodRes.json() : [];
 
     // Weighted avg unit price per product
     const priceAcc = new Map();
@@ -427,14 +431,38 @@ async function fetchLiveDirectorStatsFromSupabase() {
     }
 
     let damagedQty = 0, lostQty = 0, returnedQty = 0, totalAmountDzd = 0;
+    const lossByProd = new Map();
+    const baseByProd = new Map();
+    const lossPctMap = new Map();
+    for (const p of Array.isArray(prods) ? prods : []) {
+      const k = String(p?.name || "").trim().toUpperCase();
+      if (k) lossPctMap.set(k, Math.max(0, Number(p?.normal_loss_pct || 0)));
+    }
+    for (const s of Array.isArray(stock) ? stock : []) {
+      const k = String(s?.name || "").trim().toUpperCase();
+      if (k) baseByProd.set(k, (baseByProd.get(k) || 0) + Number(s?.received || 0));
+    }
     for (const a of Array.isArray(adjs) ? adjs : []) {
       const q = Number(a.qty || 0);
       const amt = Number(a.amount_dzd || 0);
       totalAmountDzd += amt;
-      if (a.adjustment_type === "damaged") damagedQty += q;
-      else if (a.adjustment_type === "lost") lostQty += q;
-      else returnedQty += q;
+      if (a.adjustment_type === "damaged" || a.adjustment_type === "lost") {
+        if (a.adjustment_type === "damaged") damagedQty += q;
+        else lostQty += q;
+        const k = String(a.product_name || "").trim().toUpperCase();
+        if (k) lossByProd.set(k, (lossByProd.get(k) || 0) + q);
+      } else returnedQty += q;
     }
+    let abnormalLossCount = 0;
+    let normalLossCount = 0;
+    lossByProd.forEach((lossQty, k) => {
+      const base = baseByProd.get(k) || 0;
+      const pct = lossPctMap.get(k) || 0;
+      const allowed = (base * pct) / 100;
+      if (pct > 0 && base > 0 && lossQty <= allowed + 1e-6) normalLossCount += 1;
+      else if (lossQty > 0) abnormalLossCount += 1;
+    });
+    const withinNormalOnly = (Array.isArray(adjs) ? adjs.length : 0) > 0 && abnormalLossCount === 0 && (normalLossCount > 0 || (damagedQty === 0 && lostQty === 0));
 
     return sanitizeDirectorSnapshot({
       orgName: "تعاونية الحبوب والبقول الجافة أدرار (CCLS ADRAR)",
@@ -453,7 +481,7 @@ async function fetchLiveDirectorStatsFromSupabase() {
       stock: enrichedStock,
       stockValuationMonthly,
       kpiStats,
-      adjustments: { damagedQty, lostQty, returnedQty, totalAmountDzd, count: Array.isArray(adjs) ? adjs.length : 0 },
+      adjustments: { damagedQty, lostQty, returnedQty, totalAmountDzd, count: Array.isArray(adjs) ? adjs.length : 0, abnormalLossCount, withinNormalOnly },
     });
   } catch {
     return null;

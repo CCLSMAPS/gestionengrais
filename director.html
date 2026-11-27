@@ -131,8 +131,13 @@ function renderDirectorView(snap, sourceLabel) {
 
   const adj = snap.adjustments;
   if (adj && (adj.count > 0 || adj.damagedQty > 0 || adj.lostQty > 0 || adj.returnedQty > 0)) {
+    const isNormalOnly = adj.withinNormalOnly === true && !(adj.abnormalLossCount > 0);
     $("#dirAdjBanner").hidden = false;
-    $("#dirAdjBanner").innerHTML = `<strong>تسويات الجرد (التالف والضائع والمرتجع):</strong> التالف: <b>${n(adj.damagedQty)} ${esc(unit)}</b> · الضائع: <b>${n(adj.lostQty)} ${esc(unit)}</b> · المرتجع: <b>${n(adj.returnedQty)} ${esc(unit)}</b> · القيمة الإجمالية: <b>${n(adj.totalAmountDzd)} دج</b>`;
+    $("#dirAdjBanner").className = isNormalOnly ? "info" : "alert-warn";
+    const statusTag = isNormalOnly
+      ? `<span class="tag-ok"> · ضمن معدل الفقد العادي (بدون تنبيه)</span>`
+      : (adj.abnormalLossCount > 0 ? `<span class="tag-bad"> · تجاوز المسموح في ${adj.abnormalLossCount} صنف</span>` : "");
+    $("#dirAdjBanner").innerHTML = `<strong>تسويات الجرد (التالف والضائع والمرتجع):</strong> التالف: <b>${n(adj.damagedQty)} ${esc(unit)}</b> · الضائع: <b>${n(adj.lostQty)} ${esc(unit)}</b> · المرتجع: <b>${n(adj.returnedQty)} ${esc(unit)}</b> · القيمة الإجمالية: <b>${n(adj.totalAmountDzd)} دج</b>${statusTag}`;
   } else {
     $("#dirAdjBanner").hidden = true;
   }
@@ -189,13 +194,14 @@ async function loadFromSignedToken() {
 }
 
 async function loadFromSupabaseAuth() {
-  const [invRes, stockRes, adjRes, stockInRes, wRes, dosRes] = await Promise.all([
+  const [invRes, stockRes, adjRes, stockInRes, wRes, dosRes, prodRes] = await Promise.all([
     sb.from("invoice_balance").select("id, qty, taken, remaining, culture, product_name, unit_price, dossier_no, farmer_name, client_name").limit(2000),
     sb.from("stock_analysis").select("wid, name, warehouse, received, withdrawn, balance").order("name"),
     sb.from("stock_adjustments").select("adjustment_type, qty, amount_dzd, product_name, warehouse_id").limit(1000),
     sb.from("stock_in").select("entry_date, qty, products(name)").order("entry_date", { ascending: true }).limit(2000),
     sb.from("withdrawals").select("w_date, qty, invoice_id, invoices(dossier_no, farmer_name, client_name, unit_price, products(name))").order("w_date", { ascending: true }).limit(2000),
-    sb.from("dossier_receptions").select("dossier_no, farmer_name, reception_date").limit(2000)
+    sb.from("dossier_receptions").select("dossier_no, farmer_name, reception_date").limit(2000),
+    sb.from("products").select("id, name, normal_loss_pct").limit(500)
   ]);
   if (invRes.error && stockRes.error) {
     toast(invRes.error.message || "تعذّر تحميل المؤشرات", 1);
@@ -333,13 +339,41 @@ async function loadFromSupabaseAuth() {
   });
 
   let damagedQty = 0, lostQty = 0, returnedQty = 0, totalAmountDzd = 0;
+  const lossByProdDir = new Map();
+  const baseByProdDir = new Map();
+  const prodsDir = (!prodRes.error && Array.isArray(prodRes.data)) ? prodRes.data : [];
+  const lossPctMapDir = typeof readProductLossPctMap === "function" ? readProductLossPctMap() : {};
+  stock.forEach(s => {
+    const k = String(s.name || "").trim().toUpperCase();
+    if (k) baseByProdDir.set(k, (baseByProdDir.get(k) || 0) + Number(s.received || 0));
+  });
   adjs.forEach(a => {
     const q = Number(a.qty || 0);
     totalAmountDzd += Number(a.amount_dzd || 0);
-    if (a.adjustment_type === "damaged") damagedQty += q;
-    else if (a.adjustment_type === "lost") lostQty += q;
-    else returnedQty += q;
+    if (a.adjustment_type === "damaged") {
+      damagedQty += q;
+      const k = String(a.product_name || "").trim().toUpperCase();
+      if (k) lossByProdDir.set(k, (lossByProdDir.get(k) || 0) + q);
+    } else if (a.adjustment_type === "lost") {
+      lostQty += q;
+      const k = String(a.product_name || "").trim().toUpperCase();
+      if (k) lossByProdDir.set(k, (lossByProdDir.get(k) || 0) + q);
+    } else returnedQty += q;
   });
+  let abnormalLossCount = 0;
+  let normalLossCountDir = 0;
+  lossByProdDir.forEach((lossQty, k) => {
+    const pObj = prodsDir.find(p => String(p.name || "").trim().toUpperCase() === k);
+    const pct = typeof getProductNormalLossPct === "function"
+      ? (pObj ? getProductNormalLossPct(pObj, lossPctMapDir) : getProductNormalLossPct(k, lossPctMapDir))
+      : Number(pObj?.normal_loss_pct || 0);
+    const ev = typeof evaluateProductLossTolerance === "function"
+      ? evaluateProductLossTolerance({ lossQty, baselineQty: baseByProdDir.get(k) || 0, normalLossPct: pct })
+      : { isAbnormal: lossQty > 0, withinNormal: false };
+    if (ev.isAbnormal) abnormalLossCount += 1;
+    else if (ev.withinNormal) normalLossCountDir += 1;
+  });
+  const withinNormalOnly = adjs.length > 0 && abnormalLossCount === 0 && (normalLossCountDir > 0 || (damagedQty === 0 && lostQty === 0));
 
   const cfg = getAppSettings();
   renderDirectorView({
@@ -358,7 +392,7 @@ async function loadFromSupabaseAuth() {
     stock,
     stockValuationMonthly,
     kpiStats,
-    adjustments: { damagedQty, lostQty, returnedQty, totalAmountDzd, count: adjs.length }
+    adjustments: { damagedQty, lostQty, returnedQty, totalAmountDzd, count: adjs.length, abnormalLossCount, withinNormalOnly }
   }, "حساب متابعة مباشر");
 }
 

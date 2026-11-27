@@ -242,7 +242,7 @@ const pdfSandbox = {
             fillRect: () => {},
             clearRect: () => {},
           }),
-          toDataURL: () => "data:image/png;base64,iVBORw0KGgo=",
+          toDataURL: () => "data:image/png;base64," + "A".repeat(120),
         };
       }
       return {};
@@ -433,4 +433,72 @@ assert.equal(yoyTest[0].receivedPct, 50);
 assert.equal(yoyTest[0].withdrawnDiff, 25);
 assert.equal(yoyTest[0].withdrawnPct, 50);
 
-console.log(`ALL ${htmlPages.length} PAGES, BUNDLES, MANIFEST, AGGREGATOR, RBAC, SETTINGS, QR-BON, OPS-SUITE, 9-PRO-FEATURES, AND SECURITY CHECKS PASSED`);
+// 13. Validate QR SVG + canvas-blocked fallback, Truck Photo Proof, and Normal Loss Rate
+assert.equal(typeof pdfSandbox.window.generateBonQrSvg, "function");
+const qrSvgOut = await pdfSandbox.window.generateBonQrSvg("1691");
+assert.ok(qrSvgOut.startsWith("<svg") && qrSvgOut.includes("</svg>"), "QR SVG should render valid SVG markup");
+
+const noCanvasSandbox = {
+  document: {
+    createElement: () => ({ width: 0, height: 0, getContext: () => null }),
+    body: { appendChild: () => {} },
+    head: { appendChild: () => {} },
+  },
+  navigator: {},
+  location: { protocol: "https:", origin: "https://ccls.example.test" },
+  URL,
+  TextEncoder,
+  TextDecoder,
+  atob,
+  btoa,
+  console,
+  setTimeout,
+  clearTimeout,
+};
+noCanvasSandbox.window = noCanvasSandbox;
+noCanvasSandbox.globalThis = noCanvasSandbox;
+vm.runInNewContext(dossiersPdfBundle, noCanvasSandbox, { filename: "dist/dossiers-pdf.js" });
+const fallbackQrUrl = await noCanvasSandbox.window.generateBonQrDataUrl("1691");
+assert.ok(
+  fallbackQrUrl.startsWith("data:image/svg+xml;charset=utf-8,"),
+  "QR DataUrl must fall back to SVG data URL when canvas is blocked"
+);
+
+assert.match(bonsHtml, /bonPhotoInput/);
+assert.match(bonsHtml, /bonPhotoModal/);
+assert.match(bonsHtml, /bon-qr-svg/);
+assert.match(bonsHtml, /generateBonQrSvg/);
+assert.match(bonsHtml, /compressTruckPhoto/);
+
+const bonsSql = fs.readFileSync(path.join(ROOT, "supabase-bons.sql"), "utf8");
+assert.match(opsSql, /truck_photo/);
+assert.match(opsSql, /photo_note/);
+assert.match(opsSql, /normal_loss_pct/);
+assert.match(bonsSql, /truck_photo/);
+
+assert.match(warehouseHtml, /normal_loss_pct/);
+assert.match(warehouseHtml, /adjTolerancePreview/);
+assert.match(warehouseHtml, /lossToleranceAlert/);
+
+assert.equal(typeof commonSandbox.window.evaluateProductLossTolerance, "function");
+const lossOk = commonSandbox.window.evaluateProductLossTolerance({ lossQty: 1.5, baselineQty: 100, normalLossPct: 2 });
+assert.equal(lossOk.withinNormal, true);
+assert.equal(lossOk.isAbnormal, false);
+assert.equal(lossOk.excessQty, 0);
+assert.equal(lossOk.allowedQty, 2);
+
+const lossBoundary = commonSandbox.window.evaluateProductLossTolerance({ lossQty: 2, baselineQty: 100, normalLossPct: 2 });
+assert.equal(lossBoundary.withinNormal, true);
+assert.equal(lossBoundary.isAbnormal, false);
+
+const lossOver = commonSandbox.window.evaluateProductLossTolerance({ lossQty: 3.5, baselineQty: 100, normalLossPct: 2 });
+assert.equal(lossOver.withinNormal, false);
+assert.equal(lossOver.isAbnormal, true);
+assert.equal(lossOver.excessQty, 1.5);
+
+const lossZeroTol = commonSandbox.window.evaluateProductLossTolerance({ lossQty: 1, baselineQty: 100, normalLossPct: 0 });
+assert.equal(lossZeroTol.withinNormal, false);
+assert.equal(lossZeroTol.isAbnormal, true);
+assert.equal(lossZeroTol.excessQty, 1);
+
+console.log(`ALL ${htmlPages.length} PAGES, BUNDLES, MANIFEST, AGGREGATOR, RBAC, SETTINGS, QR-BON, OPS-SUITE, 9-PRO-FEATURES, PHOTO-PROOF, LOSS-TOLERANCE, AND SECURITY CHECKS PASSED`);

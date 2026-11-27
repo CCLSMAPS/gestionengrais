@@ -20,6 +20,7 @@
   <h2>المخزون حسب المخزن والمنتج (بالقنطار)</h2>
   <div class="cards" id="cards"></div>
   <div id="lowStockAlert" class="alert-warn" hidden></div>
+  <div id="lossToleranceAlert" class="alert-bad" hidden></div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:10px;margin-bottom:10px">
     <label>بحث<input id="sq" placeholder="اسم المنتج"></label>
     <label>المخزن<select id="sw"></select></label>
@@ -122,6 +123,7 @@
     <label>النوع<select name="category_id" id="pc" required></select></label>
     <label>مدة التوريد (أيام)<input name="lead_days" type="number" min="0" value="14"></label>
     <label>مخزون احتياطي (أيام)<input name="safety_days" type="number" min="0" value="7"></label>
+    <label>معدل الفقد العادي (%)<input name="normal_loss_pct" type="number" step="0.01" min="0" max="100" value="0" placeholder="مثال: 1.5"></label>
     <button class="p">إضافة منتج</button>
   </form>
   <div class="w" id="prT"></div>
@@ -132,6 +134,7 @@
     <span id="adjDbBadge" style="font-size:.82rem;color:var(--mu)"></span>
   </div>
   <div class="cards" id="adjCards"></div>
+  <div id="adjAbnormalBanner" class="alert-bad" hidden></div>
   <div id="adjEditBanner" class="info" hidden style="border:1px solid var(--ac);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
     <strong id="adjEditLabel">تعديل تسوية</strong>
     <button type="button" class="f" id="cancelAdjEdit">إلغاء التعديل</button>
@@ -153,6 +156,7 @@
     <label>المبلغ الإجمالي (دج)<input name="amount_dzd" type="number" step="any" min="0" required value="0"></label>
     <label>رقم محضر الجرد / المرجع<input name="ref_doc" placeholder="مثال: PV-2026/04"></label>
     <label style="grid-column:1/-1">السبب والتوضيح الدقيق<input name="reason" required placeholder="مثال: تمزق أكياس بسبب الرطوبة / نقص أثناء التفريغ / إرجاع كمية..."></label>
+    <div id="adjTolerancePreview" class="field-alert" hidden style="grid-column:1/-1"></div>
     <button class="p" id="submitAdjBtn">تسجيل التسوية</button>
   </form>
   <datalist id="adjPl"></datalist>
@@ -251,6 +255,7 @@ let adjRows = [];
 let transferRows = [];
 let driverRows = [];
 let recycleRows = [];
+let productCatalogRows = [];
 const ADJ_LOCAL_KEY = "ccls_stock_adjustments_v1";
 const TRANSFER_LOCAL_KEY = "ccls_warehouse_transfers_v1";
 const DRIVERS_LOCAL_KEY = "ccls_drivers_registry_v1";
@@ -336,16 +341,77 @@ async function syncKioskStock(rows) {
   } catch (_) {}
 }
 
+async function fetchProductsWithLossSafe() {
+  const rich = await sb.from("products").select("id,name,category_id,lead_days,safety_days,normal_loss_pct").order("name");
+  if (!rich.error && Array.isArray(rich.data)) {
+    saveProductLossPctMap(rich.data);
+    return rich;
+  }
+  const basic = await sb.from("products").select("*").order("name");
+  if (!basic.error && Array.isArray(basic.data)) {
+    const map = readProductLossPctMap();
+    basic.data = basic.data.map(p => ({ ...p, normal_loss_pct: getProductNormalLossPct(p, map) }));
+  }
+  return basic;
+}
+
+function buildProductLossEvalMap(sRows, aRows, pRows) {
+  const lossByProd = new Map();
+  const baseByProd = new Map();
+  const displayNames = new Map();
+  const pctMap = readProductLossPctMap();
+  const prodByKey = new Map();
+
+  (pRows || []).forEach(p => {
+    const k = String(p.name || "").trim().toUpperCase();
+    if (!k) return;
+    prodByKey.set(k, p);
+    displayNames.set(k, p.name);
+  });
+
+  (sRows || []).forEach(r => {
+    const k = String(r.name || "").trim().toUpperCase();
+    if (!k) return;
+    baseByProd.set(k, (baseByProd.get(k) || 0) + Number(r.received || 0));
+    if (!displayNames.has(k)) displayNames.set(k, r.name);
+  });
+
+  (aRows || []).forEach(a => {
+    const tp = a.adjustment_type || a.adj_type;
+    if (tp !== "damaged" && tp !== "lost") return;
+    const k = String(a.product_name || "").trim().toUpperCase();
+    if (!k) return;
+    lossByProd.set(k, (lossByProd.get(k) || 0) + Number(a.qty || 0));
+    if (!displayNames.has(k)) displayNames.set(k, a.product_name);
+  });
+
+  const evalMap = new Map();
+  const allKeys = new Set([...lossByProd.keys(), ...baseByProd.keys()]);
+  allKeys.forEach(k => {
+    const pObj = prodByKey.get(k);
+    const pct = pObj ? getProductNormalLossPct(pObj, pctMap) : getProductNormalLossPct(k, pctMap);
+    const res = evaluateProductLossTolerance({
+      lossQty: lossByProd.get(k) || 0,
+      baselineQty: baseByProd.get(k) || 0,
+      normalLossPct: pct
+    });
+    evalMap.set(k, { ...res, name: displayNames.get(k) || k });
+  });
+  return evalMap;
+}
+
 async function loadStock() {
-  const [s, iv, w, wh, ct, adjRes, trRes] = await Promise.all([
+  const [s, iv, w, wh, ct, prRes, adjRes, trRes] = await Promise.all([
     sb.from("stock_analysis").select("*").order("name"),
     sb.from("invoice_balance").select("remaining"),
     sb.from("withdrawals").select("qty").gte("w_date", today().slice(0, 8) + "01"),
     sb.from("warehouses").select("id,name").order("name"),
     sb.from("product_categories").select("id,name").order("sort_order"),
+    fetchProductsWithLossSafe(),
     fetchAdjustmentsList(),
     fetchTransfersList()]);
   if (s.error) return toast(s.error.message + " (نفّذ supabase-warehouses.sql)", 1);
+  if (!prRes.error && Array.isArray(prRes.data)) productCatalogRows = prRes.data;
   adjRows = adjRes.rows || [];
   transferRows = trRes.rows || [];
 
@@ -407,6 +473,24 @@ async function loadStock() {
       balance: netBal
     };
   });
+
+  const lossEvalMap = buildProductLossEvalMap(stockRows, adjRows, productCatalogRows);
+  const abnormalLosses = [...lossEvalMap.values()].filter(x => x.isAbnormal);
+  const lossAlertEl = $("#lossToleranceAlert");
+  if (lossAlertEl) {
+    if (abnormalLosses.length) {
+      lossAlertEl.hidden = false;
+      const summary = abnormalLosses
+        .map(x => `<b>${esc(x.name)}</b> (فقد ${n(x.lossQty)} قنطار / ${n(x.actualLossPct)}% مقابل مسموح ${n(x.normalLossPct)}% = ${n(x.allowedQty)} قنطار، فائض غير عادي: <b>${n(x.excessQty)}</b>)`)
+        .join(" · ");
+      lossAlertEl.innerHTML = `<span><strong>تنبيه تجاوز معدل الفقد العادي (${abnormalLosses.length}):</strong> ${summary}</span>
+        <button type="button" class="f" id="goAdjFromLossBtn">مراجعة سجل التالف والضائع</button>`;
+      $("#goAdjFromLossBtn")?.addEventListener("click", () => window.showAppTab && window.showAppTab("adjustments"));
+    } else {
+      lossAlertEl.hidden = true;
+      lossAlertEl.innerHTML = "";
+    }
+  }
 
   fillSel("#sw", wh.data, "كل المخازن"); fillSel("#lw", wh.data, "كل المخازن"); fillSel("#sc", ct.data, "كل الأنواع");
   const inv = iv.data || [], act = inv.filter(x => x.remaining > 0).length;
@@ -767,24 +851,36 @@ let CT = [];
 const catBoxes = sel => CT.map(c => `<label><input type="checkbox" class="pc" value="${esc(c.id)}"${sel.includes(c.id) ? " checked" : ""}>${esc(c.name)}</label>`).join("");
 const catOpts = cur => CT.map(c => `<option value="${esc(c.id)}"${c.id === cur ? " selected" : ""}>${esc(c.name)}</option>`).join("");
 const btns = id => `<div class="action-group"><button class="p" data-id="${esc(id)}">حفظ</button> <button class="f btn-danger" data-id="${esc(id)}" data-act="del">حذف</button></div>`;
+function isMissingLossColumnError(err) {
+  const msg = String(err?.message || "").toLowerCase();
+  return msg.includes("normal_loss_pct") || err?.code === "PGRST204";
+}
+
 async function loadCatalogTab() {
   const [w, c, wc, p] = await Promise.all([sb.from("warehouses").select("*").order("name"),
     sb.from("product_categories").select("*").order("sort_order").order("name"),
-    sb.from("warehouse_categories").select("*"), sb.from("products").select("*").order("name")]);
+    sb.from("warehouse_categories").select("*"), fetchProductsWithLossSafe()]);
   const err = w.error || c.error || wc.error || p.error;
   if (err) return toast(err.message + " (نفّذ supabase-warehouses.sql)", 1);
+  productCatalogRows = p.data || [];
   CT = c.data; $("#wc").innerHTML = catBoxes([]); $("#pc").innerHTML = catOpts();
   $("#wT").innerHTML = tbl(["المخزن", "الموقع", "الأنواع المسموحة", "مفعّل", ""], w.data.map(x => [
     `<input data-n value="${esc(x.name)}">`, `<input data-l value="${esc(x.location)}">`,
     `<div class="perms">${catBoxes(wc.data.filter(k => k.warehouse_id === x.id).map(k => k.category_id))}</div>`,
     `<input type="checkbox" data-a${x.active ? " checked" : ""}>`, btns(x.id)]));
   $("#cT").innerHTML = tbl(["النوع", ""], c.data.map(x => [`<input data-n value="${esc(x.name)}">`, btns(x.id)]));
-  $("#prT").innerHTML = tbl(["المنتج", "النوع", "مدة التوريد (يوم)", "احتياطي (يوم)", ""], p.data.map(x => [
-    `<input data-pn value="${esc(x.name)}">`,
-    `<select data-c><option value="">—</option>${catOpts(x.category_id)}</select>`,
-    `<input type="number" data-ld min="0" value="${esc(x.lead_days)}" style="width:80px">`,
-    `<input type="number" data-sd min="0" value="${esc(x.safety_days)}" style="width:80px">`,
-    `<button class="p" data-id="${esc(x.id)}">حفظ</button>`]));
+  const lossMap = readProductLossPctMap();
+  $("#prT").innerHTML = tbl(["المنتج", "النوع", "مدة التوريد (يوم)", "احتياطي (يوم)", "معدل الفقد العادي (%)", ""], p.data.map(x => {
+    const pctVal = getProductNormalLossPct(x, lossMap);
+    return [
+      `<input data-pn value="${esc(x.name)}">`,
+      `<select data-c><option value="">—</option>${catOpts(x.category_id)}</select>`,
+      `<input type="number" data-ld min="0" value="${esc(x.lead_days)}" style="width:80px">`,
+      `<input type="number" data-sd min="0" value="${esc(x.safety_days)}" style="width:80px">`,
+      `<input type="number" data-nlp step="0.01" min="0" max="100" value="${esc(pctVal)}" style="width:86px">`,
+      `<button class="p" data-id="${esc(x.id)}">حفظ</button>`
+    ];
+  }));
 }
 async function run(q, ok) {
   const { error } = await q;
@@ -804,8 +900,27 @@ $("#fc").onsubmit = async e => { e.preventDefault(); await run(sb.from("product_
 $("#fpr").onsubmit = async e => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
-  await run(sb.from("products").insert({ name: f.name.trim(), category_id: +f.category_id, lead_days: +f.lead_days, safety_days: +f.safety_days }), "تمت الإضافة");
+  const pct = f.normal_loss_pct !== "" ? Number(f.normal_loss_pct) : 0;
+  if (!Number.isFinite(pct) || pct < 0 || pct > 100) return toast("أدخل نسبة فقد عادي صالحة بين 0 و 100%", 1);
+  const payload = {
+    name: f.name.trim(),
+    category_id: +f.category_id,
+    lead_days: +f.lead_days,
+    safety_days: +f.safety_days,
+    normal_loss_pct: Number(pct.toFixed(2))
+  };
+  let res = await sb.from("products").insert(payload).select().single();
+  let usedFallback = false;
+  if (res.error && isMissingLossColumnError(res.error)) {
+    usedFallback = true;
+    const { normal_loss_pct, ...stripped } = payload;
+    res = await sb.from("products").insert(stripped).select().single();
+  }
+  if (res.error) return toast(res.error.code === "23505" ? "الاسم مستعمل من قبل" : res.error.message, 1);
+  saveProductLossPctMap([{ id: res.data?.id, name: payload.name, normal_loss_pct: payload.normal_loss_pct }]);
+  toast(usedFallback ? "تمت الإضافة (حُفظ معدل الفقد محلياً — نفّذ supabase-ops.sql للمزامنة)" : "تمت الإضافة");
   e.target.reset();
+  loadCatalogTab();
 };
 $("#wT").onclick = async e => {
   const b = e.target.closest("button[data-id]"); if (!b) return;
@@ -828,10 +943,31 @@ $("#cT").onclick = e => {
   if (b.dataset.act === "del") return confirm("حذف النوع؟") && run(sb.from("product_categories").delete().eq("id", id), "تم الحذف");
   run(sb.from("product_categories").update({ name: b.closest("tr").querySelector("[data-n]").value.trim() }).eq("id", id), "تم الحفظ");
 };
-$("#prT").onclick = e => {
+$("#prT").onclick = async e => {
   const b = e.target.closest("button[data-id]"); if (!b) return;
   const tr = b.closest("tr");
-  run(sb.from("products").update({ name: tr.querySelector("[data-pn]").value.trim(), category_id: tr.querySelector("[data-c]").value || null, lead_days: +tr.querySelector("[data-ld]").value, safety_days: +tr.querySelector("[data-sd]").value }).eq("id", +b.dataset.id), "تم الحفظ");
+  const id = +b.dataset.id;
+  const name = tr.querySelector("[data-pn]").value.trim();
+  const pct = Number(tr.querySelector("[data-nlp]")?.value ?? 0);
+  if (!Number.isFinite(pct) || pct < 0 || pct > 100) return toast("أدخل نسبة فقد عادي صالحة بين 0 و 100%", 1);
+  const payload = {
+    name,
+    category_id: tr.querySelector("[data-c]").value || null,
+    lead_days: +tr.querySelector("[data-ld]").value,
+    safety_days: +tr.querySelector("[data-sd]").value,
+    normal_loss_pct: Number(pct.toFixed(2))
+  };
+  let res = await sb.from("products").update(payload).eq("id", id);
+  let usedFallback = false;
+  if (res.error && isMissingLossColumnError(res.error)) {
+    usedFallback = true;
+    const { normal_loss_pct, ...stripped } = payload;
+    res = await sb.from("products").update(stripped).eq("id", id);
+  }
+  if (res.error) return toast(res.error.message, 1);
+  saveProductLossPctMap([{ id, name, normal_loss_pct: payload.normal_loss_pct }]);
+  toast(usedFallback ? "تم الحفظ (معدل الفقد محفوظ محلياً — نفّذ supabase-ops.sql)" : "تم الحفظ");
+  loadCatalogTab();
 };
 
 // ----- التالف والضائع والمرتجع وتسوية الجرد -----
@@ -850,9 +986,50 @@ function cancelAdjEdit() {
   $("#fAdj").reset();
   $("#fAdj [name=adj_date]").value = today();
   $("#fAdj [name=amount_dzd]").value = "0";
+  if ($("#adjTolerancePreview")) { $("#adjTolerancePreview").hidden = true; $("#adjTolerancePreview").innerHTML = ""; }
   requestAnimationFrame(() => { $("#submitAdjBtn").textContent = "تسجيل التسوية"; });
 }
 $("#cancelAdjEdit").onclick = cancelAdjEdit;
+
+let adjBaseStockRows = [];
+function updateAdjTolerancePreview() {
+  const box = $("#adjTolerancePreview");
+  if (!box) return;
+  const tp = $("#fAdj [name=adjustment_type]")?.value || "";
+  const pName = ($("#fAdj [name=product_name]")?.value || "").trim();
+  const qVal = Number($("#fAdj [name=qty]")?.value || 0);
+  if ((tp !== "damaged" && tp !== "lost") || !pName || !(qVal > 0)) {
+    box.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+  const pKey = pName.toUpperCase();
+  const baseRows = adjBaseStockRows.length ? adjBaseStockRows : stockRows;
+  const baselineQty = baseRows
+    .filter(r => String(r.name || "").trim().toUpperCase() === pKey)
+    .reduce((s, r) => s + Number(r.received || 0), 0);
+  const existingLoss = adjRows
+    .filter(r => String(r.id) !== String(editingAdjId) && (r.adjustment_type === "damaged" || r.adjustment_type === "lost") && String(r.product_name || "").trim().toUpperCase() === pKey)
+    .reduce((s, r) => s + Number(r.qty || 0), 0);
+  const pObj = productCatalogRows.find(p => String(p.name || "").trim().toUpperCase() === pKey);
+  const pct = pObj ? getProductNormalLossPct(pObj) : getProductNormalLossPct(pKey);
+  const ev = evaluateProductLossTolerance({
+    lossQty: existingLoss + qVal,
+    baselineQty,
+    normalLossPct: pct
+  });
+  box.hidden = false;
+  if (ev.withinNormal) {
+    box.className = "field-alert field-alert-warn";
+    box.innerHTML = `<strong>ضمن معدل الفقد العادي (${n(ev.normalLossPct)}%):</strong> إجمالي التالف/الضائع لـ <b>${esc(pName)}</b> سيكون <b>${n(ev.lossQty)}</b> قنطار من أصل المسموح <b>${n(ev.allowedQty)}</b> قنطار (الوارد ${n(ev.baselineQty)} قنطار) — يُعد طبيعياً ولا يُنبه عليه.`;
+  } else if (ev.hasMargin) {
+    box.className = "field-alert field-alert-bad";
+    box.innerHTML = `<strong>تنبيه تجاوز معدل الفقد العادي (${n(ev.normalLossPct)}%):</strong> إجمالي التالف/الضائع سيبلغ <b>${n(ev.lossQty)}</b> قنطار (${n(ev.actualLossPct)}%) متجاوزاً الهامش المسموح (<b>${n(ev.allowedQty)}</b> قنطار) بفائض قدره <b>${n(ev.excessQty)}</b> قنطار!`;
+  } else {
+    box.className = "field-alert field-alert-bad";
+    box.innerHTML = `<strong>تنبيه فقد غير عادي:</strong> معدل الفقد العادي لهذا الصنف مضبوط على 0% — أي تالف أو ضائع (${n(ev.lossQty)} قنطار) سيظهر كتنبيه عجز.`;
+  }
+}
 
 ["qty", "unit_price"].forEach(name => {
   $("#fAdj [name=" + name + "]").addEventListener("input", () => {
@@ -861,17 +1038,23 @@ $("#cancelAdjEdit").onclick = cancelAdjEdit;
     if (q > 0 && up > 0) {
       $("#fAdj [name=amount_dzd]").value = String(Number((q * up).toFixed(2)));
     }
+    updateAdjTolerancePreview();
   });
 });
+$("#fAdj [name=adjustment_type]")?.addEventListener("change", updateAdjTolerancePreview);
+$("#fAdj [name=product_name]")?.addEventListener("input", updateAdjTolerancePreview);
 
 async function loadAdjustments() {
-  const [whRes, prRes, adjRes] = await Promise.all([
+  const [whRes, prRes, stockRes, adjRes] = await Promise.all([
     sb.from("warehouses").select("id,name").order("name"),
-    sb.from("products").select("id,name").order("name"),
+    fetchProductsWithLossSafe(),
+    sb.from("stock_analysis").select("wid,name,received").order("name"),
     fetchAdjustmentsList()
   ]);
   const whList = whRes.data || [];
   const prList = prRes.data || [];
+  if (!prRes.error && Array.isArray(prList)) productCatalogRows = prList;
+  if (!stockRes.error && Array.isArray(stockRes.data)) adjBaseStockRows = stockRes.data;
   $("#adjWh").innerHTML = '<option value="">— المخزن الرئيسي —</option>' + whList.map(w => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join("");
   $("#adjPl").innerHTML = prList.map(p => `<option value="${esc(p.name)}">`).join("");
   adjRows = adjRes.rows || [];
@@ -881,6 +1064,7 @@ async function loadAdjustments() {
     : "حفظ محلي (لتفعيل الحفظ في Supabase نفّذ supabase-ops.sql)";
   if (!$("#fAdj [name=adj_date]").value) $("#fAdj [name=adj_date]").value = today();
   renderAdjustments();
+  updateAdjTolerancePreview();
 }
 
 function filteredAdjRows() {
@@ -894,6 +1078,22 @@ function filteredAdjRows() {
 
 function renderAdjustments() {
   const rows = filteredAdjRows();
+  const baseRows = adjBaseStockRows.length ? adjBaseStockRows : stockRows;
+  const lossEvalMap = buildProductLossEvalMap(baseRows, adjRows, productCatalogRows);
+  const abnormalItems = [...lossEvalMap.values()].filter(x => x.isAbnormal);
+  const normalItems = [...lossEvalMap.values()].filter(x => x.withinNormal);
+
+  const abBanner = $("#adjAbnormalBanner");
+  if (abBanner) {
+    if (abnormalItems.length) {
+      abBanner.hidden = false;
+      abBanner.innerHTML = `<span><strong>تنبيه تجاوز الفقد العادي (${abnormalItems.length} صنف):</strong> ${abnormalItems.map(x => `<b>${esc(x.name)}</b>: فقد ${n(x.lossQty)} قنطار (${n(x.actualLossPct)}%) > المسموح ${n(x.allowedQty)} قنطار (${n(x.normalLossPct)}%)`).join(" · ")}</span>`;
+    } else {
+      abBanner.hidden = true;
+      abBanner.innerHTML = "";
+    }
+  }
+
   let damagedQ = 0, lostQ = 0, returnedQ = 0, totalAmt = 0;
   rows.forEach(r => {
     const q = Number(r.qty || 0);
@@ -907,26 +1107,39 @@ function renderAdjustments() {
     ["إجمالي التالف (قنطار)", n(damagedQ)],
     ["الضائع وعجز الجرد (قنطار)", n(lostQ)],
     ["المرتجع (قنطار)", n(returnedQ)],
+    ["تنبيهات تجاوز الفقد العادي", abnormalItems.length ? `${abnormalItems.length} صنف ⚠` : (normalItems.length ? `0 (طبيعي ✓)` : "0")],
     [canFin ? "إجمالي المبلغ المسجّل (دج)" : "عدد تسويات الجرد", canFin ? n(totalAmt) : rows.length]
   ].map(([l, v]) => `<div class="card"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
 
   $("#adjT").innerHTML = tbl(
-    ["التاريخ", "النوع", "السماد", "المخزن", "الكمية (قنطار)", "المبلغ (دج)", "السبب", "المرجع", "المستخدم", "إجراءات"],
-    rows.map(r => [
-      esc(r.adj_date),
-      `<span class="${r.adjustment_type === "returned_farmer" ? "" : "warn"}">${esc(ADJ_LABELS[r.adjustment_type] || r.adjustment_type)}</span>`,
-      `<b>${esc(r.product_name)}</b>`,
-      esc(r.warehouse_name || "—"),
-      `<b>${n(r.qty)}</b>`,
-      canFin ? n(r.amount_dzd || 0) : "—",
-      esc(r.reason),
-      esc(r.ref_doc || "—"),
-      esc(r.created_by || "—"),
-      `<div class="action-group">
-        <button type="button" class="f" data-edit-adj="${esc(r.id)}">تعديل</button>
-        <button type="button" class="f btn-danger" data-del-adj="${esc(r.id)}">حذف</button>
-      </div>`
-    ])
+    ["التاريخ", "النوع", "السماد", "المخزن", "الكمية (قنطار)", "المبلغ (دج)", "السبب", "المرجع", "المستخدم", "تصنيف الفقد", "إجراءات"],
+    rows.map(r => {
+      const pKey = String(r.product_name || "").trim().toUpperCase();
+      const ev = lossEvalMap.get(pKey);
+      const isLossType = r.adjustment_type === "damaged" || r.adjustment_type === "lost";
+      let tolBadge = `<span style="color:var(--mu)">مرتجع</span>`;
+      if (isLossType && ev) {
+        tolBadge = ev.withinNormal
+          ? `<span class="tag-ok">ضمن العادي (≤ ${n(ev.normalLossPct)}%)</span>`
+          : `<span class="tag-bad">تجاوز المسموح (+${n(ev.excessQty)})</span>`;
+      }
+      return [
+        esc(r.adj_date),
+        `<span class="${r.adjustment_type === "returned_farmer" ? "" : "warn"}">${esc(ADJ_LABELS[r.adjustment_type] || r.adjustment_type)}</span>`,
+        `<b>${esc(r.product_name)}</b>`,
+        esc(r.warehouse_name || "—"),
+        `<b>${n(r.qty)}</b>`,
+        canFin ? n(r.amount_dzd || 0) : "—",
+        esc(r.reason),
+        esc(r.ref_doc || "—"),
+        esc(r.created_by || "—"),
+        tolBadge,
+        `<div class="action-group">
+          <button type="button" class="f" data-edit-adj="${esc(r.id)}">تعديل</button>
+          <button type="button" class="f btn-danger" data-del-adj="${esc(r.id)}">حذف</button>
+        </div>`
+      ];
+    })
   );
 }
 

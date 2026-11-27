@@ -171,9 +171,14 @@ create table if not exists public.bon_sorties (
   truck_no text,
   zone text,
   camp text default '2025/2026',
+  truck_photo text,
+  photo_note text,
   created_by text,
   created_at timestamptz default now()
 );
+
+alter table public.bon_sorties add column if not exists truck_photo text;
+alter table public.bon_sorties add column if not exists photo_note text;
 
 create index if not exists idx_bon_sorties_bon_no on public.bon_sorties (bon_no);
 create index if not exists idx_bon_sorties_date on public.bon_sorties (sortie_date);
@@ -253,9 +258,10 @@ revoke all on function public.verify_bon_public(text) from public;
 grant execute on function public.verify_bon_public(text) to anon, authenticated;
 
 -- ============================================================
--- 6) دعم أسعار الشراء لتقييم المخزون الحالي بالدينار وتطوره الشهري
+-- 6) دعم أسعار الشراء ومعدل الفقد العادي لكل صنف
 -- ============================================================
 alter table public.products add column if not exists unit_price numeric default 0;
+alter table public.products add column if not exists normal_loss_pct numeric default 0;
 alter table public.stock_in add column if not exists unit_price numeric default 0;
 
 -- ============================================================

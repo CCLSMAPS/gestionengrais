@@ -12,9 +12,14 @@ create table if not exists public.bon_sorties (
   truck_no text,
   zone text,
   camp text default '2025/2026',
+  truck_photo text,
+  photo_note text,
   created_by text,
   created_at timestamptz default now()
 );
+
+alter table public.bon_sorties add column if not exists truck_photo text;
+alter table public.bon_sorties add column if not exists photo_note text;
 
 create index if not exists idx_bon_sorties_bon_no on public.bon_sorties (bon_no);
 create index if not exists idx_bon_sorties_date on public.bon_sorties (sortie_date);

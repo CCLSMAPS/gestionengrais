@@ -332,10 +332,11 @@ export function extractBonNoFromScan(raw: unknown): string {
   return text;
 }
 
-export async function generateBonQrDataUrl(bonNo: string): Promise<string> {
+export async function generateBonQrSvg(bonNo: string): Promise<string> {
   const payload = buildBonQrPayload(bonNo);
   if (!payload) return "";
-  return QRCode.toDataURL(payload, {
+  const rawSvg = await QRCode.toString(payload, {
+    type: "svg",
     width: 240,
     margin: 1,
     errorCorrectionLevel: "M",
@@ -344,6 +345,32 @@ export async function generateBonQrDataUrl(bonNo: string): Promise<string> {
       light: "#ffffff",
     },
   });
+  return rawSvg
+    .replace(/<svg\b/, '<svg width="78" height="78" shape-rendering="crispEdges"')
+    .trim();
+}
+
+export async function generateBonQrDataUrl(bonNo: string): Promise<string> {
+  const payload = buildBonQrPayload(bonNo);
+  if (!payload) return "";
+  try {
+    const pngUrl = await QRCode.toDataURL(payload, {
+      width: 240,
+      margin: 1,
+      errorCorrectionLevel: "M",
+      color: {
+        dark: "#14221a",
+        light: "#ffffff",
+      },
+    });
+    if (typeof pngUrl === "string" && pngUrl.startsWith("data:image/") && pngUrl.length > 100) {
+      return pngUrl;
+    }
+  } catch {
+    // Fallback to pure JS SVG data URL if canvas is blocked (e.g. Brave Shields) or unavailable
+  }
+  const svg = await generateBonQrSvg(bonNo);
+  return svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` : "";
 }
 
 export function decodeQrFromImageData(
@@ -789,6 +816,7 @@ declare global {
     printAnalyticsReport?: (payload: AnalyticsReportPayload, onNotice?: (msg: string, isErr?: boolean) => void) => void;
     buildBonQrPayload?: (bonNo: string) => string;
     extractBonNoFromScan?: (raw: unknown) => string;
+    generateBonQrSvg?: (bonNo: string) => Promise<string>;
     generateBonQrDataUrl?: (bonNo: string) => Promise<string>;
     decodeQrFromImageData?: (data: Uint8ClampedArray, width: number, height: number) => string | null;
     decodeQrFromFile?: (file: File) => Promise<string | null>;
@@ -802,6 +830,7 @@ window.exportAnalyticsPdf = exportAnalyticsPdf;
 window.printAnalyticsReport = printAnalyticsReport;
 window.buildBonQrPayload = buildBonQrPayload;
 window.extractBonNoFromScan = extractBonNoFromScan;
+window.generateBonQrSvg = generateBonQrSvg;
 window.generateBonQrDataUrl = generateBonQrDataUrl;
 window.decodeQrFromImageData = decodeQrFromImageData;
 window.decodeQrFromFile = decodeQrFromFile;

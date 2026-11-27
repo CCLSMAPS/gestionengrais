@@ -416,17 +416,55 @@ function renderDashboard() {
     acc.totalAmountDzd += amt;
     acc.count += 1;
     return acc;
-  }, { damagedQty: 0, lostQty: 0, returnedQty: 0, totalAmountDzd: 0, count: 0 });
+  }, { damagedQty: 0, lostQty: 0, returnedQty: 0, totalAmountDzd: 0, count: 0, abnormalLossCount: 0, withinNormalOnly: false });
+
+  const lossByProdDash = new Map();
+  const baseByProdDash = new Map();
+  const prodObjByKey = new Map();
+  const lossPctMap = typeof readProductLossPctMap === "function" ? readProductLossPctMap() : {};
+  RAW_PRODUCTS.forEach(p => {
+    const k = String(p.name || "").trim().toUpperCase();
+    if (k) prodObjByKey.set(k, p);
+  });
+  RAW_STOCK_ANALYSIS.forEach(r => {
+    const k = String(r.name || "").trim().toUpperCase();
+    if (k) baseByProdDash.set(k, (baseByProdDash.get(k) || 0) + Number(r.received || 0));
+  });
+  RAW_ADJUSTMENTS.forEach(a => {
+    const tp = a.adjustment_type || a.adj_type;
+    if (tp !== "damaged" && tp !== "lost") return;
+    const k = String(a.product_name || "").trim().toUpperCase();
+    if (k) lossByProdDash.set(k, (lossByProdDash.get(k) || 0) + Number(a.qty || 0));
+  });
+  const abnormalLossItems = [];
+  let normalLossCount = 0;
+  lossByProdDash.forEach((lossQty, k) => {
+    const pObj = prodObjByKey.get(k);
+    const pct = typeof getProductNormalLossPct === "function"
+      ? (pObj ? getProductNormalLossPct(pObj, lossPctMap) : getProductNormalLossPct(k, lossPctMap))
+      : Number(pObj?.normal_loss_pct || 0);
+    const ev = typeof evaluateProductLossTolerance === "function"
+      ? evaluateProductLossTolerance({ lossQty, baselineQty: baseByProdDash.get(k) || 0, normalLossPct: pct })
+      : { isAbnormal: lossQty > 0, withinNormal: false, excessQty: lossQty, normalLossPct: pct, actualLossPct: 0, allowedQty: 0 };
+    if (ev.isAbnormal) abnormalLossItems.push({ name: pObj?.name || k, ...ev });
+    else if (ev.withinNormal) normalLossCount += 1;
+  });
+  adjTotals.abnormalLossCount = abnormalLossItems.length;
+  adjTotals.withinNormalOnly = adjTotals.count > 0 && abnormalLossItems.length === 0 && (normalLossCount > 0 || (adjTotals.damagedQty === 0 && adjTotals.lostQty === 0));
+
   const alertEl = $("#dashStockAlert");
   if (alertEl) {
-    if (criticalItems.length || adjTotals.count > 0) {
+    if (criticalItems.length || abnormalLossItems.length > 0) {
       alertEl.hidden = false;
       const parts = [];
       if (criticalItems.length) {
         parts.push(`<span><strong>تنبيه تشغيلي للمخزون:</strong> يوجد <b>${criticalItems.length}</b> صنف/مخزن أقل من حد الأمان (${n(threshold)} قنطار) أو بلغ نقطة إعادة الطلب.</span>`);
       }
-      if (adjTotals.count > 0) {
-        parts.push(`<span><strong>تسويات الجرد (${adjTotals.count}):</strong> تالف <b>${n(adjTotals.damagedQty)}</b> · ضائع <b>${n(adjTotals.lostQty)}</b> · مرتجع <b>${n(adjTotals.returnedQty)}</b> (${n(adjTotals.totalAmountDzd)} دج).</span>`);
+      if (abnormalLossItems.length > 0) {
+        const abTxt = abnormalLossItems
+          .map(x => `<b>${esc(x.name)}</b> (فقد ${n(x.lossQty)} / مسموح ${n(x.allowedQty)} قنطار · فائض ${n(x.excessQty)})`)
+          .join(" · ");
+        parts.push(`<span><strong>تنبيه تجاوز الفقد العادي (${abnormalLossItems.length}):</strong> ${abTxt} (${n(adjTotals.totalAmountDzd)} دج).</span>`);
       }
       alertEl.innerHTML = `${parts.join(" ") } <a class="f" href="warehouse.html" style="text-decoration:none">مراجعة المخازن</a>`;
     } else {
@@ -778,9 +816,29 @@ async function fetchStockInSafe() {
 }
 
 async function fetchProductsSafe() {
+  const full = await sb.from("products").select("id, name, unit_price, normal_loss_pct").order("name");
+  if (!full.error && Array.isArray(full.data)) {
+    if (typeof saveProductLossPctMap === "function") saveProductLossPctMap(full.data);
+    return full;
+  }
   const rich = await sb.from("products").select("id, name, unit_price").order("name");
-  if (!rich.error) return rich;
-  return sb.from("products").select("id, name").order("name");
+  if (!rich.error && Array.isArray(rich.data)) {
+    const map = typeof readProductLossPctMap === "function" ? readProductLossPctMap() : {};
+    rich.data = rich.data.map(p => ({
+      ...p,
+      normal_loss_pct: typeof getProductNormalLossPct === "function" ? getProductNormalLossPct(p, map) : 0
+    }));
+    return rich;
+  }
+  const basic = await sb.from("products").select("id, name").order("name");
+  if (!basic.error && Array.isArray(basic.data)) {
+    const map = typeof readProductLossPctMap === "function" ? readProductLossPctMap() : {};
+    basic.data = basic.data.map(p => ({
+      ...p,
+      normal_loss_pct: typeof getProductNormalLossPct === "function" ? getProductNormalLossPct(p, map) : 0
+    }));
+  }
+  return basic;
 }
 
 async function fetchDossiersSafe() {
