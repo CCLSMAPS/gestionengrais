@@ -25,26 +25,24 @@ create index if not exists idx_dossier_receptions_card on public.dossier_recepti
 alter table public.dossier_receptions enable row level security;
 
 drop policy if exists "authenticated read dossiers" on public.dossier_receptions;
-create policy "authenticated read dossiers" on public.dossier_receptions
-  for select to authenticated using (
-    not exists (
-      select 1 from public.profiles p
-      where p.user_id = auth.uid() and coalesce(p.is_blocked, false)
-    )
-  );
-
 drop policy if exists "authenticated write dossiers" on public.dossier_receptions;
-create policy "authenticated write dossiers" on public.dossier_receptions
-  for all to authenticated
-  using (
-    not exists (
-      select 1 from public.profiles p
-      where p.user_id = auth.uid() and coalesce(p.is_blocked, false)
-    )
-  )
-  with check (
-    not exists (
-      select 1 from public.profiles p
-      where p.user_id = auth.uid() and coalesce(p.is_blocked, false)
-    )
-  );
+drop policy if exists "permission read dossier_receptions" on public.dossier_receptions;
+drop policy if exists "permission insert dossier_receptions" on public.dossier_receptions;
+drop policy if exists "permission update dossier_receptions" on public.dossier_receptions;
+drop policy if exists "permission delete dossier_receptions" on public.dossier_receptions;
+
+create policy "permission read dossier_receptions" on public.dossier_receptions
+  for select to authenticated using (public.has_app_permission('page:reception'));
+
+create policy "permission insert dossier_receptions" on public.dossier_receptions
+  for insert to authenticated
+  with check (public.has_app_permission('page:reception') and public.has_app_permission('btn:create'));
+
+create policy "permission update dossier_receptions" on public.dossier_receptions
+  for update to authenticated
+  using (public.has_app_permission('page:reception') and public.has_app_permission('btn:edit'))
+  with check (public.has_app_permission('page:reception') and public.has_app_permission('btn:edit'));
+
+create policy "permission delete dossier_receptions" on public.dossier_receptions
+  for delete to authenticated
+  using (public.has_app_permission('page:reception') and public.has_app_permission('btn:delete'));

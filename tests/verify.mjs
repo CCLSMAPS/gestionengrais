@@ -664,6 +664,12 @@ assert.match(setupSql, /create or replace function public\.has_app_permission/);
 assert.match(opsSql, /permission insert gate_visitors/);
 assert.match(opsSql, /public\.has_app_permission\('page:gate'\)/);
 assert.match(opsSql, /permission insert pickup_appointments/);
+const bonsSql = fs.readFileSync(path.join(ROOT, "supabase-bons.sql"), "utf8");
+const dossiersSql = fs.readFileSync(path.join(ROOT, "supabase-dossiers.sql"), "utf8");
+assert.match(bonsSql, /public\.has_app_permission\('page:bons'\)/);
+assert.match(dossiersSql, /public\.has_app_permission\('page:reception'\)/);
+assert.doesNotMatch(bonsSql, /not exists \(\s*select 1 from public\.profiles p\s*where p\.user_id = auth\.uid\(\) and coalesce\(p\.is_blocked, false\)/);
+assert.doesNotMatch(dossiersSql, /not exists \(\s*select 1 from public\.profiles p\s*where p\.user_id = auth\.uid\(\) and coalesce\(p\.is_blocked, false\)/);
 assert.match(opsSql, /public\.has_app_permission\('btn:create'\)/);
 
 // Exercise the PostgREST paginator with deterministic pages and an injected fetch implementation.

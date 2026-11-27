@@ -39,3 +39,4 @@ npm start
 1. `supabase-setup.sql` (تحديث الملفات الشخصية، `is_admin()`، `is_active_user()`، الأعمدة الإضافية والفهارس)
 2. `supabase-dossiers.sql` (جدول `dossier_receptions` وسياسات الأمان)
 3. `supabase-bons.sql` (جدول `bon_sorties` وسياسات الأمان)
+4. `supabase-ops.sql` (الجداول التشغيلية الإضافية، وصلاحيات RLS التفصيلية حسب الصفحة والعملية؛ يُنفّذ أخيراً)
