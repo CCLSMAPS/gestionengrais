@@ -80,6 +80,8 @@ const ALLOWED_ROOT_FILES = new Map([
   ["/verify.html", "verify.html"],
   ["/kiosk.html", "kiosk.html"],
   ["/manifest.json", "manifest.json"],
+  ["/sw.js", "sw.js"],
+  ["/app-icon.svg", "app-icon.svg"],
   ["/common.css", "common.css"],
   ["/common.js", "common.js"],
   ["/dossiers-data.js", "dossiers-data.js"],
