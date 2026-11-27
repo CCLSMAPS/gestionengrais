@@ -321,6 +321,7 @@ assert.match(serverSrc, /\/api\/director-link/);
 assert.match(serverSrc, /\/api\/director-summary/);
 assert.match(serverSrc, /\/api\/notify/);
 assert.match(serverSrc, /verifySupabaseUser/);
+assert.match(serverSrc, /if \(!profile \|\| profile\.is_blocked === true\) return null;/, "server APIs must reject users without an active profile");
 assert.match(serverSrc, /timingSafeEqual/);
 
 const warehouseHtml = fs.readFileSync(path.join(ROOT, "warehouse.html"), "utf8");
