@@ -284,7 +284,14 @@ export function buildBonQrPayload(bonNo: string): string {
   const clean = String(bonNo || "").trim();
   if (!clean) return "";
   if (typeof window !== "undefined" && window.location && /^https?:$/i.test(window.location.protocol)) {
-    return `${window.location.origin}/verify.html?bon=${encodeURIComponent(clean)}`;
+    try {
+      const base = window.location.href || window.location.origin;
+      const target = new URL("verify.html", base);
+      target.searchParams.set("bon", clean);
+      return target.toString();
+    } catch {
+      return `${window.location.origin}/verify.html?bon=${encodeURIComponent(clean)}`;
+    }
   }
   return `BON:${clean}`;
 }

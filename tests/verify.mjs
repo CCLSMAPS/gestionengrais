@@ -170,6 +170,7 @@ const commonSandbox = {
     querySelectorAll: () => [],
   },
   navigator: { onLine: true },
+  URL,
   localStorage: {
     getItem: (k) => (memStore.has(k) ? memStore.get(k) : null),
     setItem: (k, v) => memStore.set(k, String(v)),
@@ -500,5 +501,69 @@ const lossZeroTol = commonSandbox.window.evaluateProductLossTolerance({ lossQty:
 assert.equal(lossZeroTol.withinNormal, false);
 assert.equal(lossZeroTol.isAbnormal, true);
 assert.equal(lossZeroTol.excessQty, 1);
+
+// 14. Validate standalone zero-dependency QR SVG fallback (for static/GitHub Pages without dist/) using jsQR decode
+assert.equal(typeof commonSandbox.window.generateBonQrSvgFallback, "function");
+assert.equal(typeof commonSandbox.window.buildBonQrPayload, "function");
+
+function rasterizeSvgQrToRgba(svgStr, scale = 6) {
+  const vbMatch = svgStr.match(/viewBox="0 0 (\d+) (\d+)"/);
+  assert.ok(vbMatch, "SVG must have integer viewBox");
+  const full = Number(vbMatch[1]);
+  const w = full * scale;
+  const rgba = new Uint8ClampedArray(w * w * 4);
+  rgba.fill(255);
+  const pathMatch = svgStr.match(/d="([^"]+)"/);
+  assert.ok(pathMatch, "SVG must contain QR path");
+  const segRe = /M(\d+) (\d+)h(\d+)v1h-\d+z/g;
+  let m;
+  while ((m = segRe.exec(pathMatch[1])) !== null) {
+    const x0 = Number(m[1]), y0 = Number(m[2]), run = Number(m[3]);
+    for (let dy = 0; dy < scale; dy++) {
+      const py = y0 * scale + dy;
+      for (let dx = 0; dx < run * scale; dx++) {
+        const px = x0 * scale + dx;
+        const idx = (py * w + px) * 4;
+        rgba[idx] = 20;
+        rgba[idx + 1] = 34;
+        rgba[idx + 2] = 26;
+        rgba[idx + 3] = 255;
+      }
+    }
+  }
+  return { data: rgba, width: w, height: w };
+}
+
+// Offline BON:1692 (Version 1)
+const svgOffline = commonSandbox.window.generateBonQrSvgFallback("1692");
+const imgOffline = rasterizeSvgQrToRgba(svgOffline);
+assert.equal(
+  pdfSandbox.window.decodeQrFromImageData(imgOffline.data, imgOffline.width, imgOffline.height),
+  "BON:1692"
+);
+
+// GitHub Pages subpath URL (Version 4)
+commonSandbox.window.location = {
+  protocol: "https:",
+  origin: "https://cclsmaps.github.io",
+  href: "https://cclsmaps.github.io/gestionengrais/bons.html",
+};
+const subpathPayload = commonSandbox.window.buildBonQrPayload("1692");
+assert.equal(subpathPayload, "https://cclsmaps.github.io/gestionengrais/verify.html?bon=1692");
+const svgSubpath = commonSandbox.window.generateBonQrSvgFallback("1692");
+const imgSubpath = rasterizeSvgQrToRgba(svgSubpath);
+assert.equal(
+  pdfSandbox.window.decodeQrFromImageData(imgSubpath.data, imgSubpath.width, imgSubpath.height),
+  "https://cclsmaps.github.io/gestionengrais/verify.html?bon=1692"
+);
+
+// Long bon identifier spanning Version 7+ (multi-block + version info bits)
+const longBon = "BON-ADRAR-2026-CAMPAGNE-ENGRAIS-SPECIFIQUE-000001234567890-FENNOUGHIL-EXTRA-LONG-TAG";
+const svgLong = commonSandbox.window.generateBonQrSvgFallback(longBon);
+const imgLong = rasterizeSvgQrToRgba(svgLong);
+assert.equal(
+  pdfSandbox.window.decodeQrFromImageData(imgLong.data, imgLong.width, imgLong.height),
+  `https://cclsmaps.github.io/gestionengrais/verify.html?bon=${longBon}`
+);
 
 console.log(`ALL ${htmlPages.length} PAGES, BUNDLES, MANIFEST, AGGREGATOR, RBAC, SETTINGS, QR-BON, OPS-SUITE, 9-PRO-FEATURES, PHOTO-PROOF, LOSS-TOLERANCE, AND SECURITY CHECKS PASSED`);

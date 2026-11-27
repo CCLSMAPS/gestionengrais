@@ -74,9 +74,15 @@ function fmtDate(d) {
 }
 
 async function runPublicVerify(raw) {
-  const bonNo = typeof window.extractBonNoFromScan === "function"
+  let bonNo = typeof window.extractBonNoFromScan === "function"
     ? window.extractBonNoFromScan(raw)
     : String(raw || "").trim();
+  if (typeof window.extractBonNoFromScan !== "function" && bonNo) {
+    const m = bonNo.match(/[?&](?:verify|bon|bon_no)=([^&#]+)/i) || bonNo.match(/^(?:CCLS[-_])?BON\s*[:#-]\s*([^\s|;]+)/i);
+    if (m?.[1]) {
+      try { bonNo = decodeURIComponent(m[1]).trim(); } catch (_) { bonNo = m[1].trim(); }
+    }
+  }
   if (!bonNo) return;
   $("#pubVerifyInput").value = bonNo;
   $("#staffGateLink").href = `bons.html?verify=${encodeURIComponent(bonNo)}`;

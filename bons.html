@@ -755,6 +755,11 @@ async function renderBonPreview(header, lines) {
       qrSvg = await window.generateBonQrSvg(effectiveBonNo);
     } catch (_) {}
   }
+  if (!qrSvg && typeof window.generateBonQrSvgFallback === "function") {
+    try {
+      qrSvg = window.generateBonQrSvgFallback(effectiveBonNo);
+    } catch (_) {}
+  }
   if (!qrSvg && typeof window.generateBonQrDataUrl === "function") {
     try {
       qrDataUrl = await window.generateBonQrDataUrl(effectiveBonNo);
@@ -1073,6 +1078,11 @@ $("#printBonBtn").onclick = async () => {
 };
 $("#pdfBonBtn").onclick = async () => {
   if (!$("#bonPrintArea").innerHTML.trim()) return toast("لا يوجد إذن جاهز للتحميل", 1);
+  if (typeof window.exportSlipPdf !== "function") {
+    toast("مكتبة PDF غير محمّلة؛ سيتم فتح نافذة الطباعة لحفظ الوثيقة بصيغة PDF");
+    $("#printBonBtn").click();
+    return;
+  }
   const fmt = getBonPrintFormat();
   const b = $("#pdfBonBtn"), orig = b.textContent;
   b.disabled = true; b.textContent = "جارٍ تجهيز PDF...";

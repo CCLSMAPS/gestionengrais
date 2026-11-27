@@ -1728,3 +1728,402 @@ function startApp({ page, tabs, ready }) {
   });
   lockForms();
 }
+
+(function initStandaloneBonQr() {
+  if (typeof window === "undefined") return;
+
+  function buildBonQrPayloadFallback(bonNo) {
+    const clean = String(bonNo || "").trim();
+    if (!clean) return "";
+    if (window.location && /^https?:$/i.test(window.location.protocol)) {
+      try {
+        const base = window.location.href || window.location.origin;
+        const target = new URL("verify.html", base);
+        target.searchParams.set("bon", clean);
+        return target.toString();
+      } catch (_) {
+        return `${window.location.origin}/verify.html?bon=${encodeURIComponent(clean)}`;
+      }
+    }
+    return `BON:${clean}`;
+  }
+
+  function extractBonNoFromScanFallback(raw) {
+    const text = String(raw ?? "").trim();
+    if (!text || text.length > 512) return "";
+    if (/^https?:\/\//i.test(text) || text.includes("verify=") || text.includes("bon=")) {
+      try {
+        const parsed = new URL(text.startsWith("http") ? text : `https://local.invalid/${text.replace(/^\/+/, "")}`);
+        const candidate = parsed.searchParams.get("verify") || parsed.searchParams.get("bon") || parsed.searchParams.get("bon_no");
+        if (candidate) return candidate.trim();
+      } catch (_) {
+        const m = text.match(/[?&](?:verify|bon|bon_no)=([^&#]+)/i);
+        if (m?.[1]) {
+          try { return decodeURIComponent(m[1]).trim(); } catch (_) { return m[1].trim(); }
+        }
+      }
+    }
+    if (text.startsWith("{") && text.endsWith("}")) {
+      try {
+        const obj = JSON.parse(text);
+        const val = obj?.bon_no ?? obj?.bon ?? obj?.verify ?? obj?.id;
+        if (val !== undefined && val !== null) return String(val).trim();
+      } catch (_) {}
+    }
+    const prefixMatch = text.match(/^(?:CCLS[-_])?BON\s*[:#-]\s*([^\s|;]+)/i);
+    if (prefixMatch?.[1]) return prefixMatch[1].trim();
+    return text;
+  }
+
+  // Pure-JS ISO/IEC 18004 QR encoder (Byte mode, ECC M, Versions 1..10)
+  const GF_EXP = new Uint8Array(512);
+  const GF_LOG = new Uint8Array(256);
+  {
+    let x = 1;
+    for (let i = 0; i < 255; i++) {
+      GF_EXP[i] = x;
+      GF_LOG[x] = i;
+      x <<= 1;
+      if (x & 0x100) x ^= 0x11d;
+    }
+    for (let i = 255; i < 512; i++) GF_EXP[i] = GF_EXP[i - 255];
+  }
+  function gfMul(a, b) {
+    return a === 0 || b === 0 ? 0 : GF_EXP[GF_LOG[a] + GF_LOG[b]];
+  }
+  function rsGenPoly(deg) {
+    let p = [1];
+    for (let i = 0; i < deg; i++) {
+      const next = new Array(p.length + 1).fill(0);
+      const factor = GF_EXP[i];
+      for (let j = 0; j < p.length; j++) {
+        next[j] ^= p[j];
+        next[j + 1] ^= gfMul(p[j], factor);
+      }
+      p = next;
+    }
+    return p;
+  }
+  function rsEncode(data, ecLen) {
+    const gen = rsGenPoly(ecLen);
+    const res = new Uint8Array(data.length + ecLen);
+    res.set(data, 0);
+    for (let i = 0; i < data.length; i++) {
+      const coef = res[i];
+      if (coef !== 0) {
+        for (let j = 0; j < gen.length; j++) {
+          res[i + j] ^= gfMul(gen[j], coef);
+        }
+      }
+    }
+    return res.slice(data.length);
+  }
+
+  // [version, dataCW, ecPerBlock, blocks, alignCoords]
+  const QR_SPEC_M = [
+    null,
+    [1, 16, 10, 1, []],
+    [2, 28, 16, 1, [6, 18]],
+    [3, 44, 26, 1, [6, 22]],
+    [4, 64, 18, 2, [6, 26]],
+    [5, 86, 24, 2, [6, 30]],
+    [6, 108, 16, 4, [6, 34]],
+    [7, 124, 18, 4, [6, 22, 38]],
+    [8, 154, 22, 4, [6, 24, 42]],
+    [9, 182, 22, 5, [6, 26, 46]],
+    [10, 216, 26, 5, [6, 28, 50]],
+  ];
+
+  function toUtf8Bytes(str) {
+    if (typeof TextEncoder !== "undefined") return Array.from(new TextEncoder().encode(str));
+    const bin = unescape(encodeURIComponent(str));
+    const out = new Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  function bchFormatInfo(maskId) {
+    // ECC M = 00 -> 5-bit data = (0 << 3) | maskId
+    let d = maskId << 10;
+    const g = 0x537;
+    for (let i = 14; i >= 10; i--) {
+      if ((d >> i) & 1) d ^= g << (i - 10);
+    }
+    return ((maskId << 10) | d) ^ 0x5412;
+  }
+
+  function bchVersionInfo(ver) {
+    let d = ver << 12;
+    const g = 0x1f25;
+    for (let i = 17; i >= 12; i--) {
+      if ((d >> i) & 1) d ^= g << (i - 12);
+    }
+    return (ver << 12) | d;
+  }
+
+  function maskFn(maskId, r, c) {
+    switch (maskId) {
+      case 0: return ((r + c) & 1) === 0;
+      case 1: return (r & 1) === 0;
+      case 2: return (c % 3) === 0;
+      case 3: return ((r + c) % 3) === 0;
+      case 4: return (((r >> 1) + Math.floor(c / 3)) & 1) === 0;
+      case 5: return (((r * c) & 1) + ((r * c) % 3)) === 0;
+      case 6: return ((((r * c) & 1) + ((r * c) % 3)) & 1) === 0;
+      default: return ((((r + c) & 1) + ((r * c) % 3)) & 1) === 0;
+    }
+  }
+
+  function penaltyScore(grid, size) {
+    let score = 0;
+    for (let r = 0; r < size; r++) {
+      let runC = 1;
+      let runR = 1;
+      for (let c = 1; c < size; c++) {
+        if (grid[r][c] === grid[r][c - 1]) {
+          runC++;
+          if (runC === 5) score += 3;
+          else if (runC > 5) score += 1;
+        } else runC = 1;
+        if (grid[c][r] === grid[c - 1][r]) {
+          runR++;
+          if (runR === 5) score += 3;
+          else if (runR > 5) score += 1;
+        } else runR = 1;
+      }
+    }
+    for (let r = 0; r < size - 1; r++) {
+      for (let c = 0; c < size - 1; c++) {
+        const v = grid[r][c];
+        if (v === grid[r][c + 1] && v === grid[r + 1][c] && v === grid[r + 1][c + 1]) score += 3;
+      }
+    }
+    const p1 = "10111010000";
+    const p2 = "00001011101";
+    for (let r = 0; r < size; r++) {
+      let rowS = "";
+      let colS = "";
+      for (let c = 0; c < size; c++) {
+        rowS += grid[r][c] ? "1" : "0";
+        colS += grid[c][r] ? "1" : "0";
+      }
+      for (let i = 0; i <= size - 11; i++) {
+        const rs = rowS.slice(i, i + 11);
+        const cs = colS.slice(i, i + 11);
+        if (rs === p1 || rs === p2) score += 40;
+        if (cs === p1 || cs === p2) score += 40;
+      }
+    }
+    let dark = 0;
+    for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (grid[r][c]) dark++;
+    const pct = (dark * 100) / (size * size);
+    score += Math.floor(Math.abs(pct - 50) / 5) * 10;
+    return score;
+  }
+
+  function encodeQrMatrix(text) {
+    const bytes = toUtf8Bytes(text);
+    let spec = null;
+    for (let v = 1; v <= 10; v++) {
+      const s = QR_SPEC_M[v];
+      const countBits = v >= 10 ? 16 : 8;
+      const neededBits = 4 + countBits + bytes.length * 8;
+      if (neededBits <= s[1] * 8) { spec = s; break; }
+    }
+    if (!spec) return null;
+    const [ver, dataCW, ecPerBlock, numBlocks, alignCoords] = spec;
+    const size = ver * 4 + 17;
+
+    const bits = [];
+    const pushBits = (val, len) => {
+      for (let i = len - 1; i >= 0; i--) bits.push((val >> i) & 1);
+    };
+    pushBits(0b0100, 4);
+    pushBits(bytes.length, ver >= 10 ? 16 : 8);
+    for (const b of bytes) pushBits(b, 8);
+    const maxBits = dataCW * 8;
+    const term = Math.min(4, maxBits - bits.length);
+    for (let i = 0; i < term; i++) bits.push(0);
+    while (bits.length % 8 !== 0) bits.push(0);
+    let padToggle = 0;
+    while (bits.length < maxBits) {
+      pushBits(padToggle ? 0x11 : 0xec, 8);
+      padToggle ^= 1;
+    }
+
+    const dataBytes = new Uint8Array(dataCW);
+    for (let i = 0; i < dataCW; i++) {
+      let byteVal = 0;
+      for (let b = 0; b < 8; b++) byteVal = (byteVal << 1) | (bits[i * 8 + b] || 0);
+      dataBytes[i] = byteVal;
+    }
+
+    const shortLen = Math.floor(dataCW / numBlocks);
+    const longBlocks = dataCW % numBlocks;
+    const shortBlocks = numBlocks - longBlocks;
+    const dataBlocks = [];
+    const ecBlocks = [];
+    let offset = 0;
+    for (let i = 0; i < numBlocks; i++) {
+      const len = shortLen + (i >= shortBlocks ? 1 : 0);
+      const blk = dataBytes.slice(offset, offset + len);
+      offset += len;
+      dataBlocks.push(blk);
+      ecBlocks.push(rsEncode(blk, ecPerBlock));
+    }
+
+    const finalCW = [];
+    const maxDataLen = shortLen + (longBlocks > 0 ? 1 : 0);
+    for (let i = 0; i < maxDataLen; i++) {
+      for (let b = 0; b < numBlocks; b++) if (i < dataBlocks[b].length) finalCW.push(dataBlocks[b][i]);
+    }
+    for (let i = 0; i < ecPerBlock; i++) {
+      for (let b = 0; b < numBlocks; b++) finalCW.push(ecBlocks[b][i]);
+    }
+    const streamBits = [];
+    for (const cw of finalCW) {
+      for (let i = 7; i >= 0; i--) streamBits.push((cw >> i) & 1);
+    }
+
+    const reserved = Array.from({ length: size }, () => new Uint8Array(size));
+    const base = Array.from({ length: size }, () => new Uint8Array(size));
+    const setFn = (r, c, val) => {
+      if (r >= 0 && r < size && c >= 0 && c < size) {
+        reserved[r][c] = 1;
+        base[r][c] = val ? 1 : 0;
+      }
+    };
+    const drawFinder = (r0, c0) => {
+      for (let dr = -1; dr <= 7; dr++) {
+        for (let dc = -1; dc <= 7; dc++) {
+          const r = r0 + dr, c = c0 + dc;
+          if (r < 0 || r >= size || c < 0 || c >= size) continue;
+          const inOuter = dr === 0 || dr === 6 || dc === 0 || dc === 6;
+          const inInner = dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4;
+          const inBox = dr >= 0 && dr <= 6 && dc >= 0 && dc <= 6;
+          setFn(r, c, inBox && (inOuter || inInner));
+        }
+      }
+    };
+    drawFinder(0, 0);
+    drawFinder(0, size - 7);
+    drawFinder(size - 7, 0);
+
+    for (let i = 8; i < size - 8; i++) {
+      setFn(6, i, (i & 1) === 0);
+      setFn(i, 6, (i & 1) === 0);
+    }
+    setFn(size - 8, 8, 1);
+
+    for (const ar of alignCoords) {
+      for (const ac of alignCoords) {
+        if ((ar === 6 && ac === 6) || (ar === 6 && ac === size - 7) || (ar === size - 7 && ac === 6)) continue;
+        for (let dr = -2; dr <= 2; dr++) {
+          for (let dc = -2; dc <= 2; dc++) {
+            const dark = Math.abs(dr) === 2 || Math.abs(dc) === 2 || (dr === 0 && dc === 0);
+            setFn(ar + dr, ac + dc, dark);
+          }
+        }
+      }
+    }
+
+    // Reserve format areas
+    for (let i = 0; i < 9; i++) {
+      if (i !== 6) { reserved[8][i] = 1; reserved[i][8] = 1; }
+    }
+    for (let i = 0; i < 8; i++) {
+      reserved[8][size - 1 - i] = 1;
+      if (i < 7) reserved[size - 1 - i][8] = 1;
+    }
+
+    if (ver >= 7) {
+      const vBits = bchVersionInfo(ver);
+      for (let i = 0; i < 18; i++) {
+        const bit = (vBits >> i) & 1;
+        const a = Math.floor(i / 3);
+        const b = size - 11 + (i % 3);
+        setFn(a, b, bit);
+        setFn(b, a, bit);
+      }
+    }
+
+    // Data placement
+    let bitIdx = 0;
+    let up = true;
+    for (let col = size - 1; col > 0; col -= 2) {
+      if (col === 6) col--;
+      for (let step = 0; step < size; step++) {
+        const r = up ? size - 1 - step : step;
+        for (let dc = 0; dc < 2; dc++) {
+          const c = col - dc;
+          if (!reserved[r][c]) {
+            base[r][c] = bitIdx < streamBits.length ? streamBits[bitIdx++] : 0;
+          }
+        }
+      }
+      up = !up;
+    }
+
+    let bestGrid = null;
+    let bestScore = Infinity;
+    for (let m = 0; m < 8; m++) {
+      const g = base.map((row, r) => row.map((v, c) => (reserved[r][c] ? v : (maskFn(m, r, c) ? v ^ 1 : v))));
+      const fmt = bchFormatInfo(m);
+      for (let i = 0; i < 6; i++) {
+        const bit = (fmt >> (14 - i)) & 1;
+        g[8][i] = bit;
+        g[size - 1 - i][8] = bit;
+      }
+      g[8][7] = (fmt >> 8) & 1;
+      g[size - 7][8] = (fmt >> 8) & 1;
+      g[8][8] = (fmt >> 7) & 1;
+      g[8][size - 8] = (fmt >> 7) & 1;
+      g[7][8] = (fmt >> 6) & 1;
+      g[8][size - 7] = (fmt >> 6) & 1;
+      for (let i = 0; i < 6; i++) {
+        const bit = (fmt >> (5 - i)) & 1;
+        g[5 - i][8] = bit;
+        g[8][size - 6 + i] = bit;
+      }
+      const sc = penaltyScore(g, size);
+      if (sc < bestScore) {
+        bestScore = sc;
+        bestGrid = g;
+      }
+    }
+    return { grid: bestGrid, size };
+  }
+
+  function generateBonQrSvgFallback(bonNo) {
+    const payload = (window.buildBonQrPayload || buildBonQrPayloadFallback)(bonNo);
+    if (!payload) return "";
+    let encoded = encodeQrMatrix(payload);
+    if (!encoded) encoded = encodeQrMatrix("BON:" + String(bonNo || "").trim());
+    if (!encoded || !encoded.grid) return "";
+    const { grid, size } = encoded;
+    const quiet = 2;
+    const full = size + quiet * 2;
+    const paths = [];
+    for (let r = 0; r < size; r++) {
+      let runStart = -1;
+      for (let c = 0; c <= size; c++) {
+        const dark = c < size && grid[r][c] === 1;
+        if (dark && runStart < 0) runStart = c;
+        else if (!dark && runStart >= 0) {
+          paths.push(`M${runStart + quiet} ${r + quiet}h${c - runStart}v1h-${c - runStart}z`);
+          runStart = -1;
+        }
+      }
+    }
+    return `<svg width="78" height="78" viewBox="0 0 ${full} ${full}" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="QR Code"><rect width="${full}" height="${full}" fill="#ffffff"/><path fill="#14221a" d="${paths.join("")}"/></svg>`;
+  }
+
+  if (typeof window.buildBonQrPayload !== "function") {
+    window.buildBonQrPayload = buildBonQrPayloadFallback;
+  }
+  if (typeof window.extractBonNoFromScan !== "function") {
+    window.extractBonNoFromScan = extractBonNoFromScanFallback;
+  }
+  window.generateBonQrSvgFallback = generateBonQrSvgFallback;
+})();
+
