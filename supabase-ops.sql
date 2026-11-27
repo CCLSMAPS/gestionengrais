@@ -364,7 +364,7 @@ create policy "active users restore recycle_bin" on public.recycle_bin
 
 drop policy if exists "admins purge recycle_bin" on public.recycle_bin;
 create policy "admins purge recycle_bin" on public.recycle_bin
-  for delete to authenticated using (public.is_admin() or public.is_active_user());
+  for delete to authenticated using (public.is_admin());
 
 -- ============================================================
 -- 10) سجل جلسات المستخدمين والإنهاء عن بُعد
