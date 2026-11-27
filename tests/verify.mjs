@@ -74,6 +74,9 @@ assert.match(serverSrc, /ALLOWED_ROOT_FILES/);
 assert.match(serverSrc, /ALLOWED_DIST_FILES/);
 assert.match(serverSrc, /X-Content-Type-Options/);
 assert.match(serverSrc, /Content-Security-Policy/);
+const envExample = fs.readFileSync(path.join(ROOT, ".env.example"), "utf8");
+assert.match(envExample, /^DIRECTOR_SECRET=/m);
+assert.match(serverSrc, /DIRECTOR_SECRET is not configured/);
 
 // 6. Validate crop invoices & withdrawals aggregation bundle behavior
 const aggSrc = fs.readFileSync(path.join(ROOT, "src/analytics-aggregator.ts"), "utf8");

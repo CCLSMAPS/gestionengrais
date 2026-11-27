@@ -21,6 +21,9 @@ const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imliem5sZHBrZHJxZ2NkbnJ4d25qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5OTUwODUsImV4cCI6MjExMDU3MTA4NX0.LUyefDjCMWnac-cytLMkmOOLIPtgr0GdsPTWAqewJfw";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DIRECTOR_SECRET = process.env.DIRECTOR_SECRET || crypto.randomBytes(32).toString("hex");
+if (!process.env.DIRECTOR_SECRET) {
+  console.warn("DIRECTOR_SECRET is not configured; director share links will be invalidated after a server restart.");
+}
 const NOTIFY_WEBHOOK_URL = process.env.NOTIFY_WEBHOOK_URL || "";
 const NOTIFY_WEBHOOK_TOKEN = process.env.NOTIFY_WEBHOOK_TOKEN || "";
 
