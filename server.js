@@ -619,6 +619,7 @@ app.post("/api/director-link", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const auth = await verifySupabaseUser(req);
   if (!auth) return res.status(401).json({ error: "يجب تسجيل الدخول أولاً" });
+  if (!(await isAdminAuth(auth))) return res.status(403).json({ error: "ممنوع: للمسؤول فقط" });
   if (req.body?.snapshot) {
     const cleanSnap = sanitizeDirectorSnapshot(req.body.snapshot);
     if (cleanSnap) latestDirectorSnapshot = cleanSnap;
@@ -642,6 +643,7 @@ app.post("/api/director-snapshot", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const auth = await verifySupabaseUser(req);
   if (!auth) return res.status(401).json({ error: "غير مصرح" });
+  if (!(await isAdminAuth(auth))) return res.status(403).json({ error: "ممنوع: للمسؤول فقط" });
   const cleanSnap = sanitizeDirectorSnapshot(req.body?.snapshot || req.body);
   if (!cleanSnap) return res.status(400).json({ error: "بيانات غير صالحة" });
   latestDirectorSnapshot = cleanSnap;
@@ -726,7 +728,8 @@ function sanitizeKioskPayload(raw) {
     ? raw.tickets.slice(0, 60).map((t) => ({
         queue_no: safeNum(t?.queue_no),
         status: ["waiting", "loading", "done", "absent"].includes(t?.status) ? t.status : "waiting",
-        display_name: safeStr(t?.display_name || t?.farmer_name || "", 60),
+        // Public kiosk must never expose a farmer's real name or other identifying text.
+        display_name: safeStr(t?.queue_no ? `فلاح رقم ${safeNum(t.queue_no)}` : "فلاح", 60),
         product_name: safeStr(t?.product_name || "", 60),
         warehouse_name: safeStr(t?.warehouse_name || "", 60),
         qty: safeNum(t?.qty),
